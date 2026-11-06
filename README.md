@@ -1,7 +1,18 @@
 # OneTab
 OneTab is a group checkout app that lets several people pay for one purchase together using USDC on Solana.
 
-The app combines everyone's approved contribution into **one Solana transaction containing multiple transfers**. Every split transfers succeeds together, or every split transfer reverts. Our main distinction here is this is one transaction containing several transfers. It does not require pooling everyone's money into a OneTab wallet beforehand.
+The app combines everyone's approved contribution into **one Solana transaction containing multiple transfers**. Every contribution transfer succeeds together, or all contribution transfers revert. Network fees can still be charged if a submitted transaction fails. The money moves directly from payer wallets to the seller, without pooling it in a OneTab wallet.
+
+## Build OneTab
+
+This is a desktop-only Solana Devnet prototype for a 24-hour, three-person hackathon build.
+
+- [spec.md](spec.md) defines the agreed scope, user flow, payment rules, shared contracts and acceptance criteria.
+- [AGENTS.md](AGENTS.md) requires coding agents to install pstack when missing and load it before implementation.
+- [Kanban board](https://github.com/orgs/nefalos-tech/projects/10) tracks the three parallel work lanes and their assigned cards.
+
+Application setup and run commands will be added when the app is scaffolded.
+
 ## How we use Solana
 
 | Capability | How OneTab uses it | Benefit |
