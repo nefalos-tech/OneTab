@@ -4,14 +4,14 @@ OneTab lets two or three people authorize and pay for one shared purchase with U
 
 This document defines the agreed 24-hour hackathon MVP. It describes the target behavior, not a completed or production-ready payment system. Wallet compatibility and exact Solana package versions remain unverified until [P1](https://github.com/nefalos-tech/OneTab/issues/1) passes with real browser wallets.
 
-The [Kanban board](https://github.com/orgs/nefalos-tech/projects/10) owns task status, estimates and scheduling. This file owns product behavior and invariants. [AGENTS.md](AGENTS.md) owns the agent workflow. Shared TypeScript contracts become the executable interface reference when B1 implements them.
+The [Kanban board](https://github.com/orgs/nefalos-tech/projects/10) owns task status, estimates and scheduling. This file owns product behavior and invariants. [Architecture](docs/architecture.md) defines the stack and module boundaries. [Contracts](docs/contracts.md) defines the initial integration agreement. [Development](docs/development.md) and the [card index](docs/implementation-map.md) explain how to start. [AGENTS.md](AGENTS.md) owns the agent workflow. Shared TypeScript contracts become the executable interface reference when B1 implements them.
 
 ## MVP boundaries
 
 | Area | Agreed behavior |
 | --- | --- |
 | Platform | Desktop browser app at a public URL |
-| Stack | Next.js, React, TypeScript and Supabase Postgres |
+| Stack | Next.js App Router, React, TypeScript and Supabase Postgres |
 | Network and asset | Solana Devnet and the verified Devnet USDC mint, labeled as test assets |
 | Wallet support | One desktop wallet integration proven in P1 before broader compatibility claims |
 | Participants | Two or three distinct payer wallets, including the organizer |
@@ -64,7 +64,7 @@ Changing the blockhash, fee payer, instructions, accounts or amounts changes the
 
 ## Attempt states and retries
 
-The names below define behavior. B1 publishes their concrete representation in the shared contracts before the lanes integrate.
+The names below define behavior. [contracts.md](docs/contracts.md) defines their wire representation. B1 publishes the executable shared contracts before the lanes integrate.
 
 | State | Meaning and allowed progress |
 | --- | --- |
@@ -108,7 +108,7 @@ The agreed interface boundaries are:
 
 Backend owns the shared definitions and example responses. Payments supplies the transaction fields and validator. Frontend builds against fixtures until real routes are ready. Payment orchestration depends on AttemptStore. Database helpers do not import payment orchestration.
 
-The API operations are create/read checkout, issue/verify authentication challenge, read/end session, join, mark readiness, prepare attempt, upload signature, submit and refresh payment status. B1 fixes route names, response fields and error codes before integration. The spec does not claim those routes already exist.
+The API operations are public configuration, create/read checkout, issue/verify authentication challenge, read/end session, join, mark readiness, prepare attempt, retrieve signing payload, upload signature, decline, submit and refresh payment status. [contracts.md](docs/contracts.md) fixes their initial paths, response fields and error codes. B1 implements that agreement and coordinates any required corrections. These routes do not exist yet.
 
 ## Authentication and trust boundaries
 
@@ -158,7 +158,7 @@ A preflight rejection proves validation, not blockchain rollback. A rollback cla
 
 The targets are a two-wallet proof by hour 4, integrated sessions/rooms by hour 8, a hosted two-payer checkout by hour 12 and three-payer/failure checks by hour 16. Feature scope freezes by hour 18. The final six hours cover fixes, hosted verification, rehearsal and submission.
 
-P1 resolves wallet compatibility, library versions, the Devnet RPC and mint/account setup. B1 resolves exact field and route names. B5 resolves the hosting provider and deployed session configuration. Their owners record these choices in the code and update this spec when product behavior changes.
+P1 resolves wallet compatibility, library versions, the Devnet RPC and mint/account setup. B1 implements the documented contracts and coordinates corrections found during integration. F1 pins the application toolchain. B5 resolves the hosting provider and deployed session configuration. Their owners record these choices in the code and update the relevant documents when behavior changes.
 
 The demonstration shows one complete group checkout and one accurately described failure. MLH's standard digital-event rules call for a public video of at most two minutes, the event name at its start, public source code and AI-tool disclosure. The signed-in submission form must still be checked for event-specific fields.
 

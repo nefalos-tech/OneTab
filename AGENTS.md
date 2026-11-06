@@ -4,7 +4,7 @@
 
 Use pstack for every repository task. This is a required workflow for agents that read this file. It is not an executable hook or proof that an editor enforced it.
 
-1. Read [spec.md](spec.md), the assigned [board card](https://github.com/orgs/nefalos-tech/projects/10) when one exists, and the current repository state.
+1. Read [spec.md](spec.md), [architecture](docs/architecture.md), [contracts](docs/contracts.md), [development setup](docs/development.md), the assigned [card](docs/implementation-map.md) when one exists, and the current repository state.
 2. Locate a readable pstack `poteto-mode/SKILL.md` in the host's available skills or installed plugin files. Reuse an existing installation.
 3. If pstack is missing, install it using the host-specific procedure below before implementation. This repository instruction requests that setup. Use normal host permissions and never bypass an approval requirement.
 4. Read `poteto-mode/SKILL.md` in full, select its playbook, and load each routed skill when needed. Installation alone does not activate the workflow.
@@ -85,10 +85,12 @@ Keep model IDs and reasoning effort in the separate fields the host accepts. If 
 
 ## Work within the assigned lane
 
-- Follow the ownership and shared contracts in [spec.md](spec.md). Coordinate contract changes with their owner before consumers diverge.
+- Use the agreed Next.js App Router, React and TypeScript stack. Frontend owns the single root application scaffold, npm manifest and lockfile.
+- Follow [file ownership](docs/architecture.md#module-and-file-ownership) and [shared contracts](docs/contracts.md). Frontend ownership of src/app/ excludes API routes. Coordinate contract changes with their owner before consumers diverge.
 - Work on a separate branch. Preserve unrelated local changes and teammates' branches.
-- Frontend owns the root manifest and lockfile. Payments supplies the versions proven by the real-wallet experiment.
+- Payments supplies the dependency versions proven by the real-wallet experiment.
 - Keep implementation within the card's scope. Update the spec when an agreed product rule changes, and link the related card.
+- Keep architecture and contract documents consistent with implementation. Update both the repository card and live issue when task scope changes. The board remains authoritative for status.
 - Keep source code, migrations and evidence consistent. Do not mark a card Done until its completion check has passed.
 
 ## Verification and reporting
