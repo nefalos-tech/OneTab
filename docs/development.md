@@ -6,20 +6,9 @@ Use this guide to start work without reconstructing decisions from chat. The app
 
 1. Read [spec.md](../spec.md), [architecture.md](architecture.md), [contracts.md](contracts.md) and your [card](implementation-map.md).
 2. If you use an agent, have it read [AGENTS.md](../AGENTS.md) and load pstack before implementation.
-3. Check git status and use a separate branch for the card. Preserve other contributors' changes.
+3. Follow the [Git workflow](../AGENTS.md#git-workflow). Start a short-lived card branch from updated main and preserve other contributors' changes.
 4. Implement within the [file ownership map](architecture.md#module-and-file-ownership). Ask the owner to change a shared file rather than creating a competing version.
-5. Record the card's completion evidence and open a PR linked to its issue. Follow the team's owner gates for merge and deployment.
-
-After this handoff is merged, a clean checkout can start a card with:
-
-```sh
-git fetch origin
-git switch main
-git pull --ff-only
-git switch -c feat/F1-app-shell
-```
-
-Use your own card ID and description in the branch name. If the handoff is still in a PR, read the PR's branch and coordinate the base before opening implementation PRs. Do not assume that an unmerged documentation branch is already on main.
+5. Record the card's completion evidence and open a PR linked to its issue. Review, squash-merge and clean up the branch under the Git workflow. Follow the team's owner gates for merge and deployment.
 
 ## Start all three lanes together
 

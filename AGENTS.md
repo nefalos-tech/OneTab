@@ -87,11 +87,63 @@ Keep model IDs and reasoning effort in the separate fields the host accepts. If 
 
 - Use the agreed Next.js App Router, React and TypeScript stack. Frontend owns the single root application scaffold, npm manifest and lockfile.
 - Follow [file ownership](docs/architecture.md#module-and-file-ownership) and [shared contracts](docs/contracts.md). Frontend ownership of src/app/ excludes API routes. Coordinate contract changes with their owner before consumers diverge.
-- Work on a separate branch. Preserve unrelated local changes and teammates' branches.
+- Follow the [Git workflow](#git-workflow) below. Preserve unrelated local changes and teammates' branches.
 - Payments supplies the dependency versions proven by the real-wallet experiment.
 - Keep implementation within the card's scope. Update the spec when an agreed product rule changes, and link the related card.
 - Keep architecture and contract documents consistent with implementation. Update both the repository card and live issue when task scope changes. The board remains authoritative for status.
 - Keep source code, migrations and evidence consistent. Do not mark a card Done until its completion check has passed.
+
+## Git workflow
+
+Use [GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow). main is the integration branch. Each card gets a short-lived branch and a PR into main. All three lanes can work at the same time. Do not commit or push implementation directly to main, create a develop branch, or reuse a permanent personal branch.
+
+### Start a card
+
+Check git status first. If unrelated work is present, preserve it and use a separate worktree. Never discard or automatically stash another person's changes. From a clean checkout, start from updated main:
+
+```sh
+git fetch origin
+git switch main
+git pull --ff-only
+git switch -c feat/F1-app-shell
+```
+
+Name branches `<type>/<card-id>-<short-description>`, such as feat/F1-app-shell, feat/P2-payment-builder or fix/B3-slot-race. Use docs/ or chore/ for work without a card. Give each active contributor or agent a separate checkout/worktree and branch. Respect the file ownership map even when branches differ.
+
+Use the shared contracts and fixtures while another lane implements its card. Do not silently start from an unmerged teammate branch. If a real dependency requires that, agree on the base and merge order with its owner first.
+
+### Commit, sync and open a PR
+
+Make small, coherent commits with descriptive Conventional Commit messages, such as `feat(checkout): add open-slot joining`. Stage the intended files and inspect the staged diff. Never include credentials, local environment files or generated installer state.
+
+Push your card branch with `git push -u origin HEAD`. Open a PR targeting main when the scoped change is reviewable. Include the card/issue link, what changed, actual verification results and remaining limitations. Use `Closes #<issue-number>` only when the PR completes the whole card. Use `Refs #<issue-number>` for partial work.
+
+To bring merged work into an active card branch, first commit or otherwise preserve your own pending work, then run:
+
+```sh
+git fetch origin
+git merge origin/main
+```
+
+Resolve conflicts with the relevant file owner and rerun affected checks. If the resolution is uncertain, abort the merge and coordinate. Do not replace teammates' changes with a blanket ours/theirs resolution. Do not rebase or force-push a published/shared branch as routine sync.
+
+### Review and merge
+
+Have another teammate or an independent agent review the change. Shared-contract or dependency changes also involve their named owner. Check the card's completion criteria and the actual repository scripts. Do not invent passing application checks before the scaffold exists.
+
+Squash-merge the PR into main after applicable checks pass, review findings are resolved and merge authorization is present. Honor explicit authorization already supplied for the task; do not ask again for the same action. If no merge authorization exists, leave the reviewed PR ready and state that clearly. Recheck the current PR head and GitHub's merge result. Queued or auto-merge-enabled is not the same as merged.
+
+Mark the card Done only after its implementation is merged and its completion evidence exists. Merging does not authorize deployment or unrelated repository changes.
+
+### Clean up after merge
+
+After GitHub confirms the PR merged into main, delete its remote branch and then its local branch when no unfinished work or dependent PR needs it. Keep main. Do not reuse the merged card branch for the next card.
+
+Before deletion, verify that the branch has no commits added after the merged PR head. Check any attached worktree for uncommitted or untracked work. Leave active worktrees and branches in place. Switch an idle clean checkout away from the branch, or remove only a verified clean, unused worktree.
+
+Use `git branch -d <branch>` for local cleanup. A squash merge can make Git reject that ancestry check even though the PR is merged. Use `-D` only after verifying the exact merged PR head, preservation of its changes and absence of new work. Never use it just to silence a failed check.
+
+Refresh remote references with `git fetch --prune origin`. Start the next card from updated main using the steps above. This cleanup is part of finishing the merged PR when its prerequisites hold.
 
 ## Verification and reporting
 
