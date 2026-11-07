@@ -61,8 +61,7 @@ export type CheckoutApi = {
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
 };
 
-const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, RequestProblem>> = {
-  UNAUTHENTICATED: "signed_out",
+const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem, "signed_out">>> = {
   ROOM_FULL: "room_full",
   RATE_LIMITED: "rate_limited",
   INVALID_INPUT: "refused",
@@ -112,6 +111,7 @@ function roomOf(data: unknown, expectedId: CheckoutId | null): Result<RoomSnapsh
 
 function mutationResult(reply: Reply, expectedId: CheckoutId | null): Result<RoomSnapshot, RequestProblem> {
   if (reply.kind === "data") return roomOf(reply.data, expectedId);
+  if (reply.kind === "error" && reply.status === 401) return { ok: false, failure: "signed_out" };
   const problem = reply.kind === "error" && reply.code !== null ? REQUEST_PROBLEM_BY_CODE[reply.code] : undefined;
   return { ok: false, failure: problem ?? "unavailable" };
 }

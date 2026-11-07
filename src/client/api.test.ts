@@ -191,8 +191,17 @@ describe("checkoutApi create and join", () => {
     expect(await api(() => json(200, { data: FIXTURES.paid.snapshot })).join(ID)).toEqual({ ok: false, failure: "unavailable" });
   });
 
+  it.each<[string, () => Response]>([
+    ["no body", () => new Response(null, { status: 401 })],
+    ["an HTML body", () => new Response("<html>Sign in</html>", { status: 401, headers: { "content-type": "text/html" } })],
+    ["empty JSON", () => json(401, {})],
+    ["the error envelope", () => json(401, errorBody("UNAUTHENTICATED"))],
+  ])("reads a 401 with %s on create and join as signed_out", async (_, respond) => {
+    expect(await api(respond).create(REQUEST, REQUEST_ID)).toEqual({ ok: false, failure: "signed_out" });
+    expect(await api(respond).join(ID)).toEqual({ ok: false, failure: "signed_out" });
+  });
+
   it.each<[string, () => Response | Promise<Response>, string]>([
-    ["UNAUTHENTICATED", () => json(401, errorBody("UNAUTHENTICATED")), "signed_out"],
     ["ROOM_FULL", () => json(409, errorBody("ROOM_FULL")), "room_full"],
     ["RATE_LIMITED", () => json(429, errorBody("RATE_LIMITED")), "rate_limited"],
     ["INVALID_INPUT", () => json(400, errorBody("INVALID_INPUT")), "refused"],
