@@ -1,7 +1,7 @@
 import { blockhash, getAddressDecoder } from "@solana/kit";
-import type { PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index.js";
-import { buildPaymentMessage, equalShares, type PaymentPlan } from "./payment-core.js";
-import { createCheckoutPaymentPlan, toBase64 } from "./signing-payload.js";
+import type { PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index";
+import { buildPaymentMessage, equalShares, type PaymentPlan } from "./payment-core";
+import { createCheckoutPaymentPlan, toBase64 } from "./signing-payload";
 
 export const key = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
 export const config: PublicConfig = {

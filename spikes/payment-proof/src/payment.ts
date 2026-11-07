@@ -1,13 +1,14 @@
-import {
-  address, blockhash, signatureBytes, getAddressEncoder, getBase58Decoder,
-  getTransactionDecoder, getTransactionEncoder,
-} from '@solana/kit';
+import { address, blockhash } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import {
   DEVNET_USDC, buildPaymentMessage, createPaymentPlan, equalBytes, equalShares, inspectPaymentMessage, sha256,
   type PaymentPlan,
 } from '../../../src/lib/payments/payment-core.js';
 import { z } from 'zod';
+import {
+  assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
+  type PayerSignature, type SignatureTarget,
+} from '../../../src/lib/payments/signature-core.js';
 import { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
 export { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
 
@@ -92,50 +93,45 @@ export async function inspectPayment(input: unknown, expected: { plan: Plan; pla
   return payment;
 }
 
+function signatureTarget(payment: FrozenPayment): SignatureTarget {
+  return { plan: corePlanFromProofPlan(payment.plan), message: {
+    transactionBytes: fromBase64(payment.transactionBase64), messageBytes: fromBase64(payment.messageBase64),
+    messageHash: payment.messageHash,
+  } };
+}
+
+function payerSignature(payment: FrozenPayment, approval: Approval): PayerSignature {
+  if (approval.messageHash !== payment.messageHash) throw new Error('Invalid signature');
+  return { wallet: payment.plan.contributions[approval.slot].wallet, signatureBytes: fromBase64(approval.signatureBase64) };
+}
+
 export async function verifyApproval(payment: FrozenPayment, input: unknown): Promise<Approval> {
+  const snapshot = frozenSchema.parse(payment);
   const approval = approvalSchema.parse(input);
-  const payer = payment.plan.contributions[approval.slot];
-  const bytes = fromBase64(approval.signatureBase64);
-  if (approval.messageHash !== payment.messageHash || bytes.length !== 64 || bytes.every(byte => byte === 0)) throw new Error('Invalid signature');
-  const key = await crypto.subtle.importKey('raw', Uint8Array.from(getAddressEncoder().encode(payer.wallet)).buffer, 'Ed25519', false, ['verify']);
-  if (!await crypto.subtle.verify('Ed25519', key, Uint8Array.from(bytes).buffer, Uint8Array.from(fromBase64(payment.messageBase64)).buffer)) {
-    throw new Error('Invalid signature');
-  }
+  await verifyPayerSignature(signatureTarget(snapshot), payerSignature(snapshot, approval));
   return approval;
 }
 
 export async function verifyWalletReturn(payment: FrozenPayment, slot: Slot, returned: Uint8Array): Promise<Approval> {
-  const transaction = getTransactionDecoder().decode(returned);
-  if (!equalBytes(transaction.messageBytes, fromBase64(payment.messageBase64))
-    || !equalBytes(returned, getTransactionEncoder().encode(transaction))) throw new Error('Wallet changed transaction');
-  const payer = payment.plan.contributions[slot];
-  for (const [signer, signature] of Object.entries(transaction.signatures)) {
-    if (signer !== payer.wallet && signature !== null && signature.some(value => value !== 0)) throw new Error('Unexpected signature slot');
-  }
-  const signature = transaction.signatures[payer.wallet];
-  if (!signature) throw new Error('Missing wallet signature');
-  return verifyApproval(payment, { slot, messageHash: payment.messageHash, signatureBase64: toBase64(signature) });
+  const snapshot = frozenSchema.parse(payment);
+  const payer = snapshot.plan.contributions[slot];
+  const signature = await verifyWalletSignature(signatureTarget(snapshot), payer.wallet, returned);
+  return { slot, messageHash: snapshot.messageHash, signatureBase64: toBase64(signature.signatureBytes) };
 }
 
 export async function assembleSubmission(payment: FrozenPayment, inputs: readonly Approval[]): Promise<Submission> {
-  if (inputs.length !== 2 || new Set(inputs.map(approval => approval.slot)).size !== 2) throw new Error('Signatures incomplete');
-  const approvals = await Promise.all(inputs.map(input => verifyApproval(payment, input)));
-  const submission = assembleVerifiedApprovals(payment, approvals);
-  return { ...submission, signedHash: await sha256(fromBase64(submission.signedBase64)) };
+  const snapshot = frozenSchema.parse(payment);
+  const approvals = inputs.map(input => approvalSchema.parse(input));
+  const signed = await assembleSignedPayment(signatureTarget(snapshot), approvals.map(approval => payerSignature(snapshot, approval)));
+  return { reference: signed.reference, signedBase64: toBase64(signed.transactionBytes), signedHash: await sha256(signed.transactionBytes) };
 }
 
 export function assembleVerifiedApprovals(payment: FrozenPayment, approvals: readonly Approval[], incompleteDiagnostic = false): Omit<Submission, 'signedHash'> {
-  if ((!incompleteDiagnostic && approvals.length !== 2) || new Set(approvals.map(value => value.slot)).size !== approvals.length) throw new Error('Signatures incomplete');
-  const original = getTransactionDecoder().decode(fromBase64(payment.transactionBase64));
-  const signatures = { ...original.signatures };
-  for (const approval of approvals) {
-    const bytes = fromBase64(approval.signatureBase64);
-    const key = payment.plan.contributions[approval.slot].wallet;
-    signatures[key] = signatureBytes(bytes);
-  }
-  const transaction = { ...original, signatures };
-  const signed = getTransactionEncoder().encode(transaction);
-  const organizer = signatures[payment.plan.feePayer];
-  if (!organizer && !incompleteDiagnostic) throw new Error('Missing organizer signature');
-  return { reference: organizer ? getBase58Decoder().decode(organizer) : '', signedBase64: toBase64(signed) };
+  const snapshot = frozenSchema.parse(payment);
+  const target = signatureTarget(snapshot);
+  const signatures = approvals.map(input => payerSignature(snapshot, approvalSchema.parse(input)));
+  const signed = incompleteDiagnostic
+    ? assembleTrustedSignatures(target, signatures, { incompleteDiagnostic: true })
+    : assembleTrustedSignatures(target, signatures);
+  return { reference: signed.reference ?? '', signedBase64: toBase64(signed.transactionBytes) };
 }
