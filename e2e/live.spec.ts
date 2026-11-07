@@ -1,24 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test as base, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { shortAddress } from "../src/client/checkout-view";
 import { parseRoomSnapshot } from "../src/client/contracts";
+import { expect, test } from "./browser-api";
 import { FAKE_API, LIVE, ROOMS, WALLETS, freshCountedRoom } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
-
-const test = base.extend<{ failOnAnyApiCall: string[] }>({
-  failOnAnyApiCall: [
-    async ({ page }, use) => {
-      const calls: string[] = [];
-      page.on("request", (request) => {
-        if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(`${request.method()} ${request.url()}`);
-      });
-      await use(calls);
-      expect(calls, "a live page called an API route from the browser").toEqual([]);
-    },
-    { auto: true },
-  ],
-});
 
 async function capture(page: Page, name: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();

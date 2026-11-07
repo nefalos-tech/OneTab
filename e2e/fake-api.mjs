@@ -64,17 +64,20 @@ const json = (status, body) => ({ status, type: "application/json", body: JSON.s
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
 const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
+/** The same room a server read gets, for the browser's polls, which the read count leaves out. */
+export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
+
 function respond(dataset, reads, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
   if (method === "GET" && path === "/api/config") {
     return dataset === "rooms" ? json(200, { data: CONFIG }) : error(503, "CONFIGURATION_UNAVAILABLE");
   }
-  const room = /^\/api\/checkouts\/([0-9a-fA-F-]{36})$/.exec(path);
+  const room = /^\/(api\/checkouts|__rooms)\/([0-9a-fA-F-]{36})$/.exec(path);
   if (method !== "GET" || !room) return html404;
   // Like Backend's uuid column, any case finds the room, and the answer carries the lowercase ID.
-  const id = room[1].toLowerCase();
-  reads.set(id, (reads.get(id) ?? 0) + 1);
+  const id = room[2].toLowerCase();
+  if (room[1] === "api/checkouts") reads.set(id, (reads.get(id) ?? 0) + 1);
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });

@@ -2,7 +2,7 @@ import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, type ActionKind, type ProblemWithWords } from "./catalog";
 import { checkoutLinks, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
-import type { CheckoutId, RoomSnapshot } from "./contracts";
+import type { AttemptId, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
 export type LiveKind = {
@@ -146,13 +146,115 @@ function reread(c: Pick<Context, "api" | "track">, id: CheckoutId): Promise<Resu
   return c.track("read", () => c.api.readRoom(id));
 }
 
-export type Live = {
-  run(action: LiveAction, scope: Scope): Promise<Outcome>;
+export const POLL_MS = 2_000;
+export const MAX_BACKOFF_MS = 30_000;
+
+export type PollPlan = {
+  /** Read the room. Nothing changes once the checkout is paid, so polling stops there. */
+  readonly read: boolean;
+  /** Ask the server to advance this attempt first: the viewer is one of its payers, and it still blocks a new one. */
+  readonly refresh: AttemptId | null;
 };
 
-export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment): Live {
+export function pollPlan(snapshot: RoomSnapshot, session: Session | null): PollPlan {
+  const a = snapshot.attempt;
+  const payer = session !== null && snapshot.participants.some((p) => p.wallet === session.wallet);
+  return {
+    read: snapshot.phase !== "paid",
+    refresh: payer && a !== null && a.state !== "confirmed" && !a.canRetry ? a.id : null,
+  };
+}
+
+export type Watched = {
+  readonly id: CheckoutId;
+  readonly track: Track;
+  /** Read at the start of each poll, so the poll follows the room on screen and the current sign-in. */
+  readonly now: () => { readonly snapshot: RoomSnapshot; readonly session: Session | null };
+  /** A refresh answered that `session` ended. */
+  readonly signedOut: (session: Session) => void;
+};
+
+/** Timers and page visibility, injected so the loop runs under fake timers in Vitest. */
+export type PollEnv = {
+  readonly wait: (ms: number, then: () => void) => () => void;
+  readonly visible: () => boolean;
+  /** Calls `wake` when the page shows again, gets focus or comes back online. Returns an unsubscribe. */
+  readonly onResume: (wake: () => void) => () => void;
+};
+
+export const browserPollEnv: PollEnv = {
+  wait: (ms, then) => {
+    const timer = setTimeout(then, ms);
+    return () => clearTimeout(timer);
+  },
+  visible: () => document.visibilityState === "visible",
+  onResume: (wake) => {
+    const shown = () => {
+      if (document.visibilityState === "visible") wake();
+    };
+    document.addEventListener("visibilitychange", shown);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", wake);
+    return () => {
+      document.removeEventListener("visibilitychange", shown);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", wake);
+    };
+  },
+};
+
+/**
+ * Polls one room until the returned stop is called. It reads at once, so a page restored by Back catches
+ * up, then every POLL_MS while the page is visible, with one poll in flight at a time. A failure doubles
+ * the wait up to MAX_BACKOFF_MS. A resume polls at once.
+ */
+function watch(api: CheckoutApi, env: PollEnv, room: Watched): () => void {
+  let stopped = false;
+  let polling = false;
+  let delay = POLL_MS;
+  let cancel = () => {};
+
+  const poll = async () => {
+    if (stopped || polling || !env.visible()) return;
+    polling = true;
+    const { snapshot, session } = room.now();
+    const plan = pollPlan(snapshot, session);
+    let ok = true;
+    if (plan.refresh !== null) {
+      const refreshed = await api.refreshAttempt(plan.refresh);
+      if (!refreshed.ok && refreshed.failure === "signed_out" && session !== null) room.signedOut(session);
+      ok = refreshed.ok;
+    }
+    if (plan.read) ok = (await room.track("read", () => api.readRoom(room.id))).ok && ok;
+    polling = false;
+    if (stopped || !plan.read) return;
+    delay = ok ? POLL_MS : Math.min(delay * 2, MAX_BACKOFF_MS);
+    cancel = env.wait(delay, poll);
+  };
+
+  const unsubscribe = env.onResume(() => {
+    cancel();
+    delay = POLL_MS;
+    void poll();
+  });
+  void poll();
+  return () => {
+    stopped = true;
+    cancel();
+    unsubscribe();
+  };
+}
+
+export type Live = {
+  run(action: LiveAction, scope: Scope): Promise<Outcome>;
+  /** The only poller. LiveCheckout starts it. */
+  watch(room: Watched): () => void;
+};
+
+export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment, env: PollEnv = browserPollEnv): Live {
   return {
     run: (action, scope) => run(action, { ...scope, api, check }),
+    watch: (room) => watch(api, env, room),
   };
 }
 

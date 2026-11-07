@@ -7,6 +7,7 @@ import {
   deriveReviewActions,
   deriveRoomView,
   noticeApplies,
+  ownerOf,
   termsOf,
   type ActionsView,
   type CheckoutState,
@@ -146,6 +147,21 @@ describe("status lines speak to the viewer", () => {
   it("marks Paid as current, not done, while the payment is sending", () => {
     const flow = deriveResultView(caseById("submitting as spot-1").state).chrome.flow;
     expect(flow.map((s) => s.state)).toEqual(["done", "done", "done", "current"]);
+  });
+});
+
+describe("the screen that owns the room", () => {
+  it.each([
+    ["full-not-ready", "room"],
+    ["ready", "room"],
+    ["preparing", "room"],
+    ["signing", "room"],
+    ["submitting", "result"],
+    ["declined-on-hold", "result"],
+    ["unresolved", "result"],
+    ["paid", "result"],
+  ] as const)("is the %s room's %s", (name, screen) => {
+    expect(ownerOf(FIXTURES[name].snapshot)).toBe(screen);
   });
 });
 

@@ -1,19 +1,22 @@
-import { describe, expect, expectTypeOf, it } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, type ActionKind, type ProblemWithWords } from "./catalog";
 import { termsOf, type Action } from "./checkout-view";
-import type { ClientRequestId, RoomSnapshot } from "./contracts";
+import type { ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
 import {
+  browserPollEnv,
   isLiveAction,
   liveActions,
+  pollPlan,
   roomTracker,
   untracked,
   type LiveAction,
   type LiveKind,
   type Outcome,
+  type PollEnv,
   type Scope,
   type Track,
 } from "./live-actions";
@@ -408,6 +411,191 @@ describe("decline", () => {
   it("with no answer, says trying again is safe", async () => {
     const { fetch } = server(noAnswer);
     expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope())).toEqual(said("unavailable"));
+  });
+});
+
+describe("what each poll sends", () => {
+  const as = (wallet: string): Session => ({ wallet: wallet as Session["wallet"], expiresAt: PAYER.expiresAt });
+  const attemptOf = (name: keyof typeof FIXTURES) => FIXTURES[name].snapshot.attempt!.id;
+
+  it.each<[string, RoomSnapshot, Session | null, ReturnType<typeof pollPlan>]>([
+    ["an open room, signed out", OPEN, null, { read: true, refresh: null }],
+    ["approvals open, to a payer", SIGNING, PAYER, { read: true, refresh: ATTEMPT }],
+    ["approvals open, to a payer who approved", SIGNING, as(SAMPLE_WALLETS.organizer), { read: true, refresh: ATTEMPT }],
+    ["approvals open, to someone with the link", SIGNING, as(SAMPLE_WALLETS.outsider), { read: true, refresh: null }],
+    ["approvals open, to the seller", SIGNING, as(SAMPLE_WALLETS.seller), { read: true, refresh: null }],
+    ["approvals open, signed out", SIGNING, null, { read: true, refresh: null }],
+    ["a payment being prepared, to a payer", FIXTURES.preparing.snapshot, PAYER, { read: true, refresh: attemptOf("preparing") }],
+    ["a payment being sent, to a payer", FIXTURES.submitting.snapshot, PAYER, { read: true, refresh: attemptOf("submitting") }],
+    ["an unresolved payment, to a payer", FIXTURES.unresolved.snapshot, PAYER, { read: true, refresh: attemptOf("unresolved") }],
+    ["a decline on hold, to a payer", FIXTURES["declined-on-hold"].snapshot, PAYER, { read: true, refresh: attemptOf("declined-on-hold") }],
+    ["a decline that is safe to retry, to a payer", FIXTURES["declined-retry"].snapshot, PAYER, { read: true, refresh: null }],
+    ["an expiry that is safe to retry, to a payer", FIXTURES["expired-retry"].snapshot, PAYER, { read: true, refresh: null }],
+    ["a failure on hold, to a payer", FIXTURES["failed-on-hold"].snapshot, PAYER, { read: true, refresh: attemptOf("failed-on-hold") }],
+    ["a confirmed payment awaiting its receipt, to a payer", FIXTURES.confirming.snapshot, PAYER, { read: true, refresh: null }],
+    ["a paid checkout, to a payer", FIXTURES.paid.snapshot, as(SAMPLE_WALLETS.organizer), { read: false, refresh: null }],
+  ])("%s", (_, room, session, plan) => {
+    expect(pollPlan(room, session)).toEqual(plan);
+  });
+});
+
+describe("the poller", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function polling(respond: (method: string, path: string) => Response | Promise<Response>, first: { snapshot: RoomSnapshot; session: Session | null }) {
+    vi.useFakeTimers();
+    let visible = true;
+    let wake = () => {};
+    const env: PollEnv = {
+      wait: browserPollEnv.wait,
+      visible: () => visible,
+      onResume: (w) => {
+        wake = w;
+        return () => (wake = () => {});
+      },
+    };
+    const calls: string[] = [];
+    const fetch: FetchLike = async (path, init) => {
+      calls.push(`${init.method} ${path}`);
+      return respond(String(init.method), path);
+    };
+    const { track, shown } = shownBy();
+    const ended: Session[] = [];
+    const room = { now: first };
+    const stop = liveActions(checkoutApi(fetch), undefined, env).watch({
+      id: first.snapshot.checkout.id,
+      track,
+      now: () => room.now,
+      signedOut: (session) => ended.push(session),
+    });
+    return {
+      calls,
+      shown,
+      ended,
+      stop,
+      room,
+      hide: () => (visible = false),
+      show: () => {
+        visible = true;
+        wake();
+      },
+      resume: () => wake(),
+      after: (ms: number) => vi.advanceTimersByTimeAsync(ms),
+    };
+  }
+
+  const read = (room: RoomSnapshot) => `GET /api/checkouts/${room.checkout.id}`;
+  const refresh = `POST /api/attempts/${ATTEMPT}/refresh`;
+  const answers = (room: RoomSnapshot) => (method: string) => json(200, { data: method === "GET" ? room : room.attempt });
+
+  it("reads at once, then every two seconds, and shows each room", async () => {
+    const p = polling(answers(OPEN), { snapshot: OPEN, session: null });
+    await p.after(0);
+    expect(p.calls).toEqual([read(OPEN)]);
+    await p.after(1999);
+    expect(p.calls).toHaveLength(1);
+    await p.after(1);
+    expect(p.calls).toEqual([read(OPEN), read(OPEN)]);
+    expect(p.shown).toEqual([OPEN, OPEN]);
+  });
+
+  it("asks the server to advance the attempt before each read for its payer, and only reads for anyone else", async () => {
+    const p = polling(answers(SIGNING), { snapshot: SIGNING, session: null });
+    await p.after(0);
+    p.room.now = { snapshot: SIGNING, session: PAYER };
+    await p.after(2000);
+    expect(p.calls).toEqual([read(SIGNING), refresh, read(SIGNING)]);
+  });
+
+  it("waits for a slow poll before sending another, however long it takes", async () => {
+    let answer!: () => void;
+    const p = polling(() => new Promise((resolve) => (answer = () => resolve(json(200, { data: OPEN })))), { snapshot: OPEN, session: null });
+    await p.after(60_000);
+    p.resume();
+    await p.after(0);
+    expect(p.calls).toHaveLength(1);
+    answer();
+    await p.after(2000);
+    expect(p.calls).toHaveLength(2);
+  });
+
+  it("after each failure waits twice as long, up to 30 seconds, and two seconds again after a success", async () => {
+    let failures = 5;
+    const p = polling(() => (failures-- > 0 ? json(503, errorBody("CONFIGURATION_UNAVAILABLE")) : json(200, { data: OPEN })), {
+      snapshot: OPEN,
+      session: null,
+    });
+    await p.after(0);
+    for (const wait of [4000, 8000, 16_000, 30_000, 30_000, 2000]) {
+      const before = p.calls.length;
+      await p.after(wait - 1);
+      expect(p.calls, `no poll before ${wait} ms`).toHaveLength(before);
+      await p.after(1);
+      expect(p.calls, `a poll at ${wait} ms`).toHaveLength(before + 1);
+    }
+  });
+
+  it("backs off when the server rate-limits a refresh", async () => {
+    const p = polling((method) => (method === "POST" ? json(429, errorBody("RATE_LIMITED")) : json(200, { data: SIGNING })), {
+      snapshot: SIGNING,
+      session: PAYER,
+    });
+    await p.after(2000);
+    expect(p.calls).toEqual([refresh, read(SIGNING)]);
+    await p.after(2000);
+    expect(p.calls).toEqual([refresh, read(SIGNING), refresh, read(SIGNING)]);
+  });
+
+  it("sends nothing while the page is hidden, and polls at once when it shows", async () => {
+    const p = polling(answers(OPEN), { snapshot: OPEN, session: null });
+    await p.after(0);
+    p.hide();
+    await p.after(60_000);
+    expect(p.calls).toHaveLength(1);
+    p.show();
+    await p.after(0);
+    expect(p.calls).toHaveLength(2);
+    await p.after(2000);
+    expect(p.calls).toHaveLength(3);
+  });
+
+  it("hands over a session the refresh says has ended", async () => {
+    const p = polling((method) => (method === "POST" ? json(401, errorBody("UNAUTHENTICATED")) : json(200, { data: SIGNING })), {
+      snapshot: SIGNING,
+      session: PAYER,
+    });
+    await p.after(0);
+    expect(p.ended).toEqual([PAYER]);
+  });
+
+  it("stops once the checkout on screen is paid", async () => {
+    const sending = FIXTURES.submitting.snapshot;
+    const p = polling(answers(sending), { snapshot: sending, session: null });
+    await p.after(0);
+    p.room.now = { snapshot: FIXTURES.paid.snapshot, session: null };
+    await p.after(60_000);
+    p.resume();
+    await p.after(0);
+    expect(p.calls).toEqual([read(sending)]);
+  });
+
+  it("sends nothing after it is stopped, even when a poll was still in flight", async () => {
+    const p = polling(answers(OPEN), { snapshot: OPEN, session: null });
+    await p.after(0);
+    p.stop();
+    p.resume();
+    await p.after(60_000);
+    expect(p.calls).toHaveLength(1);
+
+    let answer!: () => void;
+    const slow = polling(() => new Promise((resolve) => (answer = () => resolve(json(200, { data: OPEN })))), { snapshot: OPEN, session: null });
+    await slow.after(0);
+    slow.stop();
+    answer();
+    await slow.after(60_000);
+    expect(slow.calls).toHaveLength(1);
   });
 });
 

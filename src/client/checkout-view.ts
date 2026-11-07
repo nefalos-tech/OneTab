@@ -392,6 +392,11 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
 }
 
+/** The screen that owns the room's current state, where its primary action lives. */
+export function ownerOf(snapshot: RoomSnapshot): Screen {
+  return SITUATIONS[classify(snapshot).situation].owner;
+}
+
 function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation is OwnedBy<S> {
   return SITUATIONS[situation].owner === screen;
 }

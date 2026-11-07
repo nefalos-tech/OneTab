@@ -1,6 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test as base, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { SAMPLE_WALLETS } from "../src/client/fixture-data";
+import { expect, test } from "./browser-api";
+import { FAKE_API } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
@@ -14,19 +16,7 @@ const switchedTo = (short: string) => `Your wallet switched to ${short}. Sign in
 const CONNECT_ANNOUNCEMENT = "Sample wallet: OneTab asks you to approve the connection.";
 const SIGN_ANNOUNCEMENT = "Sample wallet: OneTab asks you to sign the sign-in message.";
 
-const test = base.extend<{ failOnAnyApiCall: string[] }>({
-  failOnAnyApiCall: [
-    async ({ page }, use) => {
-      const calls: string[] = [];
-      page.on("request", (request) => {
-        if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(`${request.method()} ${request.url()}`);
-      });
-      await use(calls);
-      expect(calls, "a wallet flow called a real route").toEqual([]);
-    },
-    { auto: true },
-  ],
-});
+test.use({ fakeApi: FAKE_API.empty });
 
 async function expectNoAxeViolations(page: Page) {
   const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
