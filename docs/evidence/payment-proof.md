@@ -22,7 +22,7 @@ The [spike guide](../../spikes/payment-proof/README.md) records the setup and si
 | Spike runtime | Node `25.9.0`, macOS `27.0`, arm64 |
 | Root application runtime | Node `24.22.1` |
 
-Automatic wallet confirmation remained off. The user created the accounts inside Phantom. No private keys or recovery phrases entered the experiment. Preparation checked the complete Devnet genesis, live mint layout, token-account owners and states, balances, and the message fee estimate.
+Phantom's automatic confirmation setting remained off. The test controller clicked **Confirm** in each separate real Phantom prompt. Before each click, it checked the expected account, loopback origin, two-token debit, and `0.00001 SOL` fee. The user created the accounts inside Phantom. No private keys or recovery phrases entered the experiment. Preparation checked the complete Devnet genesis, live mint layout, token-account owners and states, balances, and the message fee estimate.
 
 ## Finalized payment
 
@@ -142,7 +142,7 @@ The following checks passed for the tested source. The [CI job for P1 revision `
 | Scope | Command | Observed result |
 | --- | --- | --- |
 | Root application, Node `24.22.1` | `npm run check` | Lint, typecheck, design check, and 676 tests passed. |
-| Root application, Node `24.22.1` | `npm run test:e2e` | Production build and 113 browser cases passed. |
+| Root application, Node `24.22.1` | `npm run test:e2e -- --workers=2` | Production build and 113 browser cases passed. |
 | Isolated spike, Node `25.9.0` | `npm run check` | Lint, full typecheck, Vite build, and 43 native Node tests passed. |
 | Isolated spike | The [invitation-navigation command](../../spikes/payment-proof/README.md#check-invitation-navigation-in-a-disposable-browser) | Eight synthetic browser cases passed. |
 
