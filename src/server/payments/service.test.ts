@@ -131,6 +131,34 @@ describe("verified signature collection", () => {
     });
   }
 
+  it("keeps concurrent final uploads after progress failure and recovers through explicit refresh", async () => {
+    const f = await serviceFixture();
+    await f.prepare();
+    let progressCalls = 0;
+    const service = createPaymentService({ ...f.dependencies, progress: async attemptId => {
+      progressCalls++;
+      if (progressCalls === 1) throw new PaymentFailure("RPC_UNAVAILABLE");
+      const stored = await f.store.getAttempt({ attemptId });
+      if (!stored) throw new Error("Fixture attempt missing");
+      return stored;
+    } });
+    const inputs = await Promise.all([f.upload(0), f.upload(1)]);
+    const results = await Promise.allSettled(inputs.map(input => service.addSignature(input)));
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find(result => result.status === "rejected");
+    expect(rejected).toMatchObject({ reason: { code: "RPC_UNAVAILABLE" } });
+    expect(f.current().signatures).toHaveLength(2);
+    expect(progressCalls).toBe(1);
+    for (const input of inputs) {
+      expect(await service.addSignature(input)).toMatchObject({ id: input.attemptId, state: "signing",
+        signedWallets: f.signers.map(signer => signer.wallet) });
+    }
+    expect(progressCalls).toBe(1);
+    expect(await service.refresh(payer(f))).toMatchObject({ id: f.current().id, state: "signing" });
+    expect(progressCalls).toBe(2);
+    expect(f.store.attempts.size).toBe(1);
+  });
+
   it("rejects wrong wallet, hash, signature bytes, message, attempt and collection state", async () => {
     const f = await serviceFixture();
     await f.prepare();

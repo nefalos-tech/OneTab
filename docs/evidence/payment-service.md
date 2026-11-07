@@ -8,7 +8,7 @@ P3 lets authenticated frozen payers contribute verified signatures to the curren
 
 Preparation reserves the attempt before claiming a preparation lease. The builder uses the reserved participant snapshot. The lease owner freezes the constructed payload before it can be returned. A lease miss rereads the same attempt. Refresh recovers preparation without reserving a replacement. A construction failure calls the separate fenced preparation-failure operation before returning a safe error.
 
-Signature collection requires the session wallet in frozen membership and the attempt to be current. It checks the exact stored message hash, independently validates the frozen payment through P2, and verifies Ed25519 before insertion. Identical verified uploads return the stored result even after collection closes. New signatures after closure fail. The final accepted signature calls one injected progress pass. Submit and refresh also call that same progress function. Submission claims and network operations belong to P4.
+Signature collection requires the session wallet in frozen membership and the attempt to be current. It checks the exact stored message hash, independently validates the frozen payment through P2, and verifies Ed25519 before insertion. Identical verified uploads return the stored result even after collection closes. New signatures after closure fail. The final accepted signature calls one injected progress pass. A failed pass leaves the accepted signatures stored. Replaying an identical upload returns the current attempt without invoking progress again. Submit or refresh resumes progress for that same attempt. Submission claims and network operations belong to P4.
 
 `extractPaymentSignature` in `src/lib/payments/wallet-signature.ts` accepts `{ validated, wallet, transactionBytes }`. `validated` is P2's `ValidatedSigningPayload`. The adapter checks the wallet-returned transaction through the promoted core and returns `{ signerWallet, messageHash, signatureBase64 }` for F4. It performs no wallet connection, prompt, HTTP request, or broadcast.
 
@@ -65,7 +65,7 @@ The B1 insertion result has no `inserted` flag. Concurrent identical final-signa
 
 ## Local verification and limits
 
-The root lint, route type generation, TypeScript, design check, and 1,038 tests passed with Node 24.22.1. The test command used at most two concurrent workers.
+The root lint, route type generation, TypeScript, design check, and 1,039 tests passed with Node 24.22.1. The test command used at most two concurrent workers.
 
 ```sh
 npm run lint
@@ -74,7 +74,7 @@ npm run design:check
 npm test -- --maxWorkers=2
 ```
 
-The focused Payments suite has 43 tests. It covers two and three synthetic payer keys, concurrent preparation, frozen membership, absent payload before freeze, stale preparation fencing, explicit replacement, preflight failures, concurrent uploads, changed bytes and signatures, verified duplicates after closure, decline races, public projection, HTTP guards, and fail-closed route composition.
+The focused Payments suite has 44 tests. It covers two and three synthetic payer keys, concurrent preparation, frozen membership, absent payload before freeze, stale preparation fencing, explicit replacement, preflight failures, concurrent uploads, changed bytes and signatures, verified duplicates after closure, decline races, public projection, HTTP guards, and fail-closed route composition.
 
 The signature promotion separately passed 34 focused signature, payment-core, and P1 parity tests with Node 25.9.0, plus spike typecheck and build. The core algorithm and recorded proof artifacts are unchanged. Every spike import and browser bundle entry now uses `src/lib/payments/signature-core.ts`.
 
