@@ -116,7 +116,8 @@ export type SpotView = {
 export type TabView = {
   readonly title: string;
   readonly total: Money;
-  readonly seller: Address;
+  /** Null only in the create preview before a valid seller wallet is typed. */
+  readonly seller: Address | null;
   readonly spots: readonly SpotView[];
   /** "2 of 3 joined, 1 ready" before payment, "1 of 3 approved" after it starts. */
   readonly progress: string;
@@ -196,6 +197,7 @@ export type ReceiptView = {
     readonly amount: Money;
     readonly isViewer: boolean;
   }[];
+  /** "Nov 7, 2026, 14:05 UTC". */
   readonly observedAt: string;
   /** Server-supplied. The UI never builds an explorer URL. Null for sample data, which has no real transaction. */
   readonly explorerUrl: string | null;
@@ -293,6 +295,18 @@ export function deriveCreateView(state: CreateState): CreateView {
     config: state.config,
     organizer: state.session?.wallet ?? null,
     sampleRoomHref: state.source.kind === "sample" ? state.source.sampleRoomHref : null,
+  };
+}
+
+/** The review step's actions: Create checkout, with Edit details as the exit door. */
+export function deriveReviewActions(
+  view: Extract<CreateView, { readonly kind: "form" }>,
+  request: CreateRequest,
+): ActionsView {
+  return {
+    primary: { kind: "create_checkout", request },
+    secondary: [{ kind: "edit_details" }],
+    sample: view.sampleRoomHref === null ? null : { followUp: { kind: "open_sample_room", href: view.sampleRoomHref } },
   };
 }
 
@@ -456,9 +470,23 @@ function receiptOf(receipt: Receipt, tab: TabView, sample: boolean): ReceiptView
       amount: { units: c.amountUnits, decimals },
       isViewer: tab.spots.some((s) => s.slot === c.slot && s.isViewer),
     })),
-    observedAt: receipt.observedAt,
+    observedAt: formatUtc(receipt.observedAt),
     explorerUrl: sample ? null : receipt.explorerUrl,
   };
+}
+
+const UTC_FORMAT = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+});
+
+function formatUtc(iso: string): string {
+  return `${UTC_FORMAT.format(new Date(iso))} UTC`;
 }
 
 function resultActions(body: ResultBody, links: ScreenLinks): ActionPlan {
@@ -578,7 +606,7 @@ const recoveryLine = (r: Recovery | null, onHold: string): string =>
       : onHold;
 
 /**
- * One line per situation and viewer, held to the honesty rules by checkout-view.test.ts: only `paid`
+ * At most two short sentences per situation and viewer, held to the honesty rules by checkout-view.test.ts: only `paid`
  * says paid, declined never says revoked or canceled, and unresolved promises no new payment.
  */
 const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
@@ -596,7 +624,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
     isMember(c.role) && c.me !== "ready"
       ? "Everyone has joined. Check your share, then tell the group you're ready."
       : isMember(c.role)
-        ? `You're ready. Waiting for ${count(c.notReady, "payer")} to get ready. Ready doesn't move any money.`
+        ? `You're ready. Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
           ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${SIGNED_OUT}`
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,
@@ -609,7 +637,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
           ? `Everyone is ready. ${SIGNED_OUT}`
           : `${FULL} Everyone is ready to pay.`,
   preparing: (c) =>
-    `Preparing the payment. Approvals open in a moment.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
+    `Preparing the payment, and approvals open in a moment.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
   signing: (c) =>
     isMember(c.role) && c.me !== "approved"
       ? "Approve your share in your wallet. Nothing is sent until everyone approves."
@@ -624,8 +652,8 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
   declined: (c) =>
     `A payer declined. ${recoveryLine(c.recovery, "Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed.")}`,
   failed: (c) =>
-    `The payment failed and no share reached the seller. ${c.role.kind === "organizer" ? "You" : "The organizer"} may still pay a small network fee. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}`,
+    `No share reached the seller${c.role.kind === "organizer" ? ", but you may still pay a small network fee" : ""}. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}`,
   expired: (c) =>
     `The approval window ended and nothing reached the seller. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}`,
-  paid: () => "Paid. The seller received every share in one transaction.",
+  paid: () => "The seller received every share in one transaction.",
 };

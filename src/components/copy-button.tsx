@@ -1,0 +1,31 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { WORDS } from "@/client/catalog";
+import { Icon } from "./icon";
+import { BUTTON } from "./button";
+
+/** Copies a full address or reference and confirms it in place. `name` completes the accessible name, such as "seller wallet". */
+export function CopyButton({ value, name }: { readonly value: string; readonly name: string }): ReactNode {
+  const [note, setNote] = useState("");
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setNote(WORDS.copied);
+    } catch {
+      setNote(WORDS.copy_failed);
+    }
+  };
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <button type="button" onClick={copy} className={BUTTON.quiet}>
+        <Icon name="copy" />
+        {WORDS.copy}
+        <span className="sr-only"> {name}</span>
+      </button>
+      <span role="status" className="text-small text-muted">
+        {note}
+      </span>
+    </span>
+  );
+}

@@ -1,0 +1,24 @@
+import type { ReactNode } from "react";
+import { deriveRoomView, type CheckoutState } from "@/client/checkout-view";
+import { PageShell } from "./page-shell";
+import { SpotList } from "./spot-list";
+import { StatusPanel } from "./status-panel";
+import { TabCard } from "./tab-card";
+
+/** The shared checkout room. A pure function of CheckoutState, so F4's polling client renders it unchanged. */
+export function RoomScreen({ state }: { readonly state: CheckoutState }): ReactNode {
+  const view = deriveRoomView(state);
+  return (
+    <PageShell
+      chrome={view.chrome}
+      layout="split"
+      main={
+        <>
+          <TabCard tab={view.tab} heading="h1" hero={view.you === null} />
+          <SpotList spots={view.tab.spots} />
+        </>
+      }
+      side={<StatusPanel status={view.status} you={view.you} actions={view.actions} heading="h2" />}
+    />
+  );
+}

@@ -1,7 +1,6 @@
-export default function Home() {
-  return (
-    <main>
-      <h1>OneTab</h1>
-    </main>
-  );
+import { loadCreate } from "@/client/checkout-source";
+import { CreateScreen } from "@/components/create-screen";
+
+export default async function CreatePage(props: PageProps<"/">) {
+  return <CreateScreen state={await loadCreate(props)} />;
 }

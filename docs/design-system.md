@@ -317,8 +317,10 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `product` | OneTab |
 | `asset` | test USDC |
 | `sample` | Sample data |
-| `sample_notice` | Nothing here is a real checkout or payment, and no button sends anything. |
+| `sample_notice` | Nothing here is a real checkout or payment. |
+| `sample_caption` | In sample data, buttons that need a wallet or the network send nothing. |
 | `not_connected_in_sample` | isn't connected in sample data. |
+| `not_connected_yet` | isn't connected yet. |
 | `nothing_sent` | Nothing was sent. |
 | `nothing_created` | Nothing was created. |
 | `view_as` | View as |
@@ -332,6 +334,15 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `total` | Total |
 | `wallet_not_connected` | No wallet connected |
 | `link_copied` | Link copied. |
+| `copy` | Copy |
+| `copied` | Copied. |
+| `copy_failed` | Couldn't copy. Select the text and copy it instead. |
+| `opens_new_tab` | (opens in a new tab) |
+| `receipt` | Receipt |
+| `transaction_reference` | Transaction reference |
+| `finalized_at` | Final on |
+| `try_sample` | Try it with sample data |
+| `home` | Go to the start |
 | `steps` | Checkout steps |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |

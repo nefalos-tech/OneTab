@@ -56,27 +56,54 @@ export function checkDraft(
   if (!amount.ok || sellerWallet === null || payerCount === null || Object.keys(errors).length > 0) {
     return { ok: false, errors };
   }
-  const shares = splitEqually(amount.units, payerCount);
-  const money = (units: TokenUnits): Money => ({ units, decimals });
   return {
     ok: true,
     review: {
       request: { title, sellerWallet, totalUnits: amount.units, payerCount },
-      tab: {
-        title,
-        total: money(amount.units),
-        seller: sellerWallet,
-        progress: `1 of ${payerCount} joined, 0 ready`,
-        spots: shares.map((share, slot) => ({
-          slot,
-          wallet: slot === 0 ? ctx.organizer : null,
-          share: money(share),
-          status: slot === 0 ? "joined" : "open",
-          isViewer: slot === 0,
-          isOrganizer: slot === 0,
-        })),
-      },
+      tab: draftTab(title, amount.units, sellerWallet, payerCount, ctx),
     },
+  };
+}
+
+/** The live tab card beside the form. Shares update as the total is typed, before any check passes. */
+export function previewTab(
+  input: DraftInput,
+  ctx: { readonly config: PublicConfig; readonly organizer: Address | null },
+): TabView {
+  const amount = parseAmountInput(input.total, ctx.config.tokenDecimals);
+  const seller = input.seller.trim();
+  return draftTab(
+    input.title.trim() || PREVIEW_TITLE,
+    amount.ok ? amount.units : toTokenUnits(0n),
+    isAddress(seller) ? seller : null,
+    input.payerCount === "3" ? 3 : 2,
+    ctx,
+  );
+}
+
+export const PREVIEW_TITLE = "Your checkout";
+
+function draftTab(
+  title: string,
+  total: TokenUnits,
+  seller: Address | null,
+  payerCount: PayerCount,
+  ctx: { readonly config: PublicConfig; readonly organizer: Address | null },
+): TabView {
+  const money = (units: TokenUnits): Money => ({ units, decimals: ctx.config.tokenDecimals });
+  return {
+    title,
+    total: money(total),
+    seller,
+    progress: `1 of ${payerCount} joined, 0 ready`,
+    spots: splitEqually(total, payerCount).map((share, slot) => ({
+      slot,
+      wallet: slot === 0 ? ctx.organizer : null,
+      share: money(share),
+      status: slot === 0 ? "joined" : "open",
+      isViewer: slot === 0,
+      isOrganizer: slot === 0,
+    })),
   };
 }
 
