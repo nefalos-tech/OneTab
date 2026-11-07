@@ -53,7 +53,7 @@ const restrict = (...patterns) => ({
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**"]),
+  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**", "spikes/payment-proof/**"]),
   {
     files: ["src/**/*.{ts,tsx}"],
     rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD),
