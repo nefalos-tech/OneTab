@@ -16,9 +16,18 @@ import {
   type ClientRequestId,
   type Notice,
 } from "./checkout-view";
-import { parseRoomSnapshot, type Address, type RoomSnapshot, type Session } from "./contracts";
+import {
+  parseRoomSnapshot,
+  type Address,
+  type AttemptSummary,
+  type Receipt,
+  type RoomSnapshot,
+  type Session,
+  type TokenUnits,
+} from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
+import { pollPlan } from "./live-actions";
 
 const CASES = fixtureCases();
 const caseById = (id: string): FixtureCase => {
@@ -44,7 +53,7 @@ const PRIMARY: readonly (readonly [caseId: string, room: ActionKind | null, resu
   ["signing as outsider", null, "back_to_checkout"],
   ["signing as signed-out", "connect_wallet", "back_to_checkout"],
   ["submitting as spot-2", "view_status", null],
-  ["confirming as spot-1", "view_status", null],
+  ["paid-no-receipt as spot-1", "view_status", null],
   ["unresolved as spot-1", "view_status", null],
   ["declined as spot-1", "view_status", null],
   ["declined as spot-2", "view_status", null],
@@ -184,29 +193,63 @@ describe("the screen that owns the room", () => {
   });
 });
 
-describe("contract-inconsistent snapshots stay honest", () => {
+describe("a receipt shows only when the room proves this checkout's payment", () => {
   const paid = caseById("paid as spot-2").state;
-  const attempt = paid.snapshot.attempt;
-  if (attempt === null) throw new Error("The paid sample lost its attempt");
+  const attempt = paid.snapshot.attempt!;
+  const receipt = attempt.receipt!;
+  const shares = receipt.contributions;
+  const live = (snapshot: RoomSnapshot): CheckoutState => ({ ...paid, snapshot, source: { kind: "live", links: checkoutLinks(snapshot.checkout.id) } });
+  const withAttempt = (changes: Partial<AttemptSummary>): RoomSnapshot => ({ ...paid.snapshot, attempt: { ...attempt, ...changes } });
+  const withReceipt = (changes: Partial<Receipt>): RoomSnapshot => withAttempt({ receipt: { ...receipt, ...changes } });
+  const unsigned = (reference: string) => withAttempt({ transactionReference: reference, receipt: { ...receipt, transactionReference: reference } });
 
-  it("a confirmed attempt without a receipt is still in progress", () => {
-    const state = { ...paid, snapshot: { ...paid.snapshot, attempt: { ...attempt, receipt: null } } };
-    expect(deriveResultView(state).status.situation).toBe("confirming");
+  it("shows the receipt for the paid sample, so the rows below each break one thing", () => {
+    expect(deriveResultView(live(paid.snapshot)).body.kind).toBe("paid");
+  });
+
+  it.each<[string, RoomSnapshot]>([
+    ["names a reference other than the attempt's", withReceipt({ transactionReference: receipt.transactionReference.replace(/Txn5$/, "Txn6") })],
+    ["names a reference that isn't base58", unsigned("0".repeat(88))],
+    ["names a reference too short to be a signature", unsigned("1".repeat(63))],
+    ["names another seller", withReceipt({ sellerWallet: SAMPLE_WALLETS.outsider })],
+    ["names another total", withReceipt({ totalUnits: "1" as TokenUnits })],
+    ["sends a share to another wallet", withReceipt({ contributions: shares.map((c) => (c.slot === 1 ? { ...c, wallet: SAMPLE_WALLETS.outsider } : c)) })],
+    ["gives a share another amount", withReceipt({ contributions: shares.map((c) => (c.slot === 1 ? { ...c, amountUnits: "1" as TokenUnits } : c)) })],
+    ["lists the shares out of spot order", withReceipt({ contributions: [...shares].reverse() })],
+    ["leaves a share out", withReceipt({ contributions: shares.slice(0, -1) })],
+    ["adds a share", withReceipt({ contributions: [...shares, { ...shares[0]!, slot: shares.length }] })],
+    ["belongs to a room that isn't paid", { ...paid.snapshot, phase: "paying" }],
+    ["belongs to an attempt that isn't confirmed", withAttempt({ state: "submitting" })],
+    ["is missing", withAttempt({ receipt: null })],
+    ["is in a paid room that lost its attempt", { ...paid.snapshot, attempt: null }],
+  ])("a receipt that %s reads Finalizing, links nowhere, and the page keeps checking", (_, snapshot) => {
+    const state = live(snapshot);
+    for (const view of [deriveRoomView(state), deriveResultView(state)]) {
+      expect(view.status.situation).toBe("confirming");
+      expect([view.actions.primary, ...view.actions.secondary].map((a) => a?.kind)).not.toContain("view_on_explorer");
+    }
     expect(deriveResultView(state).body.kind).toBe("in_progress");
+    expect(pollPlan(snapshot, state.session).stop).toBe(false);
   });
 
-  it("a receipt without phase paid is still in progress", () => {
-    const state = { ...paid, snapshot: { ...paid.snapshot, phase: "paying" as const } };
-    expect(deriveResultView(state).status.situation).toBe("confirming");
-  });
-
-  it("a live receipt links to the server's explorer URL", () => {
-    const state: CheckoutState = { ...paid, source: { kind: "live", links: paid.source.links } };
+  it("links the explorer from the checked reference, never from the server's URL", () => {
+    const snapshot = withReceipt({ explorerUrl: "javascript:alert('the server URL')" });
+    const state = live(snapshot);
     expect(deriveResultView(state).actions.primary).toEqual({
       kind: "view_on_explorer",
-      href: attempt.receipt?.explorerUrl,
+      href: `https://explorer.solana.com/tx/${receipt.transactionReference}?cluster=devnet`,
     });
+    expect(JSON.stringify([deriveRoomView(state), deriveResultView(state)])).not.toContain("the server URL");
     expect(deriveResultView(state).chrome.sample).toBeNull();
+    expect(pollPlan(snapshot, state.session).stop).toBe(true);
+  });
+
+  it("a paid room that lost its attempt offers no Start to the organizer on either screen", () => {
+    const organizer = { ...caseById("paid-no-receipt as spot-1").state };
+    for (const view of [deriveRoomView(organizer), deriveResultView(organizer)]) {
+      expect(view.status.situation).toBe("confirming");
+      expect([view.actions.primary, ...view.actions.secondary].map((a) => a?.kind)).not.toContain("start_payment");
+    }
   });
 });
 

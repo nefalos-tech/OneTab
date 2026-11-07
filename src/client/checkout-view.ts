@@ -314,7 +314,7 @@ export function deriveResultView(state: CheckoutState): ResultView {
   const c = classify(state.snapshot);
   const role = roleOf(state.snapshot, state.session, c.situation);
   const tab = tabOf(state.snapshot, role);
-  const body = bodyOf(c, role, tab, state.source.kind === "sample");
+  const body = bodyOf(c, role, tab, state.source.kind === "sample" ? null : state.snapshot.checkout.network);
   return {
     chrome: chromeOf(state, SITUATIONS[c.situation].step, "result"),
     status: statusOf(c, role, tab),
@@ -382,18 +382,55 @@ export function termsOf(snapshot: RoomSnapshot, session: Session | null): Approv
   };
 }
 
-type PaidAttempt = AttemptSummary & { readonly state: "confirmed"; readonly receipt: Receipt };
+declare const verified: unique symbol;
+
+/** Only `verifiedReceipt` makes one, and `receiptOf` takes nothing else, so a reference alone never shows a receipt. */
+type VerifiedReceipt = Receipt & { readonly [verified]: true };
+
+/**
+ * The parser stays as loose as the server needs it, because the server reads rooms with it too, so the
+ * checks that make a receipt proof of this checkout's payment live here.
+ */
+function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
+  const { attempt, checkout } = snapshot;
+  if (snapshot.phase !== "paid" || attempt === null || attempt.state !== "confirmed" || attempt.receipt === null) return null;
+  const receipt = attempt.receipt;
+  const shares = [...snapshot.participants].sort((a, b) => a.slot - b.slot);
+  const proves =
+    isTransactionReference(receipt.transactionReference) &&
+    receipt.transactionReference === attempt.transactionReference &&
+    receipt.sellerWallet === checkout.sellerWallet &&
+    receipt.totalUnits === checkout.totalUnits &&
+    receipt.contributions.length === shares.length &&
+    receipt.contributions.every(
+      (c, i) => c.slot === shares[i]?.slot && c.wallet === shares[i]?.wallet && c.amountUnits === shares[i]?.shareUnits,
+    );
+  return proves ? (receipt as VerifiedReceipt) : null;
+}
+
+/** A transaction signature is 64 bytes, which base58 writes in 64 to 88 characters. */
+const isTransactionReference = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(s);
+
+const EXPLORER: { readonly [N in Network]: (reference: string) => string } = {
+  devnet: (reference) => `https://explorer.solana.com/tx/${reference}?cluster=devnet`,
+};
 
 type Classified =
   | { readonly situation: "open_spots" | "full_not_ready" | "ready"; readonly attempt: null }
+  | { readonly situation: "confirming"; readonly attempt: AttemptSummary | null }
   | {
-      readonly situation: Exclude<Situation, "open_spots" | "full_not_ready" | "ready" | "paid">;
+      readonly situation: Exclude<Situation, "open_spots" | "full_not_ready" | "ready" | "confirming" | "paid">;
       readonly attempt: AttemptSummary;
     }
-  | { readonly situation: "paid"; readonly attempt: PaidAttempt };
+  | { readonly situation: "paid"; readonly attempt: AttemptSummary; readonly receipt: VerifiedReceipt };
 
 function classify(snapshot: RoomSnapshot): Classified {
   const a = snapshot.attempt;
+  if (snapshot.phase === "paid") {
+    // The room can be paid while its attempt is missing: B3 drops the attempt when its receipt row is.
+    const receipt = verifiedReceipt(snapshot);
+    return receipt !== null && a !== null ? { situation: "paid", attempt: a, receipt } : { situation: "confirming", attempt: a };
+  }
   if (a === null) {
     if (snapshot.phase === "ready") return { situation: "ready", attempt: null };
     const full = snapshot.participants.length >= snapshot.checkout.payerCount;
@@ -401,9 +438,7 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
   switch (a.state) {
     case "confirmed":
-      return snapshot.phase === "paid" && a.receipt !== null
-        ? { situation: "paid", attempt: { ...a, state: "confirmed", receipt: a.receipt } }
-        : { situation: "confirming", attempt: a };
+      return { situation: "confirming", attempt: a };
     case "preparing":
     case "signing":
     case "submitting":
@@ -419,8 +454,13 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
 }
 
+/** The poller stops on this, so it stops exactly when the screen shows a receipt. */
+export function situationOf(snapshot: RoomSnapshot): Situation {
+  return classify(snapshot).situation;
+}
+
 export function ownerOf(snapshot: RoomSnapshot): Screen {
-  return SITUATIONS[classify(snapshot).situation].owner;
+  return SITUATIONS[situationOf(snapshot)].owner;
 }
 
 function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation is OwnedBy<S> {
@@ -501,7 +541,8 @@ function recoveryOf(attempt: AttemptSummary, role: ViewerRole): Recovery {
     : { kind: "waiting_for_organizer" };
 }
 
-function bodyOf(c: Classified, role: ViewerRole, tab: TabView, sample: boolean): ResultBody {
+/** `network` is null for sample data, which has no real transaction to link. */
+function bodyOf(c: Classified, role: ViewerRole, tab: TabView, network: Network | null): ResultBody {
   switch (c.situation) {
     case "open_spots":
     case "full_not_ready":
@@ -511,7 +552,7 @@ function bodyOf(c: Classified, role: ViewerRole, tab: TabView, sample: boolean):
       return { kind: "not_started" };
     case "submitting":
     case "confirming":
-      return { kind: "in_progress", transactionReference: c.attempt.transactionReference };
+      return { kind: "in_progress", transactionReference: c.attempt?.transactionReference ?? null };
     case "unresolved":
       return { kind: "unresolved", transactionReference: c.attempt.transactionReference };
     case "declined":
@@ -524,11 +565,11 @@ function bodyOf(c: Classified, role: ViewerRole, tab: TabView, sample: boolean):
         transactionReference: c.attempt.transactionReference,
       };
     case "paid":
-      return { kind: "paid", receipt: receiptOf(c.attempt.receipt, tab, sample) };
+      return { kind: "paid", receipt: receiptOf(c.receipt, tab, network) };
   }
 }
 
-function receiptOf(receipt: Receipt, tab: TabView, sample: boolean): ReceiptView {
+function receiptOf(receipt: VerifiedReceipt, tab: TabView, network: Network | null): ReceiptView {
   const decimals = tab.total.decimals;
   return {
     transactionReference: receipt.transactionReference,
@@ -541,7 +582,7 @@ function receiptOf(receipt: Receipt, tab: TabView, sample: boolean): ReceiptView
       isViewer: tab.spots.some((s) => s.slot === c.slot && s.isViewer),
     })),
     observedAt: formatUtc(receipt.observedAt),
-    explorerUrl: sample ? null : receipt.explorerUrl,
+    explorerUrl: network === null ? null : EXPLORER[network](receipt.transactionReference),
   };
 }
 

@@ -85,18 +85,21 @@ const PURCHASES = {
 
 type Spots = "all" | readonly number[];
 
+type AttemptSpec = {
+  readonly state: AttemptState;
+  readonly approved?: Spots;
+  readonly canRetry?: boolean;
+  readonly sent?: boolean;
+  readonly receipt?: boolean;
+  readonly error?: AttemptError;
+};
+
 type Spec = {
   readonly purchase: keyof typeof PURCHASES;
   readonly joined?: number;
   readonly ready?: Spots;
-  readonly attempt?: {
-    readonly state: AttemptState;
-    readonly approved?: Spots;
-    readonly canRetry?: boolean;
-    readonly sent?: boolean;
-    readonly receipt?: boolean;
-    readonly error?: AttemptError;
-  };
+  /** "dropped": the checkout is marked paid, but the room lost its attempt, as B3 does when the receipt row is missing. */
+  readonly attempt?: AttemptSpec | "dropped";
 };
 
 /** What the room says for every stop code today: B3's snapshot masks the code and its message. */
@@ -109,7 +112,7 @@ const SPECS = {
   preparing: { purchase: "cabin", attempt: { state: "preparing" } },
   signing: { purchase: "cabin", attempt: { state: "signing", approved: [0] } },
   submitting: { purchase: "cabin", attempt: { state: "submitting", approved: "all", sent: true } },
-  confirming: { purchase: "cabin", attempt: { state: "confirmed", approved: "all", sent: true } },
+  "paid-no-receipt": { purchase: "cabin", attempt: "dropped" },
   unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true, error: MASKED } },
   declined: { purchase: "cabin", attempt: { state: "declined", approved: [0] } },
   "failed-not-sent": { purchase: "cabin", attempt: { state: "failed", approved: [], canRetry: true, error: MASKED } },
@@ -133,9 +136,9 @@ const includes = (spots: Spots | undefined, slot: number): boolean =>
   spots === "all" || (spots ?? []).includes(slot);
 
 /** contracts.md "Derive phase in this order". */
-function phaseOf(snapshot: Omit<RoomSnapshot, "phase">): Phase {
+function phaseOf(snapshot: Omit<RoomSnapshot, "phase">, paidMarker: boolean): Phase {
   const a = snapshot.attempt;
-  if (a?.receipt?.confirmationStatus === "finalized") return "paid";
+  if (paidMarker || a?.receipt?.confirmationStatus === "finalized") return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
     return "needs_attention";
   if (a) return "paying";
@@ -144,20 +147,21 @@ function phaseOf(snapshot: Omit<RoomSnapshot, "phase">): Phase {
 }
 
 /** The expiry height arrives with the frozen message, which a payment that failed while preparing never reached. */
-const frozen = (attempt: NonNullable<Spec["attempt"]>): boolean =>
+const frozen = (attempt: AttemptSpec): boolean =>
   attempt.state !== "preparing" && !(attempt.state === "failed" && !attempt.sent);
 
 function build(index: number, spec: Spec): RoomSnapshot {
   const purchase = PURCHASES[spec.purchase];
   const totalUnits = units(purchase.total);
   const shares = splitEqually(totalUnits, purchase.payers);
-  const attempt = spec.attempt;
-  const joined = attempt ? purchase.payers : (spec.joined ?? 1);
+  const attempt = spec.attempt === "dropped" ? undefined : spec.attempt;
+  const started = spec.attempt !== undefined;
+  const joined = started ? purchase.payers : (spec.joined ?? 1);
   const participants = shares.slice(0, joined).map((shareUnits, slot) => ({
     slot,
     wallet: spotWallet(slot),
     shareUnits,
-    ready: attempt !== undefined || includes(spec.ready, slot),
+    ready: started || includes(spec.ready, slot),
   }));
   const checkout = {
     id: sampleId(index + 1),
@@ -194,7 +198,7 @@ function build(index: number, spec: Spec): RoomSnapshot {
       }
     : null;
   const snapshot = { checkout, participants, attempt: summary };
-  return { ...snapshot, phase: phaseOf(snapshot) };
+  return { ...snapshot, phase: phaseOf(snapshot, spec.attempt === "dropped") };
 }
 
 export const SNAPSHOTS = Object.fromEntries(

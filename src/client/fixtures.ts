@@ -47,10 +47,10 @@ export const FIXTURES = {
     snapshot: SNAPSHOTS.submitting,
     defaultPersona: ORGANIZER,
   },
-  confirming: {
-    label: "Accepted, receipt pending",
+  "paid-no-receipt": {
+    label: "Marked paid, receipt not in the room yet",
     situation: "confirming",
-    snapshot: SNAPSHOTS.confirming,
+    snapshot: SNAPSHOTS["paid-no-receipt"],
     defaultPersona: ORGANIZER,
   },
   unresolved: {

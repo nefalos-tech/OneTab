@@ -532,6 +532,9 @@ describe("decline", () => {
 
 describe("what each poll sends", () => {
   const as = (wallet: string): Session => ({ wallet: wallet as Session["wallet"], expiresAt: PAYER.expiresAt });
+  const PAID = FIXTURES.paid.snapshot;
+  const NOT_YET_PAID: RoomSnapshot = { ...PAID, phase: "paying" };
+  const TAMPERED: RoomSnapshot = { ...PAID, attempt: { ...PAID.attempt!, receipt: { ...PAID.attempt!.receipt!, sellerWallet: SAMPLE_WALLETS.outsider } } };
   const attemptOf = (name: keyof typeof FIXTURES) => FIXTURES[name].snapshot.attempt!.id;
 
   it.each<[string, RoomSnapshot, Session | null, ReturnType<typeof pollPlan>]>([
@@ -548,7 +551,9 @@ describe("what each poll sends", () => {
     ["an expiry that is safe to retry, to a payer", FIXTURES.expired.snapshot, PAYER, { stop: false, refresh: null }],
     ["a failure before sending that is safe to retry, to a payer", FIXTURES["failed-not-sent"].snapshot, PAYER, { stop: false, refresh: null }],
     ["a failure on the network that is safe to retry, to a payer", FIXTURES["failed-on-chain"].snapshot, PAYER, { stop: false, refresh: null }],
-    ["a confirmed payment awaiting its receipt, to a payer", FIXTURES.confirming.snapshot, PAYER, { stop: false, refresh: null }],
+    ["a paid checkout whose room lost the attempt, to a payer", FIXTURES["paid-no-receipt"].snapshot, PAYER, { stop: false, refresh: null }],
+    ["a confirmed payment in a room not yet paid, to a payer", NOT_YET_PAID, PAYER, { stop: false, refresh: null }],
+    ["a paid checkout whose receipt names another seller, to a payer", TAMPERED, PAYER, { stop: false, refresh: null }],
     ["a paid checkout, to a payer", FIXTURES.paid.snapshot, as(SAMPLE_WALLETS.organizer), { stop: true, refresh: null }],
   ])("%s", (_, room, session, plan) => {
     expect(pollPlan(room, session)).toEqual(plan);

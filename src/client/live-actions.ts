@@ -1,7 +1,7 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
-import { checkoutLinks, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
+import { checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
 import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
@@ -187,7 +187,10 @@ function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnaps
 export const POLL_MS = 2_000;
 export const MAX_BACKOFF_MS = 30_000;
 
-/** Each poll reads the room, unless the poller stops. `refresh` names the attempt to advance as well. */
+/**
+ * Each poll reads the room, unless the poller stops, which it does once the screen shows a receipt.
+ * `refresh` names the attempt to advance as well.
+ */
 export type PollPlan = {
   readonly stop: boolean;
   readonly refresh: AttemptId | null;
@@ -197,7 +200,7 @@ export function pollPlan(snapshot: RoomSnapshot, session: Session | null): PollP
   const a = snapshot.attempt;
   const payer = session !== null && snapshot.participants.some((p) => p.wallet === session.wallet);
   return {
-    stop: snapshot.phase === "paid",
+    stop: situationOf(snapshot) === "paid",
     refresh: payer && a !== null && blocksNewAttempt(a) ? a.id : null,
   };
 }

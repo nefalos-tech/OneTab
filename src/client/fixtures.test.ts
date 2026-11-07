@@ -9,6 +9,8 @@ const ENTRIES = Object.entries(FIXTURES);
 
 function contractPhase(s: RoomSnapshot): Phase {
   const a = s.attempt;
+  // The checkout's paid-attempt marker isn't in the snapshot. A paid room with no attempt is the only trace of it.
+  if (a === null && s.phase === "paid") return "paid";
   if (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized") return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
     return "needs_attention";
@@ -87,6 +89,11 @@ describe("samples are rooms the server can produce", () => {
       expect(attempt.lastValidBlockHeight).toBeNull();
     },
   );
+
+  it("show a paid room without its attempt only in paid-no-receipt", () => {
+    const lost = ENTRIES.filter(([, e]) => e.snapshot.phase === "paid" && e.snapshot.attempt === null).map(([name]) => name);
+    expect(lost).toEqual(["paid-no-receipt"]);
+  });
 
   it("include a failure before sending and one after, so both reasons have a sample", () => {
     const failed = attempts.filter(([, a]) => a.state === "failed").map(([, a]) => a.transactionReference !== null);
