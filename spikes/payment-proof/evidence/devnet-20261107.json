@@ -1,0 +1,571 @@
+{
+  "testedP1Revision": "9fb3cbaf17e9b0d07a5d33d1dc63c4b213747f72",
+  "testedCombinedRevision": "b74d3ed3ff2e245122883518dd065f34efa3d48f",
+  "environment": {
+    "browser": "Chrome 155.0.8059.41",
+    "wallet": "Phantom 26.38.1",
+    "hostNode": "25.9.0",
+    "network": "devnet",
+    "arrangement": "Two distinct Phantom payer accounts in the user-selected current Chrome profile; separate sign-only prompts; separate seller account."
+  },
+  "report": {
+    "kind": "experiment",
+    "id": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+    "plan": {
+      "network": "devnet",
+      "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+      "decimals": 6,
+      "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "sellerWallet": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+      "sellerTokenAccount": "FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv",
+      "feePayer": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+      "total": "4000000",
+      "contributions": [
+        {
+          "slot": 0,
+          "wallet": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+          "sourceTokenAccount": "BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ",
+          "units": "2000000"
+        },
+        {
+          "slot": 1,
+          "wallet": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+          "sourceTokenAccount": "436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW",
+          "units": "2000000"
+        }
+      ]
+    },
+    "planHash": "e3cd1706e2252f8aaf228ac93497f28937432443bf915572b512ab626225ac1b",
+    "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+    "lastValidBlockHeight": "506762398",
+    "transactionVersion": "legacy",
+    "state": "finalized",
+    "reason": null,
+    "approvedSlots": [
+      {
+        "slot": 0,
+        "accepted": "2026-11-07T09:20:27.749Z"
+      },
+      {
+        "slot": 1,
+        "accepted": "2026-11-07T09:20:33.044Z"
+      }
+    ],
+    "transactionReference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve",
+    "receipt": {
+      "reference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve",
+      "explorerUrl": "https://explorer.solana.com/tx/55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve?cluster=devnet",
+      "confirmationStatus": "finalized",
+      "slot": 519612865,
+      "sellerWallet": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+      "sellerIncrease": "4000000",
+      "payerDecreases": [
+        "2000000",
+        "2000000"
+      ],
+      "feeLamports": "10000",
+      "observedAt": "2026-11-07T09:20:58.212Z"
+    },
+    "firstSignatureDiagnostic": {
+      "kind": "signature_refused",
+      "observed": "2026-11-07T09:20:28.412Z"
+    }
+  },
+  "independentChain": {
+    "observedAt": "2026-11-07T09:22:19.245Z",
+    "rpc": "https://api.devnet.solana.com",
+    "network": "devnet",
+    "transactionReference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve",
+    "confirmationStatus": "finalized",
+    "slot": 519612865,
+    "metaError": null,
+    "feeLamports": 10000,
+    "signedWireHash": "e50344171cc051df1470fc37278f3f8deaca04f03bbe0377e7988a2d1aea9ad4",
+    "matchesPersistedSignedWire": true,
+    "context": {
+      "apiVersion": "4.4.0",
+      "slot": 519613297
+    },
+    "accounts": [
+      {
+        "address": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "account": {
+          "data": [
+            "",
+            "base64"
+          ],
+          "executable": false,
+          "lamports": 499990000,
+          "owner": "11111111111111111111111111111111",
+          "rentEpoch": 18446744073709552000,
+          "space": 0
+        }
+      },
+      {
+        "address": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+        "account": null
+      },
+      {
+        "address": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "account": null
+      },
+      {
+        "address": "BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ",
+        "account": {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                "owner": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "18000000",
+                  "decimals": 6,
+                  "uiAmount": 18,
+                  "uiAmountString": "18"
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 1488440,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 18446744073709552000,
+          "space": 165
+        }
+      },
+      {
+        "address": "436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW",
+        "account": {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                "owner": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "18000000",
+                  "decimals": 6,
+                  "uiAmount": 18,
+                  "uiAmountString": "18"
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 1488440,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 18446744073709552000,
+          "space": 165
+        }
+      },
+      {
+        "address": "FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv",
+        "account": {
+          "data": {
+            "parsed": {
+              "info": {
+                "isNative": false,
+                "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+                "owner": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+                "state": "initialized",
+                "tokenAmount": {
+                  "amount": "24000000",
+                  "decimals": 6,
+                  "uiAmount": 24,
+                  "uiAmountString": "24"
+                }
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 1488440,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          "rentEpoch": 18446744073709552000,
+          "space": 165
+        }
+      }
+    ],
+    "preTokenBalances": [
+      {
+        "accountIndex": 2,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "20000000",
+          "decimals": 6,
+          "uiAmount": 20,
+          "uiAmountString": "20"
+        }
+      },
+      {
+        "accountIndex": 3,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "20000000",
+          "decimals": 6,
+          "uiAmount": 20,
+          "uiAmountString": "20"
+        }
+      },
+      {
+        "accountIndex": 4,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "20000000",
+          "decimals": 6,
+          "uiAmount": 20,
+          "uiAmountString": "20"
+        }
+      }
+    ],
+    "postTokenBalances": [
+      {
+        "accountIndex": 2,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "18000000",
+          "decimals": 6,
+          "uiAmount": 18,
+          "uiAmountString": "18"
+        }
+      },
+      {
+        "accountIndex": 3,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "18000000",
+          "decimals": 6,
+          "uiAmount": 18,
+          "uiAmountString": "18"
+        }
+      },
+      {
+        "accountIndex": 4,
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "owner": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "uiTokenAmount": {
+          "amount": "24000000",
+          "decimals": 6,
+          "uiAmount": 24,
+          "uiAmountString": "24"
+        }
+      }
+    ],
+    "preLamports": [
+      500000000,
+      0,
+      1488440,
+      1488440,
+      1488440,
+      484525905289,
+      1,
+      20428277856
+    ],
+    "postLamports": [
+      499990000,
+      0,
+      1488440,
+      1488440,
+      1488440,
+      484525905289,
+      1,
+      20428277856
+    ]
+  },
+  "durableBeforeRestart": {
+    "observedAt": "2026-11-07T09:21:24.644Z",
+    "approvalCount": 2,
+    "submissionCount": 1,
+    "transactionReference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve",
+    "signedHash": "e50344171cc051df1470fc37278f3f8deaca04f03bbe0377e7988a2d1aea9ad4",
+    "signedHashVerified": true,
+    "dispatched": 1
+  },
+  "restart": {
+    "observedAt": "2026-11-07T09:21:33.686Z",
+    "sameFinalizedReceipt": true,
+    "submitDisabled": true
+  },
+  "walletPrompts": [
+    {
+      "observedAt": "2026-11-07T09:20:27.114Z",
+      "event": "expected_test_prompt_verified",
+      "pageId": 73,
+      "account": "Account 1",
+      "snapshot": "## Latest page snapshot\nuid=68_0 RootWebArea \"Phantom Wallet\" url=\"chrome-extension://bfnaelmomeimhlpmgjnjophhpkkoljpa/notification.html\"\n  uid=69_0 button \"Account 1\"\n  uid=69_1 \"@nefalos\"\n  uid=69_2 button \"Account 1\"\n  uid=75_0 \"Confirm Transaction\"\n  uid=75_1 \"127.0.0.1:4323\"\n  uid=75_2 \"Balance changes are estimated. Amounts and assets involved are not guaranteed.\"\n  uid=75_3 button \"Unknown -2 Unknown\"\n  uid=75_4 button \"Network Solana\"\n  uid=75_5 button \"Network Fee 0.00001 SOL\"\n  uid=75_6 button \"Advanced\"\n  uid=75_7 \"Only confirm if you trust this website.\"\n  uid=75_8 button \"Cancel\"\n  uid=75_9 button \"Confirm\"\n"
+    },
+    {
+      "observedAt": "2026-11-07T09:20:32.370Z",
+      "event": "expected_test_prompt_verified",
+      "pageId": 74,
+      "account": "payer 2",
+      "snapshot": "## Latest page snapshot\nuid=83_0 RootWebArea \"Phantom Wallet\" url=\"chrome-extension://bfnaelmomeimhlpmgjnjophhpkkoljpa/notification.html\"\n  uid=84_0 button \"payer 2\"\n  uid=84_1 \"@nefalos\"\n  uid=84_2 button \"payer 2\"\n  uid=86_0 \"Confirm Transaction\"\n  uid=86_1 \"127.0.0.1:4323\"\n  uid=86_2 \"Balance changes are estimated. Amounts and assets involved are not guaranteed.\"\n  uid=86_3 button \"Unknown -2 Unknown\"\n  uid=86_4 button \"Network Solana\"\n  uid=86_5 button \"Network Fee 0.00001 SOL\"\n  uid=86_6 button \"Advanced\"\n  uid=86_7 \"Only confirm if you trust this website.\"\n  uid=86_8 button \"Cancel\"\n  uid=86_9 button \"Confirm\"\n"
+    }
+  ],
+  "firstApproval": {
+    "observedAt": "2026-11-07T09:20:28.286Z",
+    "event": "first_approval_stored",
+    "payment": {
+      "kind": "experiment",
+      "id": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+      "plan": {
+        "network": "devnet",
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "decimals": 6,
+        "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "sellerWallet": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "sellerTokenAccount": "FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv",
+        "feePayer": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "total": "4000000",
+        "contributions": [
+          {
+            "slot": 0,
+            "wallet": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+            "sourceTokenAccount": "BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ",
+            "units": "2000000"
+          },
+          {
+            "slot": 1,
+            "wallet": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+            "sourceTokenAccount": "436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW",
+            "units": "2000000"
+          }
+        ]
+      },
+      "planHash": "e3cd1706e2252f8aaf228ac93497f28937432443bf915572b512ab626225ac1b",
+      "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+      "lastValidBlockHeight": "506762398",
+      "transactionVersion": "legacy",
+      "state": "collecting",
+      "reason": null,
+      "approvedSlots": [
+        {
+          "slot": 0,
+          "accepted": "2026-11-07T09:20:27.749Z"
+        }
+      ],
+      "transactionReference": null,
+      "receipt": null,
+      "firstSignatureDiagnostic": null
+    },
+    "account": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+    "status": "Independent sign-only approval verified for the frozen message.",
+    "approveDisabled": true,
+    "submitDisabled": true
+  },
+  "firstSignatureRefusal": {
+    "observedAt": "2026-11-07T09:20:28.802Z",
+    "event": "first_signature_refused",
+    "payment": {
+      "kind": "experiment",
+      "id": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+      "plan": {
+        "network": "devnet",
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "decimals": 6,
+        "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "sellerWallet": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "sellerTokenAccount": "FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv",
+        "feePayer": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "total": "4000000",
+        "contributions": [
+          {
+            "slot": 0,
+            "wallet": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+            "sourceTokenAccount": "BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ",
+            "units": "2000000"
+          },
+          {
+            "slot": 1,
+            "wallet": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+            "sourceTokenAccount": "436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW",
+            "units": "2000000"
+          }
+        ]
+      },
+      "planHash": "e3cd1706e2252f8aaf228ac93497f28937432443bf915572b512ab626225ac1b",
+      "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+      "lastValidBlockHeight": "506762398",
+      "transactionVersion": "legacy",
+      "state": "collecting",
+      "reason": null,
+      "approvedSlots": [
+        {
+          "slot": 0,
+          "accepted": "2026-11-07T09:20:27.749Z"
+        }
+      ],
+      "transactionReference": null,
+      "receipt": null,
+      "firstSignatureDiagnostic": null
+    },
+    "account": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+    "status": "{\"kind\":\"signature_refused\"}",
+    "approveDisabled": true,
+    "submitDisabled": true
+  },
+  "bothApprovals": {
+    "observedAt": "2026-11-07T09:20:33.530Z",
+    "event": "both_approvals_stored",
+    "payment": {
+      "kind": "experiment",
+      "id": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+      "plan": {
+        "network": "devnet",
+        "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        "decimals": 6,
+        "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "sellerWallet": "3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1",
+        "sellerTokenAccount": "FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv",
+        "feePayer": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+        "total": "4000000",
+        "contributions": [
+          {
+            "slot": 0,
+            "wallet": "6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU",
+            "sourceTokenAccount": "BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ",
+            "units": "2000000"
+          },
+          {
+            "slot": 1,
+            "wallet": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+            "sourceTokenAccount": "436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW",
+            "units": "2000000"
+          }
+        ]
+      },
+      "planHash": "e3cd1706e2252f8aaf228ac93497f28937432443bf915572b512ab626225ac1b",
+      "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+      "lastValidBlockHeight": "506762398",
+      "transactionVersion": "legacy",
+      "state": "ready",
+      "reason": null,
+      "approvedSlots": [
+        {
+          "slot": 0,
+          "accepted": "2026-11-07T09:20:27.749Z"
+        },
+        {
+          "slot": 1,
+          "accepted": "2026-11-07T09:20:33.044Z"
+        }
+      ],
+      "transactionReference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve",
+      "receipt": null,
+      "firstSignatureDiagnostic": {
+        "kind": "signature_refused",
+        "observed": "2026-11-07T09:20:28.412Z"
+      }
+    },
+    "account": "7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB",
+    "status": "Independent sign-only approval verified for the frozen message.",
+    "approveDisabled": true,
+    "submitDisabled": true
+  },
+  "ci": {
+    "testedRevision": "9fb3cbaf17e9b0d07a5d33d1dc63c4b213747f72",
+    "conclusion": "SUCCESS",
+    "url": "https://github.com/nefalos-tech/OneTab/actions/runs/42358408041/job/128361412130"
+  },
+  "signatureAudit": {
+    "verifiedAt": "2026-11-07T09:26:37.614Z",
+    "experimentId": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+    "approvalSlots": [
+      0,
+      1
+    ],
+    "signatureByteLengths": [
+      64,
+      64
+    ],
+    "bothEd25519SignaturesValid": true,
+    "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+    "assembledSignedHash": "e50344171cc051df1470fc37278f3f8deaca04f03bbe0377e7988a2d1aea9ad4",
+    "matchesPersistedSubmission": true,
+    "transactionReference": "55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve"
+  },
+  "experimentLedger": [
+    {
+      "experiment": 1,
+      "id": "4aa59854-1def-472c-88ef-92f27d9260ff",
+      "state": "unresolved",
+      "reason": "lifetime_exceeded_no_finalized_evidence",
+      "messageHash": "5871ec13d39b80b093979492db6f49ae280c25c093ca9e1e81ee5f18968af539",
+      "lastValidBlockHeight": "506740846",
+      "storedApprovals": 0,
+      "storedSubmissions": 0
+    },
+    {
+      "experiment": 2,
+      "id": "24ccd9ae-952a-43a4-8b51-18828edb2046",
+      "state": "collecting",
+      "reason": null,
+      "messageHash": "807515aed317be1d1730fe40c6a254220f5b5d4b4f0856cefa761773c8e09088",
+      "lastValidBlockHeight": "506743105",
+      "storedApprovals": 0,
+      "storedSubmissions": 0
+    },
+    {
+      "experiment": 3,
+      "id": "e985a48f-e905-4fa9-9fbc-fb5003f1165d",
+      "state": "collecting",
+      "reason": null,
+      "messageHash": "214086b883abb712f63babd30b2cb2f751373e93b833b7db7aac7cd17b8a08df",
+      "lastValidBlockHeight": "506747240",
+      "storedApprovals": 0,
+      "storedSubmissions": 0
+    },
+    {
+      "experiment": 4,
+      "id": "65c05e55-674f-4cde-aaa5-51dcae421ee9",
+      "state": "unresolved",
+      "reason": "lifetime_exceeded_no_finalized_evidence",
+      "messageHash": "8efe111074eb30e0e083192443d4bff43f35374dc54956dbf419e89cc3b882b7",
+      "lastValidBlockHeight": "506761470",
+      "storedApprovals": 1,
+      "storedSubmissions": 0
+    },
+    {
+      "experiment": 5,
+      "id": "55eb730a-06d2-4d71-958a-c2fe0ab5c2ae",
+      "state": "unresolved",
+      "reason": "lifetime_exceeded_no_finalized_evidence",
+      "messageHash": "7340f1bf24957b1ca2daaa0975d33a920a81b5e71e19794407b801193f66c711",
+      "lastValidBlockHeight": "506762010",
+      "storedApprovals": 1,
+      "storedSubmissions": 0
+    },
+    {
+      "experiment": 6,
+      "id": "ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c",
+      "state": "finalized",
+      "reason": null,
+      "messageHash": "e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83",
+      "lastValidBlockHeight": "506762398",
+      "storedApprovals": 2,
+      "storedSubmissions": 1
+    }
+  ]
+}

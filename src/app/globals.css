@@ -1,0 +1,115 @@
+@import "tailwindcss";
+
+@theme {
+  --color-*: initial;
+  --text-*: initial;
+  --font-*: initial;
+  --font-weight-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --breakpoint-*: initial;
+  --container-*: initial;
+
+  /* Deep Tide. Body text, headings, pressed primary buttons. */
+  --color-ink: #013D5A;
+  /* Tide. Primary buttons, links, focus ring on light surfaces, tab card fill. */
+  --color-brand: #065379;
+  /* Info notices, selected and hover rows, joined and ready spots. */
+  --color-brand-soft: #E8F2F7;
+  /* Page and surfaces. Text on Tide. */
+  --color-white: #FFFFFF;
+  /* Marigold. Approved spots, your-share highlight, primary button and focus ring on Tide. Never text on white, never a status. */
+  --color-accent: #FFC845;
+  /* Secondary text and hints. */
+  --color-muted: #4A6575;
+  /* Dividers. Decoration only, never a control border. */
+  --color-line: #D5E2E9;
+  /* Input, choice and quiet-button borders. */
+  --color-line-strong: #7590A0;
+  /* Secondary text on the tab card. */
+  --color-on-brand-muted: #C5DDE8;
+  /* Paid status text and icon. Nowhere else. */
+  --color-success: #17703F;
+  /* Paid status background. */
+  --color-success-soft: #E5F4EB;
+  /* Needs-attention status text and icon: unresolved, declined, expired. */
+  --color-warning: #8F4A00;
+  /* Needs-attention status background. */
+  --color-warning-soft: #FFF1DD;
+  /* Failed status and field errors. */
+  --color-danger: #B3261E;
+  /* Failed status background. */
+  --color-danger-soft: #FCE9E7;
+
+  /* Atkinson Hyperlegible Next. All text. */
+  --font-sans: var(--font-atkinson-next), ui-sans-serif, system-ui, sans-serif;
+  /* Atkinson Hyperlegible Mono. Wallet addresses and transaction references only. */
+  --font-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+
+  /* Body text. */
+  --font-weight-normal: 400;
+  /* Labels, buttons, emphasis. */
+  --font-weight-semibold: 600;
+  /* Headings and amounts. */
+  --font-weight-bold: 700;
+
+  /* 14px. Hints, badges, table labels. */
+  --text-small: 0.875rem;
+  /* Line height of small text. */
+  --text-small--line-height: 1.25rem;
+  /* 16px. Body text, buttons, inputs. */
+  --text-body: 1rem;
+  /* Line height of body text. */
+  --text-body--line-height: 1.5rem;
+  /* 20px. Section headings and status labels. */
+  --text-section: 1.25rem;
+  /* Line height of section headings. */
+  --text-section--line-height: 1.75rem;
+  /* 28px. Page titles. */
+  --text-title: 1.75rem;
+  /* Line height of page titles. */
+  --text-title--line-height: 2.25rem;
+  /* 40px. The one hero amount per screen. */
+  --text-hero: 2.5rem;
+  /* Line height of the hero amount. */
+  --text-hero--line-height: 3rem;
+
+  /* Buttons, inputs, badges, notices. Pills and segments use rounded-full. */
+  --radius-control: 0.5rem;
+  /* The tab card and the result panel. */
+  --radius-card: 1.25rem;
+
+  /* The tab card only. Tinted with Deep Tide, never grey. */
+  --shadow-tab: 0 16px 40px -20px rgb(1 61 90 / 0.55);
+
+  /* 900px. Create and room use two columns at and above this width. */
+  --breakpoint-wide: 56.25rem;
+
+  /* 1080px. Content max width. */
+  --container-content: 67.5rem;
+  /* 640px. Result column max width. */
+  --container-result: 40rem;
+}
+
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+
+  [data-surface="brand"] :focus-visible {
+    outline-color: var(--color-accent);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Select the payment proof runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 25.9.0
+          cache: npm
+          cache-dependency-path: spikes/payment-proof/package-lock.json
+      - name: Install payment proof dependencies
+        working-directory: spikes/payment-proof
+        run: npm ci --ignore-scripts
+      - name: Check the isolated payment proof
+        working-directory: spikes/payment-proof
+        run: npm run check
+      - name: Check payment invitation navigation
+        working-directory: spikes/payment-proof
+        run: node --import tsx test/invite-navigation.mjs --playwright-module ../../node_modules/playwright/index.mjs
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: |
+            test-results
+            playwright-report
+          retention-days: 7
