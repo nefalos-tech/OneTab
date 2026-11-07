@@ -2,6 +2,7 @@ import {
   address, appendTransactionMessageInstructions, blockhash, compileTransaction, signatureBytes,
   createTransactionMessage, createNoopSigner, getAddressEncoder, getBase58Decoder,
   getCompiledTransactionMessageDecoder, getTransactionDecoder, getTransactionEncoder,
+  setTransactionMessageComputeUnitLimit, setTransactionMessageComputeUnitPrice,
   setTransactionMessageFeePayer, setTransactionMessageLifetimeUsingBlockhash,
   type ReadonlyUint8Array,
 } from '@solana/kit';
@@ -68,11 +69,12 @@ function canonicalTransaction(plan: Plan, hash: string, lastHeight: string) {
   const withLifetime = setTransactionMessageLifetimeUsingBlockhash({
     blockhash: blockhash(hash), lastValidBlockHeight: BigInt(lastHeight),
   }, withPayer);
+  const withBudget = setTransactionMessageComputeUnitPrice(0n, setTransactionMessageComputeUnitLimit(400_000, withLifetime));
   return compileTransaction(appendTransactionMessageInstructions(plan.contributions.map(payer =>
     getTransferCheckedInstruction({
       source: payer.sourceTokenAccount, mint: plan.mint, destination: plan.sellerTokenAccount,
       authority: createNoopSigner(payer.wallet), amount: BigInt(payer.units), decimals: plan.decimals,
-    })), withLifetime));
+    })), withBudget));
 }
 
 export async function freezePayment(input: { id: string; plan: Plan; blockhash: string; lastValidBlockHeight: string }): Promise<FrozenPayment> {
@@ -95,7 +97,7 @@ export async function inspectPayment(input: unknown, expected: { plan: Plan; pla
   const message = fromBase64(payment.messageBase64);
   const canonical = canonicalTransaction(expectedPlan, payment.blockhash, payment.lastValidBlockHeight);
   const decoded = getCompiledTransactionMessageDecoder().decode(actual.messageBytes);
-  if (decoded.version !== 'legacy' || decoded.instructions.length !== 2 || !equalBytes(actual.messageBytes, canonical.messageBytes)
+  if (decoded.version !== 'legacy' || decoded.instructions.length !== 4 || !equalBytes(actual.messageBytes, canonical.messageBytes)
     || !equalBytes(message, canonical.messageBytes) || !equalBytes(original, getTransactionEncoder().encode(canonical))
     || await sha256(message) !== expected.messageHash || payment.messageHash !== expected.messageHash) {
     throw new Error('Full payment message mismatch');
