@@ -37,10 +37,6 @@ export type Track = <F extends string>(
 
 export const untracked: Track = (_intent, request) => request();
 
-/**
- * `reached` hears whether a read answered, only for a read sent after everything already shown or reported,
- * so a stale answer can't say the page is back online, or offline, after a newer one.
- */
 export function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track {
   let sent = 0;
   let shown = 0;
@@ -71,7 +67,6 @@ export function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (an
 
 export type Scope = { readonly track: Track; readonly signer: PaymentSigner };
 
-/** `note` writes this page's memory of a cause the room doesn't say. Only `startAttempt` calls it. */
 type RoomContext = { readonly api: CheckoutApi; readonly track: Track; readonly note: (noted: NotedCause) => void };
 /** Approve alone also reaches the wallet's signer and the payment check. */
 type ApproveContext = RoomContext & { readonly signer: PaymentSigner; readonly check: PaymentCheck };
@@ -124,14 +119,6 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
   return outcomeOfWrite(c, terms.checkoutId, uploaded);
 }
 
-/**
- * Start and Try again. A successful one leaves a preparing attempt, which the room owns, so the owner-change
- * move takes every viewer there for fresh approvals.
- *
- * A wallet that can't fund the payment makes the server keep the attempt, failed, and answer 422 without its
- * id. So the room is read again, and the cause is noted on the failed, never-sent attempt it shows, inside
- * the tracked read and before the room shows: the first frame of the result screen already explains it.
- */
 async function startAttempt(c: RoomContext, id: CheckoutId, retryOf: Replaceable | null): Promise<Outcome> {
   const answer = await writeThenReadRoom(c, id, () => c.api.startAttempt(id, retryOf));
   if (answer.ok || answer.failure === "unseen") return DONE;
@@ -241,10 +228,6 @@ function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnaps
 export const POLL_MS = 2_000;
 export const MAX_BACKOFF_MS = 30_000;
 
-/**
- * Each poll reads the room, unless the poller stops, which it does once the screen shows a receipt.
- * `refresh` names the attempt to advance as well.
- */
 export type PollPlan = {
   readonly stop: boolean;
   readonly refresh: AttemptId | null;
@@ -334,7 +317,7 @@ function watch(api: CheckoutApi, env: PollEnv, room: Watched, refreshOnce: Refre
   };
 }
 
-/** Causes this page heard, for `useSyncExternalStore`: `current` keeps its identity until a new note lands. */
+/** For `useSyncExternalStore`: `current` keeps its identity until a new note lands. */
 export type NotedCauses = {
   subscribe(listener: () => void): () => void;
   current(): readonly NotedCause[];
@@ -346,7 +329,6 @@ export type Live = {
   readonly noted: NotedCauses;
 };
 
-/** Per page, beside the refresh lock, so a note outlives the move from room to result, and a reload clears it. */
 function notedMemory(): NotedCauses & { note(noted: NotedCause): void } {
   let noted: readonly NotedCause[] = NOTHING_HEARD.noted;
   const listeners = new Set<() => void>();

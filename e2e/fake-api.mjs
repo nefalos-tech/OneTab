@@ -86,7 +86,6 @@ const attempt = (id, state, signedWallets, fields = {}) => ({
 
 export const REFERENCE = "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
 
-/** b3_rooms.sql sends this for every recorded error. */
 const MASKED = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
 
 const sent = (fields = {}) => ({ transactionReference: REFERENCE, ...fields });
@@ -110,14 +109,12 @@ export const SCRIPT = [
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent()) }),
   (id) => ({ ...party(id), phase: "needs_attention", attempt: attempt(id, "unresolved", PARTY, sent({ error: MASKED })) }),
-  // A refresh after the lease ends re-claims the send, which writes submitting again over unresolved.
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent({ error: MASKED })) }),
   (id) => ({ ...party(id), phase: "paid", attempt: attempt(id, "confirmed", PARTY, sent({ receipt: receipt() })) }),
 ];
 
 const FAILING_PREFIX = "fa11fa11-";
 
-/** A room whose payment fails before it is sent, then is replaced by the organizer elsewhere. */
 export const failingRoom = () => `${FAILING_PREFIX}${randomUUID().slice(FAILING_PREFIX.length)}`;
 
 export const FAIL_SCRIPT = [
@@ -134,7 +131,6 @@ export const FAIL_SCRIPT = [
 const SCRIPTS = { [SCRIPTED_PREFIX]: SCRIPT, [FAILING_PREFIX]: FAIL_SCRIPT };
 const scriptOf = (id) => Object.entries(SCRIPTS).find(([prefix]) => id.startsWith(prefix))?.[1];
 
-/** While on, the browser's reads of that room answer 503. The server's own reads, and the script's steps, go on. */
 export const outage = (id, on) => `${FAKE_API.rooms}/__script/${id}/outage/${on ? "on" : "off"}`;
 
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });

@@ -9,7 +9,6 @@ const ENTRIES = Object.entries(FIXTURES);
 
 function contractPhase(s: RoomSnapshot): Phase {
   const a = s.attempt;
-  // The checkout's paid-attempt marker isn't in the snapshot. A paid room with no attempt is the only trace of it.
   if (a === null && s.phase === "paid") return "paid";
   if (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized") return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
@@ -68,7 +67,6 @@ describe("the registry covers the state matrix", () => {
 
 });
 
-/** b3_rooms.sql sends this for every observed error, whatever the server recorded. */
 const ROOM_ERROR = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
 
 describe("samples are rooms the server can produce", () => {

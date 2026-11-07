@@ -98,11 +98,9 @@ type Spec = {
   readonly purchase: keyof typeof PURCHASES;
   readonly joined?: number;
   readonly ready?: Spots;
-  /** "dropped": the checkout is marked paid, but the room lost its attempt, as B3 does when the receipt row is missing. */
   readonly attempt?: AttemptSpec | "dropped";
 };
 
-/** What the room says for every stop code today: B3's snapshot masks the code and its message. */
 const MASKED: AttemptError = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
 
 const SPECS = {
@@ -146,7 +144,6 @@ function phaseOf(snapshot: Omit<RoomSnapshot, "phase">, paidMarker: boolean): Ph
   return full && snapshot.participants.every((p) => p.ready) ? "ready" : "open";
 }
 
-/** The expiry height arrives with the frozen message, which a payment that failed while preparing never reached. */
 const frozen = (attempt: AttemptSpec): boolean =>
   attempt.state !== "preparing" && !(attempt.state === "failed" && !attempt.sent);
 

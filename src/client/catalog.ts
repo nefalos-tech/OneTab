@@ -166,7 +166,6 @@ export type StopReason =
 
 type StopWords = { readonly happened: string; readonly next: string | null };
 
-/** Who can act next is the status line's job, so `next` says only what must be true before the next try. */
 export const STOP_REASONS = {
   short_usdc: {
     happened:
@@ -198,7 +197,6 @@ export const STOP_REASONS = {
   },
 } as const satisfies { readonly [K in StopReason]: StopWords };
 
-/** INVALID_PAYMENT, the room's mask for every stop code, names no cause, so it has no row. */
 export const CAUSE_OF_CODE = {
   INSUFFICIENT_USDC: "short_usdc",
   INSUFFICIENT_SOL: "short_sol",
@@ -206,7 +204,6 @@ export const CAUSE_OF_CODE = {
   RPC_UNAVAILABLE: "network_unreachable",
 } as const satisfies Partial<Record<ErrorCode, StopReason>>;
 
-/** The refusals a Start or Try again meets after the server kept the attempt, failed, before sending it. */
 export type FundingCause = (typeof CAUSE_OF_CODE)["INSUFFICIENT_USDC" | "INSUFFICIENT_SOL" | "TOKEN_ACCOUNT_MISSING"];
 
 const CAUSES_BY_CODE: Partial<Record<ErrorCode, StopReason>> = CAUSE_OF_CODE;

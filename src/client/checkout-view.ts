@@ -42,14 +42,8 @@ export type CheckoutState = {
   readonly page: PageFacts;
 };
 
-/**
- * What this page knows that the public room doesn't say. Page facts change words only: a page that lost
- * them, after a reload or in another payer's tab, offers exactly the same actions.
- */
 export type PageFacts = {
-  /** Causes this page's own Start or Try again heard, each tied to the failed attempt it left. */
   readonly noted: readonly NotedCause[];
-  /** The latest room read failed, so the screen still shows the last room it got. */
   readonly roomUnreachable: boolean;
 };
 
@@ -236,13 +230,8 @@ const offered = (actions: ActionsView): readonly Action[] =>
 
 declare const replaceableBrand: unique symbol;
 
-/**
- * An attempt the server says a new one may replace. Only `replaceable` makes one, so Try again can't name
- * an attempt the room didn't call safe.
- */
 export type Replaceable = AttemptId & { readonly [replaceableBrand]: true };
 
-/** Only a failed or expired attempt can be safely resolved, so `canRetry` on any other state is ignored. */
 function replaceable(attempt: AttemptSummary): Replaceable | null {
   return attempt.canRetry && (attempt.state === "failed" || attempt.state === "expired") ? (attempt.id as Replaceable) : null;
 }
@@ -252,7 +241,6 @@ export type Recovery =
   | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: Replaceable }
   | { readonly kind: "waiting_for_organizer" };
 
-/** Why a payment stopped. `from` is for tests and `data-reason-from`, never for words or actions. */
 export type Reason = {
   readonly key: StopReason;
   readonly happened: string;
@@ -261,14 +249,12 @@ export type Reason = {
 };
 
 export type ResultBody =
-  /** `approving`: the payment exists and waits for approvals, which the checkout page collects. */
   | { readonly kind: "not_started"; readonly approving: boolean }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
   | { readonly kind: "unresolved"; readonly transactionReference: string | null }
   | {
       readonly kind: "needs_attention";
       readonly recovery: Recovery;
-      /** Non-null exactly for a failed attempt. A declined or expired one says why in its status line. */
       readonly reason: Reason | null;
       readonly transactionReference: string | null;
     }
@@ -449,13 +435,8 @@ export function termsOf(snapshot: RoomSnapshot, session: Session | null): Approv
 
 declare const verified: unique symbol;
 
-/** Only `verifiedReceipt` makes one, and `receiptOf` takes nothing else, so a reference alone never shows a receipt. */
 type VerifiedReceipt = Receipt & { readonly [verified]: true };
 
-/**
- * The parser stays as loose as the server needs it, because the server reads rooms with it too, so the
- * checks that make a receipt proof of this checkout's payment live here.
- */
 function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
   const { attempt, checkout } = snapshot;
   if (snapshot.phase !== "paid" || attempt === null || attempt.state !== "confirmed" || attempt.receipt === null) return null;
@@ -473,7 +454,6 @@ function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
   return proves ? (receipt as VerifiedReceipt) : null;
 }
 
-/** A transaction signature is 64 bytes, which base58 writes in 64 to 88 characters. */
 const isTransactionReference = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(s);
 
 const EXPLORER: { readonly [N in Network]: (reference: string) => string } = {
@@ -492,7 +472,6 @@ type Classified =
 function classify(snapshot: RoomSnapshot): Classified {
   const a = snapshot.attempt;
   if (snapshot.phase === "paid") {
-    // The room can be paid while its attempt is missing: B3 drops the attempt when its receipt row is.
     const receipt = verifiedReceipt(snapshot);
     return receipt !== null && a !== null ? { situation: "paid", attempt: a, receipt } : { situation: "confirming", attempt: a };
   }
@@ -519,7 +498,6 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
 }
 
-/** The poller stops on this, so it stops exactly when the screen shows a receipt. */
 export function situationOf(snapshot: RoomSnapshot): Situation {
   return classify(snapshot).situation;
 }
@@ -611,7 +589,6 @@ function recoveryOf(attempt: AttemptSummary, role: ViewerRole): Recovery {
   return role.kind === "organizer" ? { kind: "organizer_can_retry", retryOfAttemptId: id } : { kind: "waiting_for_organizer" };
 }
 
-/** `network` is null for sample data, which has no real transaction to link. */
 function bodyOf(c: Classified, role: ViewerRole, tab: TabView, page: PageFacts, network: Network | null): ResultBody {
   switch (c.situation) {
     case "open_spots":
@@ -640,11 +617,6 @@ function bodyOf(c: Classified, role: ViewerRole, tab: TabView, page: PageFacts, 
   }
 }
 
-/**
- * A sent attempt that failed was rejected by the network, whatever the room's code says. A never-sent one
- * takes the room's code first, then the cause this page heard for that exact attempt. The server's message
- * is never read: the room masks it.
- */
 function reasonOf(attempt: AttemptSummary, noted: readonly NotedCause[]): Reason | null {
   if (attempt.state !== "failed") return null;
   if (attempt.transactionReference !== null) return reason("network_rejected", "attempt");
@@ -687,7 +659,6 @@ function formatUtc(iso: string): string {
   return `${UTC_FORMAT.format(new Date(iso))} UTC`;
 }
 
-/** A signed-out payer who reloaded signs in from here, so the page can resume checking their payment. */
 function resultActions(
   body: ResultBody,
   c: { readonly checkoutId: CheckoutId; readonly signedOut: boolean; readonly links: ScreenLinks },

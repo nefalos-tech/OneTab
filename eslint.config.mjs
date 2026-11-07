@@ -49,7 +49,6 @@ const NO_DYNAMIC_PAYMENT_CHECK = {
   selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`,
   message: PAYMENT_CHECK_MESSAGE,
 };
-/** Each brand is minted by one function in checkout-view.ts, after the check it stands for. */
 const BRANDS = "/^(Replaceable|VerifiedReceipt)$/";
 const NO_BRAND_CASTS = ["TSAsExpression", "TSTypeAssertion"].map((cast) => ({
   selector: `${cast}[typeAnnotation.typeName.name=${BRANDS}]`,

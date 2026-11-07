@@ -22,7 +22,6 @@ type FixtureEntry = {
   readonly situation: Situation;
   readonly snapshot: RoomSnapshot;
   readonly defaultPersona: Persona;
-  /** The cause the organizer's own Start heard. The room masks it, so only the organizer's page knows it. */
   readonly organizerSaw?: FundingCause;
 };
 

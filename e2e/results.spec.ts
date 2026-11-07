@@ -36,7 +36,6 @@ async function stepTo(request: { post(url: string): Promise<unknown> }, id: stri
   for (let i = 0; i < step; i++) await request.post(nextStep(id));
 }
 
-/** React streams the screen in hidden and reveals it, so read nothing until the panel shows. */
 async function attemptShown(page: Page): Promise<string | null> {
   await expect(panel(page)).toBeVisible();
   return panel(page).getAttribute("data-attempt");
@@ -181,7 +180,6 @@ test("a payment that fails before sending moves viewers to an honest result, and
   await expect(page.getByRole("button", { name: ACTIONS.retry.label })).toHaveCount(0);
   await expect(page.getByText("Payment attempt did not complete.")).toHaveCount(0);
   await capture(page, "failed-not-sent-signed-out");
-  // The result page's first read sets where the viewer stands, so the replacement must come after it.
   await (await browserReads(page, id)).response();
   await browserReads(page, id);
 
