@@ -1,6 +1,6 @@
 import { useRef, type ReactNode } from "react";
 import { WORDS, type Situation, type Tone } from "@/client/catalog";
-import type { ActionsView, ApprovalView, StatusView, YouView } from "@/client/checkout-view";
+import type { ActionsView, ApprovalView, Reason, StatusView, YouView } from "@/client/checkout-view";
 import { ActionGroup } from "./actions";
 import { CopyButton } from "./copy-button";
 import { Icon, type IconName } from "./icon";
@@ -43,7 +43,7 @@ export function StatusPanel({
   readonly approval?: ApprovalView | null;
   readonly actions: ActionsView;
   readonly heading: "h1" | "h2";
-  readonly reason?: string | null;
+  readonly reason?: Reason | null;
   readonly children?: ReactNode;
 }): ReactNode {
   const Heading = heading;
@@ -61,9 +61,10 @@ export function StatusPanel({
         {status.line}
       </p>
       {reason && (
-        <p data-status-reason="" className="max-w-prose text-muted">
-          {reason}
-        </p>
+        <div data-status-reason="" data-reason-from={reason.from} className="flex max-w-prose flex-col gap-1 text-muted">
+          <p>{reason.happened}</p>
+          {reason.next && <p>{reason.next}</p>}
+        </div>
       )}
       {approval ? (
         <ApprovalSummary approval={approval} />

@@ -370,7 +370,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
 | `mismatch` | The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved. |
 | `unsupported` | Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved. |
-| `rejected` | You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone. |
+| `rejected` | You didn't approve in your wallet, so nothing was sent. You can approve again. Declining stops this payment for everyone, and the checkout stays on hold until it's safely closed. |
 | `busy` | Your wallet already has an approval request open. Finish it there first. |
 | `failed` | Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again. |
 | `unchecked` | OneTab couldn't check the approval your wallet returned, so nothing was sent. |
@@ -441,6 +441,11 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `seller_wallet` | seller wallet |
 | `you_are_ready` | You're ready. |
 | `end_sign_in` | End sign-in |
+| `no_payment_yet` | No payment has started yet. Its status appears here once everyone approves. |
+| `approvals_open` | Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then. |
+| `room_unreachable` | Can't reach OneTab right now. This page keeps trying and shows the last update it got. |
+| `keeps_checking_here` | This page keeps checking the same transaction, and no new payment will start. |
+| `keeps_checking_payers` | OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
 <!-- /design-system:words -->

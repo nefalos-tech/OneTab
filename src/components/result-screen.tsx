@@ -17,7 +17,7 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
           you={null}
           actions={view.actions}
           heading="h1"
-          reason={view.body.kind === "needs_attention" ? view.body.detail : null}
+          reason={view.body.kind === "needs_attention" ? view.body.reason : null}
         >
           <ResultDetails body={view.body} />
         </StatusPanel>
@@ -30,7 +30,7 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
 function ResultDetails({ body }: { readonly body: ResultBody }): ReactNode {
   switch (body.kind) {
     case "not_started":
-      return <p className="text-muted">No payment has started yet. Its status appears here once everyone approves.</p>;
+      return <p className="text-muted">{body.approving ? WORDS.approvals_open : WORDS.no_payment_yet}</p>;
     case "in_progress":
     case "unresolved":
     case "needs_attention":

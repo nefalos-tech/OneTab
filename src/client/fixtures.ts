@@ -1,6 +1,14 @@
 import { parseCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
-import { SITUATIONS, type Screen, type Situation } from "./catalog";
-import { checkoutLinks, spotNumber, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
+import { SITUATIONS, type FundingCause, type Screen, type Situation } from "./catalog";
+import {
+  NOTHING_HEARD,
+  checkoutLinks,
+  spotNumber,
+  type CheckoutState,
+  type CreateState,
+  type PageFacts,
+  type ScreenLinks,
+} from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
 import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
@@ -14,6 +22,8 @@ type FixtureEntry = {
   readonly situation: Situation;
   readonly snapshot: RoomSnapshot;
   readonly defaultPersona: Persona;
+  /** The cause the organizer's own Start heard. The room masks it, so only the organizer's page knows it. */
+  readonly organizerSaw?: FundingCause;
 };
 
 const ORGANIZER: Persona = { kind: "member", slot: 0 };
@@ -70,6 +80,7 @@ export const FIXTURES = {
     situation: "failed",
     snapshot: SNAPSHOTS["failed-not-sent"],
     defaultPersona: ORGANIZER,
+    organizerSaw: "short_usdc",
   },
   "failed-on-chain": {
     label: "Rejected by the network, organizer can try again",
@@ -127,10 +138,11 @@ export function personaParam(persona: Persona): string {
 }
 
 export function sampleCheckoutState(ref: SampleRef): CheckoutState {
-  const entry = FIXTURES[ref.fixture];
+  const entry: FixtureEntry = FIXTURES[ref.fixture];
   const { snapshot } = entry;
   const session = sessionFor(ref.persona, snapshot);
   return {
+    page: pageFor(entry, session),
     snapshot,
     session,
     source: {
@@ -145,6 +157,13 @@ export function sampleCheckoutState(ref: SampleRef): CheckoutState {
       wallet: sampleWalletSeed(session),
     },
   };
+}
+
+function pageFor(entry: FixtureEntry, session: Session | null): PageFacts {
+  const attempt = entry.snapshot.attempt;
+  const organizer = session?.wallet === entry.snapshot.checkout.organizerWallet;
+  if (!organizer || entry.organizerSaw === undefined || attempt === null) return NOTHING_HEARD;
+  return { noted: [{ attemptId: attempt.id, cause: entry.organizerSaw }], roomUnreachable: false };
 }
 
 export function sampleCreateState(): CreateState {

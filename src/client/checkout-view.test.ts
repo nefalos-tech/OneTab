@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { roomFixtures } from "@/fixtures";
-import { REQUEST_PROBLEMS, WALLET_WAITING, WORDS, type ActionKind, type Situation } from "./catalog";
+import { REQUEST_PROBLEMS, STOP_REASONS, WALLET_WAITING, WORDS, type ActionKind, type Situation } from "./catalog";
 import {
+  NOTHING_HEARD,
   checkoutLinks,
   deriveCreateView,
   deriveResultView,
@@ -15,8 +16,13 @@ import {
   type CheckoutState,
   type ClientRequestId,
   type Notice,
+  type PageFacts,
+  type ResultView,
+  type RoomView,
 } from "./checkout-view";
 import {
+  ATTEMPT_STATES,
+  PHASES,
   parseRoomSnapshot,
   type Address,
   type AttemptSummary,
@@ -54,16 +60,23 @@ const PRIMARY: readonly (readonly [caseId: string, room: ActionKind | null, resu
   ["signing as signed-out", "connect_wallet", "back_to_checkout"],
   ["submitting as spot-2", "view_status", null],
   ["paid-no-receipt as spot-1", "view_status", null],
+  ["submitting as signed-out", "view_status", "connect_wallet"],
+  ["paid-no-receipt as signed-out", "view_status", "connect_wallet"],
   ["unresolved as spot-1", "view_status", null],
+  ["unresolved as outsider", "view_status", null],
+  ["unresolved as signed-out", "view_status", "connect_wallet"],
+  ["declined as signed-out", "view_status", "connect_wallet"],
   ["declined as spot-1", "view_status", null],
   ["declined as spot-2", "view_status", null],
   ["failed-not-sent as spot-1", "view_status", "retry"],
   ["failed-not-sent as spot-2", "view_status", null],
-  ["failed-not-sent as signed-out", "view_status", null],
+  ["failed-not-sent as signed-out", "view_status", "connect_wallet"],
   ["failed-on-chain as spot-1", "view_status", "retry"],
   ["expired as spot-1", "view_status", "retry"],
   ["expired as outsider", "view_status", null],
+  ["expired as signed-out", "view_status", "connect_wallet"],
   ["paid as spot-2", "view_receipt", null],
+  ["paid as signed-out", "view_receipt", null],
 ];
 
 describe("one primary action per state and viewer", () => {
@@ -139,7 +152,20 @@ describe("status lines speak to the viewer", () => {
     ["open-spots as spot-2", "You joined. Waiting for 1 more payer."],
     ["full-not-ready as outsider", "This checkout is full. Waiting for 1 payer to get ready."],
     ["declined as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
-    ["unresolved as spot-1", "We can't confirm the result yet. We keep checking the same transaction, and no new payment will start."],
+    ["unresolved as spot-1", "We can't confirm the result yet. This page keeps checking the same transaction, and no new payment will start."],
+    [
+      "unresolved as outsider",
+      "We can't confirm the result yet. OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
+    ],
+    [
+      "unresolved as signed-out",
+      "We can't confirm the result yet. OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. Sign in with your wallet if you hold a spot.",
+    ],
+    ["failed-not-sent as spot-1", "No share reached the seller. Try again to ask everyone to approve a new payment."],
+    [
+      "expired as spot-2",
+      "This payment expired before it went through, so nothing reached the seller. The organizer can start a new payment, and everyone approves again.",
+    ],
   ])("%s", (id, line) => {
     expect(deriveRoomView(caseById(id).state).status.line).toBe(line);
   });
@@ -397,7 +423,7 @@ describe("approvals that arrive out of spot order", () => {
   const room = FIXTURES.signing.snapshot;
   const withApprovals = (...wallets: Address[]) => ({ ...room, attempt: { ...room.attempt!, signedWallets: wallets } });
   const viewOf = (snapshot: typeof room, wallet: Address) =>
-    deriveRoomView({ snapshot, session: { wallet, expiresAt: "2099-01-01T00:00:00.000Z" }, source: { kind: "live", links: checkoutLinks(room.checkout.id) } });
+    deriveRoomView({ snapshot, session: { wallet, expiresAt: "2099-01-01T00:00:00.000Z" }, source: { kind: "live", links: checkoutLinks(room.checkout.id) }, page: NOTHING_HEARD });
 
   it.each<[string, Address[], string[]]>([
     ["the last spot first", [SAMPLE_WALLETS.cam], ["ready", "ready", "approved"]],
@@ -426,6 +452,7 @@ describe("Approve is offered only to a member with the payment's terms", () => {
     snapshot,
     session: as(wallet),
     source: { kind: "live", links: checkoutLinks(room.checkout.id) },
+    page: NOTHING_HEARD,
   });
 
   it("never to the seller, even in a room that lists the seller in a spot", () => {
@@ -608,6 +635,7 @@ describe("every viewer sees the same room at every step", () => {
         snapshot: step.room as CheckoutState["snapshot"],
         session: wallet === null ? null : { wallet, expiresAt: "2099-01-01T00:00:00.000Z" },
         source: { kind: "live", links: checkoutLinks(base.checkout.id) },
+        page: NOTHING_HEARD,
       }),
     );
     for (const view of views) {
@@ -645,7 +673,7 @@ describe("B1's room fixtures, read with the parser the server uses for rooms", (
     const room = parseRoomSnapshot(roomFixtures.data[name as keyof typeof SITUATION_OF]);
     if (room === null) throw new Error(`B1's ${name} fixture doesn't parse, so the server would fail every read of such a room`);
     for (const session of viewers(room)) {
-      const state: CheckoutState = { snapshot: room, session, source: { kind: "live", links: checkoutLinks(room.checkout.id) } };
+      const state: CheckoutState = { snapshot: room, session, source: { kind: "live", links: checkoutLinks(room.checkout.id) }, page: NOTHING_HEARD };
       const [roomView, result] = [deriveRoomView(state), deriveResultView(state)];
       expect(roomView.status.situation).toBe(situation);
       expect(result.status.situation).toBe(situation);
@@ -653,5 +681,237 @@ describe("B1's room fixtures, read with the parser the server uses for rooms", (
       const replaceable = room.attempt !== null && room.attempt.canRetry && (situation === "failed" || situation === "expired");
       expect(result.actions.primary?.kind === "retry", session?.wallet ?? "signed out").toBe(organizer && replaceable);
     }
+  });
+});
+
+const SENTINEL = "a server message the screens never show";
+const offeredKinds = (v: RoomView | ResultView) => [v.actions.primary, ...v.actions.secondary].flatMap((a) => (a === null ? [] : [a.kind]));
+
+describe("why a failed payment stopped", () => {
+  const failed = FIXTURES["failed-not-sent"].snapshot;
+  const attempt = failed.attempt!;
+  const other = FIXTURES["failed-on-chain"].snapshot.attempt!.id;
+  const resultOf = (changes: Partial<AttemptSummary>, noted: PageFacts["noted"] = []) =>
+    deriveResultView({
+      snapshot: { ...failed, attempt: { ...attempt, ...changes } },
+      session: null,
+      source: { kind: "live", links: checkoutLinks(failed.checkout.id) },
+      page: { noted, roomUnreachable: false },
+    });
+  const reasonOf = (changes: Partial<AttemptSummary>, noted: PageFacts["noted"] = []) => {
+    const body = resultOf(changes, noted).body;
+    return body.kind === "needs_attention" ? body.reason && { key: body.reason.key, from: body.reason.from } : "no reason slot";
+  };
+  const masked = { code: "INVALID_PAYMENT", message: SENTINEL } as const;
+  const sent = "SAMPLEtransaction".padEnd(84, "1") + "Txn5";
+
+  it.each<[string, Partial<AttemptSummary>, PageFacts["noted"], { key: string; from: string } | null]>([
+    ["sent, whatever the room or this page says", { transactionReference: sent, error: { code: "INSUFFICIENT_SOL", message: SENTINEL } }, [{ attemptId: attempt.id, cause: "short_usdc" }], { key: "network_rejected", from: "attempt" }],
+    ["never sent, the room names the cause", { error: { code: "INSUFFICIENT_SOL", message: SENTINEL } }, [{ attemptId: attempt.id, cause: "short_usdc" }], { key: "short_sol", from: "room" }],
+    ["never sent, the room masks it, this page heard it for this attempt", { error: masked }, [{ attemptId: attempt.id, cause: "short_usdc" }], { key: "short_usdc", from: "this_page" }],
+    ["never sent, the room masks it, this page heard it for another attempt", { error: masked }, [{ attemptId: other, cause: "short_usdc" }], { key: "not_sent", from: "attempt" }],
+    ["never sent, nobody knows why", { error: null }, [], { key: "not_sent", from: "attempt" }],
+    ["never sent, this page heard twice for this attempt: the first note stands", { error: masked }, [{ attemptId: attempt.id, cause: "short_sol" }, { attemptId: attempt.id, cause: "short_usdc" }], { key: "short_sol", from: "this_page" }],
+    ["expired: the status line says why", { state: "expired" }, [{ attemptId: attempt.id, cause: "short_usdc" }], null],
+    ["declined: the status line says why", { state: "declined", canRetry: false }, [{ attemptId: attempt.id, cause: "short_usdc" }], null],
+  ])("%s", (_, changes, noted, expected) => {
+    expect(reasonOf(changes, noted)).toEqual(expected);
+  });
+
+  it("states the reason in the stop table's words, what happened then what to do next", () => {
+    const body = resultOf({ error: masked }, [{ attemptId: attempt.id, cause: "no_token_account" }]).body;
+    expect(body).toMatchObject({ reason: { ...STOP_REASONS.no_token_account } });
+  });
+
+  it("says a network fee may have been paid only for a payment that was sent, and no fee for every other stop", () => {
+    for (const [key, words] of Object.entries(STOP_REASONS)) {
+      if (key === "network_rejected") expect(words.happened).toMatch(/may have paid a small network fee/);
+      else expect(words.happened, key).toMatch(/no network fee was paid/);
+    }
+    for (const c of CASES) expect(deriveResultView(c.state).status.line, c.id).not.toMatch(/network fee/);
+  });
+
+  it("shows the organizer of the sample the cause their Start heard, and everyone else the plain reason", () => {
+    const organizer = deriveResultView(caseById("failed-not-sent as spot-1").state).body;
+    const payer = deriveResultView(caseById("failed-not-sent as spot-2").state).body;
+    expect(organizer).toMatchObject({ reason: { key: "short_usdc", from: "this_page" } });
+    expect(payer).toMatchObject({ reason: { key: "not_sent", from: "attempt" } });
+  });
+
+  it("never shows the server's message, on either screen, for any sample or viewer", () => {
+    for (const c of CASES) {
+      const snapshot = c.state.snapshot;
+      const state = snapshot.attempt?.error ? { ...c.state, snapshot: { ...snapshot, attempt: { ...snapshot.attempt, error: { ...snapshot.attempt.error, message: SENTINEL } } } } : c.state;
+      expect(JSON.stringify([deriveRoomView(state), deriveResultView(state)]), c.id).not.toContain(SENTINEL);
+    }
+  });
+});
+
+describe("the result screen before and after sending", () => {
+  it.each(["preparing as spot-1", "signing as spot-2", "signing as signed-out"])("%s says approvals are open, with Back first", (id) => {
+    const view = deriveResultView(caseById(id).state);
+    expect(view.body).toEqual({ kind: "not_started", approving: true });
+    expect(view.actions.primary?.kind).toBe("back_to_checkout");
+  });
+
+  it.each(["open-spots as spot-1", "ready as spot-1"])("%s says no payment has started", (id) => {
+    expect(deriveResultView(caseById(id).state).body).toEqual({ kind: "not_started", approving: false });
+  });
+
+  it.each(CASES.filter((c) => c.situation === "submitting" || c.situation === "confirming" || c.situation === "unresolved"))(
+    "$id offers only Connect when signed out, and Back",
+    (c) => {
+      const view = deriveResultView(c.state);
+      expect(offeredKinds(view)).toEqual(c.state.session === null ? ["connect_wallet", "back_to_checkout"] : ["back_to_checkout"]);
+    },
+  );
+
+  it.each(CASES)("names the attempt on screen for $id", (c) => {
+    const expected = c.state.snapshot.attempt?.id ?? null;
+    expect(deriveRoomView(c.state).status.attempt).toBe(expected);
+    expect(deriveResultView(c.state).status.attempt).toBe(expected);
+  });
+});
+
+describe("page facts change words, never actions", () => {
+  const variants = (state: CheckoutState): readonly PageFacts[] => {
+    const id = state.snapshot.attempt?.id;
+    const elsewhere = FIXTURES.signing.snapshot.attempt!.id;
+    return [
+      { noted: [], roomUnreachable: false },
+      { noted: [], roomUnreachable: true },
+      ...(id === undefined ? [] : (["short_usdc", "short_sol", "no_token_account"] as const).map((cause) => ({ noted: [{ attemptId: id, cause }], roomUnreachable: true }))),
+      { noted: [{ attemptId: elsewhere, cause: "short_sol" }], roomUnreachable: false },
+    ];
+  };
+  const choices = (state: CheckoutState) => {
+    const views = [deriveRoomView(state), deriveResultView(state)];
+    const wallet = state.session?.wallet ?? null;
+    return views.map((v) => ({
+      actions: v.actions,
+      situation: v.status.situation,
+      attempt: v.status.attempt,
+      busy: busyShown(null, state.snapshot.attempt?.id ?? null, v.actions),
+      notices: offeredKinds(v).map((kind) =>
+        views.map((w) => noticeApplies({ text: "", followUp: null, wallet, raisedBy: [v.actions.primary, ...v.actions.secondary].find((a) => a?.kind === kind)! }, { wallet, actions: w.actions })),
+      ),
+    }));
+  };
+
+  it.each(CASES)("for $id on both screens", (c) => {
+    const plain = choices({ ...c.state, page: NOTHING_HEARD });
+    for (const page of variants(c.state)) expect(choices({ ...c.state, page })).toEqual(plain);
+  });
+
+  it("puts the connection line on both screens exactly while the room can't be read", () => {
+    const { state } = caseById("unresolved as spot-2");
+    for (const roomUnreachable of [false, true]) {
+      const page = { noted: [], roomUnreachable };
+      const expected = roomUnreachable ? WORDS.room_unreachable : null;
+      expect(deriveRoomView({ ...state, page }).connection).toBe(expected);
+      expect(deriveResultView({ ...state, page }).connection).toBe(expected);
+    }
+  });
+});
+
+describe("every room the generator builds keeps the honesty rules", () => {
+  const base = FIXTURES.submitting.snapshot;
+  const REFERENCE = base.attempt!.transactionReference!;
+  const receiptFor = (variant: "valid" | "other_seller" | "other_reference") => ({
+    transactionReference: variant === "other_reference" ? REFERENCE.replace(/Txn5$/, "Txn6") : REFERENCE,
+    confirmationStatus: "finalized" as const,
+    sellerWallet: variant === "other_seller" ? SAMPLE_WALLETS.outsider : base.checkout.sellerWallet,
+    totalUnits: base.checkout.totalUnits,
+    contributions: base.participants.map((p) => ({ slot: p.slot, wallet: p.wallet, amountUnits: p.shareUnits })),
+    observedAt: "2026-11-07T14:05:00.000Z",
+    explorerUrl: `javascript:${SENTINEL}`,
+  });
+  const ERRORS = [null, { code: "INVALID_PAYMENT", message: SENTINEL }, { code: "INSUFFICIENT_SOL", message: SENTINEL }] as const;
+  const RECEIPTS = ["none", "valid", "other_seller", "other_reference"] as const;
+  const SESSIONS = [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.seller, SAMPLE_WALLETS.outsider, null].map((wallet) =>
+    wallet === null ? null : { wallet, expiresAt: "2099-01-01T00:00:00.000Z" },
+  );
+  const attemptId = base.attempt!.id;
+  const PAGES: readonly PageFacts[] = [
+    NOTHING_HEARD,
+    { noted: [{ attemptId, cause: "short_usdc" }], roomUnreachable: false },
+    { noted: [{ attemptId: FIXTURES.signing.snapshot.attempt!.id, cause: "short_sol" }], roomUnreachable: true },
+  ];
+
+  type Built = {
+    readonly snapshot: RoomSnapshot;
+    readonly session: Session | null;
+    readonly provesPayment: boolean;
+    readonly views: readonly { readonly page: PageFacts; readonly room: RoomView; readonly result: ResultView }[];
+  };
+  const rooms: { snapshot: RoomSnapshot; provesPayment: boolean }[] = [];
+  for (const phase of PHASES) {
+    rooms.push({ snapshot: { ...base, phase, attempt: null }, provesPayment: false });
+    for (const state of ATTEMPT_STATES)
+      for (const canRetry of [false, true])
+        for (const reference of [null, REFERENCE])
+          for (const error of ERRORS)
+            for (const receipt of RECEIPTS) {
+              const attempt = { ...base.attempt!, state, canRetry, transactionReference: reference, error, receipt: receipt === "none" ? null : receiptFor(receipt) };
+              const provesPayment = phase === "paid" && state === "confirmed" && receipt === "valid" && reference !== null;
+              rooms.push({ snapshot: { ...base, phase, attempt }, provesPayment });
+            }
+  }
+  const built: Built[] = rooms.flatMap(({ snapshot, provesPayment }) =>
+    SESSIONS.map((session) => ({
+      snapshot,
+      session,
+      provesPayment,
+      views: PAGES.map((page) => {
+        const state: CheckoutState = { snapshot, session, source: { kind: "live", links: checkoutLinks(snapshot.checkout.id) }, page };
+        return { page, room: deriveRoomView(state), result: deriveResultView(state) };
+      }),
+    })),
+  );
+
+  const label = (b: Built) =>
+    `${b.snapshot.phase} ${b.snapshot.attempt?.state ?? "no attempt"} retry=${b.snapshot.attempt?.canRetry} ref=${b.snapshot.attempt?.transactionReference !== null} error=${b.snapshot.attempt?.error?.code} receipt=${b.snapshot.attempt?.receipt?.sellerWallet.slice(-4)}/${b.snapshot.attempt?.receipt?.transactionReference.slice(-4)} as ${b.session?.wallet.slice(-4) ?? "signed out"}`;
+  const breaking = (holds: (b: Built) => boolean) => built.filter((b) => !holds(b)).slice(0, 5).map(label);
+
+  it(`builds every combination (${built.length} rooms and viewers)`, () => {
+    expect(built.length).toBe(PHASES.length * (1 + ATTEMPT_STATES.length * 2 * 2 * ERRORS.length * RECEIPTS.length) * SESSIONS.length);
+    expect(built.filter((b) => b.provesPayment).length).toBeGreaterThan(0);
+  });
+
+  it("says paid, shows a receipt and links the explorer only when the room proves the payment", () => {
+    const paidIn = (v: Built["views"][number]) =>
+      [v.room.status.situation === "paid", v.result.status.situation === "paid", v.result.body.kind === "paid", offeredKinds(v.result).includes("view_on_explorer")];
+    expect(breaking((b) => b.views.every((v) => paidIn(v).every((paid) => paid === b.provesPayment)))).toEqual([]);
+  });
+
+  it("stops polling exactly when the screen shows a receipt", () => {
+    expect(breaking((b) => pollPlan(b.snapshot, b.session).stop === b.provesPayment)).toEqual([]);
+  });
+
+  it("offers nothing but Connect and Back while a payment is in progress or unresolved", () => {
+    const allowed = (b: Built) => (b.session === null ? ["connect_wallet", "back_to_checkout"] : ["back_to_checkout"]).join();
+    const settled = (kind: ResultView["body"]["kind"]) => kind !== "in_progress" && kind !== "unresolved";
+    expect(breaking((b) => b.views.every((v) => settled(v.result.body.kind) || offeredKinds(v.result).join() === allowed(b)))).toEqual([]);
+  });
+
+  it("never shows the server's message or explorer URL", () => {
+    expect(breaking((b) => b.views.every((v) => !JSON.stringify([v.room, v.result]).includes(SENTINEL)))).toEqual([]);
+  });
+
+  it("gives a reason exactly for a failed attempt, and mentions a paid fee only when it was sent", () => {
+    const honest = (b: Built, result: ResultView) => {
+      const reason = result.body.kind === "needs_attention" ? result.body.reason : null;
+      if ((reason !== null) !== (result.status.situation === "failed")) return false;
+      return reason === null || /may have paid/.test(reason.happened) === ((b.snapshot.attempt?.transactionReference ?? null) !== null);
+    };
+    expect(breaking((b) => b.views.every((v) => honest(b, v.result)))).toEqual([]);
+  });
+
+  it("changes words only with page facts, and shows the connection line exactly while the room is unreachable", () => {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    expect(
+      breaking((b) => b.views.every((v) => same(v.room.actions, b.views[0]!.room.actions) && same(v.result.actions, b.views[0]!.result.actions))),
+    ).toEqual([]);
+    expect(breaking((b) => b.views.every((v) => (v.room.connection !== null && v.result.connection !== null) === v.page.roomUnreachable))).toEqual([]);
   });
 });

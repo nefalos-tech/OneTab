@@ -38,9 +38,10 @@ for (const c of fixtureCases()) {
     const primary = page.locator("[data-action='primary']");
     expect(await primary.count()).toBeLessThanOrEqual(1);
     if (view.actions.primary) await expect(primary).toContainText(ACTIONS[view.actions.primary.kind].label);
-    if ("body" in view && view.body.kind === "needs_attention" && view.body.detail) {
-      const reason = page.getByText(view.body.detail, { exact: true });
-      await expect(reason).toBeVisible();
+    if ("body" in view && view.body.kind === "needs_attention" && view.body.reason) {
+      const reason = page.locator("[data-status-reason]");
+      await expect(reason).toHaveAttribute("data-reason-from", view.body.reason.from);
+      await expect(reason).toHaveText(`${view.body.reason.happened}${view.body.reason.next ?? ""}`);
       await expectBefore(page.locator("[data-status-line]"), reason);
       await expectBefore(reason, page.locator("[data-action]").first());
     }
