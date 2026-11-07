@@ -1,16 +1,22 @@
-import type { Result } from "@/lib/wallet/environment";
+import type { PaymentApproval, Result } from "@/lib/wallet/environment";
 import type { CreateRequest } from "./checkout-view";
 import {
   isErrorCode,
   isRecord,
+  parseAttemptSummary,
   parsePublicConfig,
   parseRoomSnapshot,
+  parseSigningPayload,
+  type ApprovalUpload,
+  type AttemptId,
+  type AttemptSummary,
   type CheckoutId,
   type ClientRequestId,
   type CreateCheckoutBody,
   type ErrorCode,
   type PublicConfig,
   type RoomSnapshot,
+  type SigningPayload,
 } from "./contracts";
 
 export type FetchLike = (path: string, init: RequestInit) => Promise<Response>;
@@ -24,7 +30,7 @@ const TIMEOUT_MS = 10_000;
 
 export async function send(
   fetchImpl: FetchLike,
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   body?: object,
 ): Promise<Reply> {
@@ -52,24 +58,55 @@ export async function send(
 
 export type RoomReadProblem = "not_found" | "unavailable";
 
-export type RequestProblem = "signed_out" | "room_full" | "rate_limited" | "refused" | "unavailable";
+/**
+ * - `room_changed`: the room moved on before the request landed, such as an attempt freezing it or a
+ *   payer no longer ready. The room on screen is out of date.
+ * - `not_funded`: the payment can't be prepared until the wallets hold what it needs.
+ */
+export type RequestProblem =
+  | "signed_out"
+  | "room_full"
+  | "room_changed"
+  | "not_funded"
+  | "rate_limited"
+  | "refused"
+  | "unavailable";
 
 export type CheckoutApi = {
   readConfig(): Promise<Result<PublicConfig, "unavailable">>;
   readRoom(id: CheckoutId): Promise<Result<RoomSnapshot, RoomReadProblem>>;
   create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
+  setReady(id: CheckoutId, ready: boolean): Promise<Result<RoomSnapshot, RequestProblem>>;
+  /** A start while an attempt is active answers that same attempt. */
+  startAttempt(id: CheckoutId): Promise<Result<AttemptSummary, RequestProblem>>;
+  signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem>>;
+  /** The same approval uploaded twice answers the same result. */
+  uploadApproval(id: AttemptId, approval: PaymentApproval): Promise<Result<AttemptSummary, RequestProblem>>;
+  refreshAttempt(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
+  decline(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
 };
 
 const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem, "signed_out">>> = {
   ROOM_FULL: "room_full",
+  ROOM_NOT_READY: "room_changed",
+  ATTEMPT_NOT_FOUND: "room_changed",
+  ATTEMPT_NOT_SIGNABLE: "room_changed",
+  SIGNATURES_INCOMPLETE: "room_changed",
+  RETRY_BLOCKED: "room_changed",
+  CHECKOUT_PAID: "room_changed",
+  INSUFFICIENT_USDC: "not_funded",
+  INSUFFICIENT_SOL: "not_funded",
+  TOKEN_ACCOUNT_MISSING: "not_funded",
   RATE_LIMITED: "rate_limited",
   INVALID_INPUT: "refused",
   FORBIDDEN: "refused",
   ORIGIN_MISMATCH: "refused",
   IDEMPOTENCY_CONFLICT: "refused",
   CHECKOUT_NOT_FOUND: "refused",
-  CHECKOUT_PAID: "refused",
+  MESSAGE_MISMATCH: "refused",
+  INVALID_SIGNATURE: "refused",
+  INVALID_PAYMENT: "refused",
 };
 
 const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
@@ -103,12 +140,45 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
       const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/join`);
       return reply.kind === "data" ? roomOf(reply.data, id) : failureOf(reply);
     },
+    async setReady(id, ready) {
+      const reply = await send(fetchImpl, "PUT", `/api/checkouts/${id}/readiness`, { ready });
+      return reply.kind === "data" ? roomOf(reply.data, id) : failureOf(reply);
+    },
+    async startAttempt(id) {
+      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: null });
+      return reply.kind === "data" ? attemptOf(reply.data, null) : failureOf(reply);
+    },
+    async signingPayload(id) {
+      const reply = await send(fetchImpl, "GET", `/api/attempts/${id}/signing-payload`);
+      if (reply.kind !== "data") return failureOf(reply);
+      const payload = parseSigningPayload(reply.data);
+      return payload !== null && payload.attemptId === id ? { ok: true, value: payload } : UNAVAILABLE;
+    },
+    async uploadApproval(id, approval) {
+      const body: ApprovalUpload = { messageHash: approval.messageHash, signatureBase64: approval.signature };
+      const reply = await send(fetchImpl, "POST", `/api/attempts/${id}/signatures`, body);
+      return reply.kind === "data" ? attemptOf(reply.data, id) : failureOf(reply);
+    },
+    async refreshAttempt(id) {
+      const reply = await send(fetchImpl, "POST", `/api/attempts/${id}/refresh`);
+      return reply.kind === "data" ? attemptOf(reply.data, id) : failureOf(reply);
+    },
+    async decline(id) {
+      const reply = await send(fetchImpl, "POST", `/api/attempts/${id}/decline`);
+      return reply.kind === "data" ? attemptOf(reply.data, id) : failureOf(reply);
+    },
   };
 }
 
 function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailable"> {
   const snapshot = parseRoomSnapshot(data);
   return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
+}
+
+/** `id` is the attempt the request named, or null for a start, which may answer any attempt. */
+function attemptOf(data: unknown, id: AttemptId | null): Result<AttemptSummary, "unavailable"> {
+  const attempt = parseAttemptSummary(data);
+  return attempt !== null && (id === null || attempt.id === id) ? { ok: true, value: attempt } : UNAVAILABLE;
 }
 
 function failureOf(reply: Exclude<Reply, { readonly kind: "data" }>): { readonly ok: false; readonly failure: RequestProblem } {

@@ -1,8 +1,10 @@
 import type {
   Address,
+  AttemptId,
   AttemptSummary,
   CheckoutId,
   ClientRequestId,
+  Network,
   PayerCount,
   PublicConfig,
   Receipt,
@@ -134,7 +136,7 @@ type ActionPayload = {
   readonly mark_not_ready: NoPayload;
   readonly start_payment: NoPayload;
   readonly approve: NoPayload;
-  readonly retry: { readonly retryOfAttemptId: string };
+  readonly retry: { readonly retryOfAttemptId: AttemptId };
   readonly view_status: Href;
   readonly view_receipt: Href;
   readonly back_to_checkout: Href;
@@ -145,6 +147,29 @@ type ActionPayload = {
 };
 export type ActionOf<K extends ActionKind> = { [P in K]: { readonly kind: P } & ActionPayload[P] }[K];
 export type Action = ActionOf<ActionKind>;
+
+/**
+ * The payment a payer approves, exactly as their screen shows it. It draws the approval summary, and
+ * payment-check compares the signing payload against it, so what the payer read is what the wallet signs.
+ * The room has no token accounts, so neither do the terms.
+ */
+export type ApprovalTerms = {
+  readonly checkoutId: CheckoutId;
+  readonly attemptId: AttemptId;
+  readonly network: Network;
+  readonly mint: Address;
+  readonly tokenDecimals: number;
+  readonly totalUnits: TokenUnits;
+  readonly seller: Address;
+  /** The organizer, who pays the network fee. */
+  readonly feePayer: Address;
+  /** Every share, in slot order. */
+  readonly contributions: readonly { readonly slot: number; readonly wallet: Address; readonly amountUnits: TokenUnits }[];
+  /** The viewer, one of the contributions. */
+  readonly payer: Address;
+  /** The attempt's expiry height, once the server has one. */
+  readonly lastValidBlockHeight: bigint | null;
+};
 
 export type ActionsView = {
   readonly primary: Action | null;
@@ -166,7 +191,7 @@ export function noticeApplies(notice: Notice, now: { readonly wallet: Address | 
 
 export type Recovery =
   | { readonly kind: "on_hold" }
-  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: string }
+  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: AttemptId }
   | { readonly kind: "waiting_for_organizer" };
 
 export type ResultBody =

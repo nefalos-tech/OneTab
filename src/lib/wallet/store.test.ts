@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Address, Session } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
 import {
   authMessage,
-  type BridgeResult,
   type ChallengeId,
   type ServiceResult,
   type SignatureBase64,
@@ -226,12 +226,9 @@ describe("session store with the sample wallet", () => {
     expect(state()).toMatchObject({ kind: "connected", account: BEA, problem: "sign_rejected" });
   });
 
-  it("refuses a payment signature without opening a prompt", async () => {
+  it("refuses a payment approval without opening a prompt", async () => {
     const env = sampleEnvironment(SEED, { wallet: BEA, expiresAt: FAR_EXPIRY });
-    const result: BridgeResult<never> = await env.environment.bridge.signPayment({
-      account: BEA,
-      payload: { __pending: "B1 SigningPayload" },
-    });
+    const result = await env.environment.bridge.signPayment({ account: BEA } as CheckedPayment);
     expect(result).toEqual({ ok: false, failure: "failed" });
     expect(env.wallet.view().prompt).toBeNull();
   });

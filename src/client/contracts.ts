@@ -7,10 +7,18 @@ export type Address = string & { readonly __brand: "Address" };
 /** The UUID of a real checkout, in lowercase. A `sample-<name>` route segment can never parse as one. */
 export type CheckoutId = string & { readonly __brand: "CheckoutId" };
 
+/** The UUID of a payment attempt, in lowercase. The only value that goes into an /api/attempts/... path. */
+export type AttemptId = string & { readonly __brand: "AttemptId" };
+
+/** Lowercase hex SHA-256 of a payment's exact message bytes. */
+export type MessageHash = string & { readonly __brand: "MessageHash" };
+
 export const U64_MAX = 18446744073709551615n;
 
+const isU64Decimal = (s: string): boolean => /^(0|[1-9][0-9]*)$/.test(s) && BigInt(s) <= U64_MAX;
+
 export function isTokenUnits(s: string): s is TokenUnits {
-  return /^(0|[1-9][0-9]*)$/.test(s) && BigInt(s) <= U64_MAX;
+  return isU64Decimal(s);
 }
 
 export function looksLikeAddress(s: string): s is Address {
@@ -21,14 +29,25 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export function isCheckoutId(s: string): s is CheckoutId {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s);
+  return UUID.test(s);
+}
+
+export function isAttemptId(s: string): s is AttemptId {
+  return UUID.test(s);
 }
 
 /** A UUID names the same checkout in any case, so every request, link and comparison uses one spelling. */
 export function parseCheckoutId(text: string): CheckoutId | null {
   const id = text.toLowerCase();
   return isCheckoutId(id) ? id : null;
+}
+
+export function parseAttemptId(text: string): AttemptId | null {
+  const id = text.toLowerCase();
+  return isAttemptId(id) ? id : null;
 }
 
 export type Network = "devnet";
@@ -138,10 +157,11 @@ export type Receipt = {
 };
 
 export type AttemptSummary = {
-  readonly id: string;
+  readonly id: AttemptId;
   readonly state: AttemptState;
   readonly signedWallets: readonly Address[];
   readonly transactionReference: string | null;
+  /** A u64 decimal string. */
   readonly lastValidBlockHeight: string | null;
   readonly error: AttemptError | null;
   /** Server decision. The only input that can enable Try again. */
@@ -172,6 +192,36 @@ export type AuthChallenge = { readonly challengeId: string; readonly messageBase
 /** PROVISIONAL(B1): POST /api/auth/verify body. */
 export type AuthVerifyRequest = { readonly challengeId: string; readonly signatureBase64: string };
 
+/** GET /api/attempts/:attemptId/signing-payload, with its bytes and numbers decoded. */
+export type SigningPayload = {
+  readonly attemptId: AttemptId;
+  readonly checkoutId: CheckoutId;
+  readonly transaction: Uint8Array;
+  readonly message: Uint8Array;
+  readonly messageHash: MessageHash;
+  readonly blockhash: string;
+  readonly lastValidBlockHeight: bigint;
+  readonly payment: {
+    readonly network: Network;
+    readonly mint: Address;
+    readonly tokenDecimals: number;
+    readonly sellerWallet: Address;
+    readonly sellerTokenAccount: Address;
+    readonly feePayerWallet: Address;
+    /** One per payer, in slot order. */
+    readonly contributions: readonly PaymentContribution[];
+  };
+};
+
+export type PaymentContribution = {
+  readonly slot: number;
+  readonly wallet: Address;
+  readonly sourceTokenAccount: Address;
+  readonly amountUnits: TokenUnits;
+};
+
+export type ApprovalUpload = { readonly messageHash: MessageHash; readonly signatureBase64: string };
+
 export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
   if (!isRecord(data) || !isOneOf(data.phase, PHASES)) return null;
   const checkout = parseCheckout(data.checkout);
@@ -180,6 +230,56 @@ export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
   const attempt = data.attempt === null ? null : parseAttempt(data.attempt, checkout.payerCount);
   if (participants === undefined || attempt === undefined) return null;
   return { checkout, participants, phase: data.phase, attempt };
+}
+
+/** An attempt route's answer. It carries no payer count, so receipt slots are bounded by the largest checkout. */
+export function parseAttemptSummary(data: unknown): AttemptSummary | null {
+  return parseAttempt(data, 3) ?? null;
+}
+
+/**
+ * Checks the payload's shape only: ids, bytes that decode, the hash, addresses, u64 numbers, Devnet, and
+ * two or three contributions in slot order. Whether it is the payment the screen showed is payment-check's job.
+ */
+export function parseSigningPayload(data: unknown): SigningPayload | null {
+  if (!isRecord(data) || !isRecord(data.payment)) return null;
+  const { messageHash, blockhash, lastValidBlockHeight } = data;
+  const { network, mint, tokenDecimals, sellerWallet, sellerTokenAccount, feePayerWallet } = data.payment;
+  const attemptId = typeof data.attemptId === "string" ? parseAttemptId(data.attemptId) : null;
+  const checkoutId = typeof data.checkoutId === "string" ? parseCheckoutId(data.checkoutId) : null;
+  const transaction = typeof data.transactionBase64 === "string" ? decodeBase64(data.transactionBase64) : null;
+  const message = typeof data.messageBase64 === "string" ? decodeBase64(data.messageBase64) : null;
+  const contributions = listOf(data.payment.contributions, parsePaymentContribution);
+  const inSlotOrder =
+    contributions !== undefined &&
+    (contributions.length === 2 || contributions.length === 3) &&
+    contributions.every((c, index) => c.slot === index);
+  return attemptId !== null &&
+    checkoutId !== null &&
+    transaction !== null &&
+    message !== null &&
+    typeof messageHash === "string" &&
+    /^[0-9a-f]{64}$/.test(messageHash) &&
+    isAddress(blockhash) &&
+    isU64(lastValidBlockHeight) &&
+    network === "devnet" &&
+    isAddress(mint) &&
+    isDecimals(tokenDecimals) &&
+    isAddress(sellerWallet) &&
+    isAddress(sellerTokenAccount) &&
+    isAddress(feePayerWallet) &&
+    inSlotOrder
+    ? {
+        attemptId,
+        checkoutId,
+        transaction,
+        message,
+        messageHash: messageHash as MessageHash,
+        blockhash,
+        lastValidBlockHeight: BigInt(lastValidBlockHeight),
+        payment: { network, mint, tokenDecimals, sellerWallet, sellerTokenAccount, feePayerWallet, contributions },
+      }
+    : null;
 }
 
 export function parsePublicConfig(data: unknown): PublicConfig | null {
@@ -218,15 +318,16 @@ function parseParticipant(data: unknown, payerCount: PayerCount): Participant | 
 
 function parseAttempt(data: unknown, payerCount: PayerCount): AttemptSummary | undefined {
   if (!isRecord(data)) return undefined;
-  const { id, state, transactionReference, lastValidBlockHeight, canRetry } = data;
+  const { state, transactionReference, lastValidBlockHeight, canRetry } = data;
+  const id = typeof data.id === "string" ? parseAttemptId(data.id) : null;
   const signedWallets = listOf(data.signedWallets, (w) => (isAddress(w) ? w : undefined));
   const error = data.error === null ? null : parseAttemptError(data.error);
   const receipt = data.receipt === null ? null : parseReceipt(data.receipt, payerCount);
-  return typeof id === "string" &&
+  return id !== null &&
     isOneOf(state, ATTEMPT_STATES) &&
     signedWallets !== undefined &&
     isStringOrNull(transactionReference) &&
-    isStringOrNull(lastValidBlockHeight) &&
+    (lastValidBlockHeight === null || isU64(lastValidBlockHeight)) &&
     error !== undefined &&
     typeof canRetry === "boolean" &&
     receipt !== undefined
@@ -261,6 +362,20 @@ function parseContribution(data: unknown, payerCount: PayerCount): ReceiptContri
   return isSlot(slot, payerCount) && isAddress(wallet) && isUnits(amountUnits) ? { slot, wallet, amountUnits } : undefined;
 }
 
+function parsePaymentContribution(data: unknown): PaymentContribution | undefined {
+  if (!isRecord(data)) return undefined;
+  const { slot, wallet, sourceTokenAccount, amountUnits } = data;
+  return isSlot(slot, 3) && isAddress(wallet) && isAddress(sourceTokenAccount) && isUnits(amountUnits)
+    ? { slot, wallet, sourceTokenAccount, amountUnits }
+    : undefined;
+}
+
+/** Strict standard base64 with padding, as contracts.md sends bytes. Empty bytes are no payment. */
+function decodeBase64(text: string): Uint8Array | null {
+  if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return null;
+  return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+}
+
 function listOf<T>(data: unknown, parse: (item: unknown) => T | undefined): readonly T[] | undefined {
   if (!Array.isArray(data)) return undefined;
   const items: T[] = [];
@@ -278,6 +393,7 @@ function isOneOf<T extends string>(value: unknown, options: readonly T[]): value
 
 const isAddress = (value: unknown): value is Address => typeof value === "string" && looksLikeAddress(value);
 const isUnits = (value: unknown): value is TokenUnits => typeof value === "string" && isTokenUnits(value);
+const isU64 = (value: unknown): value is string => typeof value === "string" && isU64Decimal(value);
 const isStringOrNull = (value: unknown): value is string | null => value === null || typeof value === "string";
 const isTimestamp = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 const isSlot = (value: unknown, payerCount: PayerCount): value is number =>

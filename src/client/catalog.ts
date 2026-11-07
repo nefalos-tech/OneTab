@@ -1,6 +1,8 @@
+import type { SignFailure } from "@/lib/wallet/environment";
 import type { Problem } from "@/lib/wallet/machine";
 import type { RequestProblem } from "./api";
 import type { Network } from "./contracts";
+import type { CheckFailure } from "./payment-check";
 
 export type Screen = "room" | "result";
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
@@ -153,12 +155,23 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
+/** `signed_out` and `stale` have no words, because the wallet status already says what happened. */
+export type ProblemWithWords = Exclude<RequestProblem | CheckFailure | SignFailure, "signed_out" | "stale">;
+
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
+  room_changed: "The checkout moved on before this went through. It shows the latest now.",
+  not_funded:
+    "The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent.",
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
   refused: "OneTab couldn't accept this, so nothing changed. Reload the page and try again.",
   unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",
-} as const satisfies Record<Exclude<RequestProblem, "signed_out">, string>;
+  mismatch: "The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved.",
+  unsupported: "Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved.",
+  rejected: "You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone.",
+  busy: "Your wallet already has an approval request open. Finish it there first.",
+  failed: "Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again.",
+} as const satisfies Record<ProblemWithWords, string>;
 
 export const NETWORK_LABELS = { devnet: "Test USDC on Solana Devnet" } as const satisfies Record<Network, string>;
 

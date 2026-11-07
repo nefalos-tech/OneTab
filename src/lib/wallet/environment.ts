@@ -1,4 +1,5 @@
-import type { Address, Session } from "@/client/contracts";
+import type { Address, MessageHash, Session } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
 
 /** Every port call resolves. Failures are values the machine branches on, never exceptions. */
 export type Result<T, F extends string> =
@@ -30,7 +31,27 @@ export type WalletCapabilities = {
   readonly signTransaction: boolean;
 };
 
-export type SigningPayload = { readonly __pending: "B1 SigningPayload" };
+/** One payer's approval of a payment: their wallet's own signature over the message `messageHash` names. */
+export type PaymentApproval = { readonly messageHash: MessageHash; readonly signature: SignatureBase64 };
+
+/**
+ * Why a payment approval didn't happen.
+ * - `rejected`: the wallet answered 4001, or the payer pressed Cancel. Nothing reaches the server.
+ * - `stale`: the identity the signer was bound to stopped being current before the wallet answered.
+ *   An identity change wins over any wallet answer, so nothing is uploaded.
+ * - `busy`: a payment prompt is already open in this browser, so no second one opens.
+ * - `failed`: anything else, including a wallet that returned a changed transaction.
+ */
+export type SignFailure = "rejected" | "stale" | "busy" | "failed";
+
+/** Components get one from useWalletSession(). It is bound to the identity of the render that offered Approve. */
+export interface PaymentSigner {
+  /**
+   * Asks the wallet to approve `payment` without sending it. After a success, the same message returns
+   * the same approval with no prompt until the identity changes.
+   */
+  sign(payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+}
 
 /**
  * contracts.md's WalletBridge. One instance per environment.
@@ -51,7 +72,13 @@ export interface WalletBridge {
     readonly account: Address;
     readonly message: AuthMessage;
   }): Promise<BridgeResult<SignatureBase64>>;
-  signPayment(input: { readonly account: Address; readonly payload: SigningPayload }): Promise<BridgeResult<never>>;
+  /**
+   * Asks the wallet to approve `payment.transaction`, exactly as given, without sending it. Refuses
+   * without prompting when `payment.account` isn't the selected account. Returns only that account's
+   * signature, after checking the returned transaction has the same message and no other signature.
+   * The returned transaction never leaves the bridge.
+   */
+  signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>>;
   onAccountChange(listener: (account: Address | null) => void): () => void;
 }
 

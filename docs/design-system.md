@@ -357,9 +357,16 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | Request problem | Notice |
 | --- | --- |
 | `room_full` | Someone took the last spot first. This checkout is full. |
+| `room_changed` | The checkout moved on before this went through. It shows the latest now. |
+| `not_funded` | The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent. |
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
+| `mismatch` | The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved. |
+| `unsupported` | Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved. |
+| `rejected` | You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone. |
+| `busy` | Your wallet already has an approval request open. Finish it there first. |
+| `failed` | Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again. |
 
 | Word | Text |
 | --- | --- |
