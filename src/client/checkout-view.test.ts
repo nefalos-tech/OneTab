@@ -737,6 +737,10 @@ describe("B1's room fixtures, read with the parser the server uses for rooms", (
     null,
   ];
 
+  it("include an attempt whose error carries a message, so the check below that no view shows it can fail", () => {
+    expect(Object.values(roomFixtures.data).some((room) => room.attempt?.error?.message)).toBe(true);
+  });
+
   it.each(Object.entries(SITUATION_OF))("%s parses and every viewer sees %s", (name, situation) => {
     const room = parseRoomSnapshot(roomFixtures.data[name as keyof typeof SITUATION_OF]);
     if (room === null) throw new Error(`B1's ${name} fixture doesn't parse, so the server would fail every read of such a room`);
@@ -745,6 +749,7 @@ describe("B1's room fixtures, read with the parser the server uses for rooms", (
       const [roomView, result] = [deriveRoomView(state), deriveResultView(state)];
       expect(roomView.status.situation).toBe(situation);
       expect(result.status.situation).toBe(situation);
+      if (room.attempt?.error) expect(JSON.stringify([roomView, result])).not.toContain(room.attempt.error.message);
       const organizer = session?.wallet === room.checkout.organizerWallet;
       const replaceable = room.attempt !== null && room.attempt.canRetry && (situation === "failed" || situation === "expired");
       expect(result.actions.primary?.kind === "retry", session?.wallet ?? "signed out").toBe(organizer && replaceable);

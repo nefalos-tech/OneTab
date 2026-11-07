@@ -2,15 +2,14 @@ import { describe, expect, it } from "vitest";
 import { SITUATIONS, type Situation } from "./catalog";
 import { looksLikeAddress, type Phase, type RoomSnapshot } from "./contracts";
 import { deriveRoomView } from "./checkout-view";
-import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
+import { SAMPLE_CONFIG, SAMPLE_WALLETS, hasPaidMarker, type SampleName } from "./fixture-data";
 import { FIXTURES, fixtureCases, parseCheckoutRef, parseFixtureFlag, personaParam, sampleIndex } from "./fixtures";
 
 const ENTRIES = Object.entries(FIXTURES);
 
-function contractPhase(s: RoomSnapshot): Phase {
+function contractPhase(s: RoomSnapshot, paidMarker: boolean): Phase {
   const a = s.attempt;
-  if (a === null && s.phase === "paid") return "paid";
-  if (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized") return "paid";
+  if (paidMarker || (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized")) return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
     return "needs_attention";
   if (a) return "paying";
@@ -22,7 +21,7 @@ describe.each(ENTRIES)("fixture %s is a snapshot the server could send", (name, 
   const { checkout, participants, attempt } = entry.snapshot;
 
   it("has the phase contracts.md derives", () => {
-    expect(entry.snapshot.phase).toBe(contractPhase(entry.snapshot));
+    expect(entry.snapshot.phase).toBe(contractPhase(entry.snapshot, hasPaidMarker(name as SampleName)));
   });
 
   it("splits shares by the spec's remainder rule, organizer in slot 0", () => {

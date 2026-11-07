@@ -235,7 +235,7 @@ const offered = (actions: ActionsView): readonly Action[] =>
 
 declare const replaceableBrand: unique symbol;
 
-export type Replaceable = AttemptId & { readonly [replaceableBrand]: true };
+type Replaceable = AttemptId & { readonly [replaceableBrand]: true };
 
 function replaceable(attempt: AttemptSummary): Replaceable | null {
   return attempt.canRetry && (attempt.state === "failed" || attempt.state === "expired") ? (attempt.id as Replaceable) : null;

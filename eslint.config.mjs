@@ -49,11 +49,16 @@ const NO_DYNAMIC_PAYMENT_CHECK = {
   selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`,
   message: PAYMENT_CHECK_MESSAGE,
 };
-const BRANDS = "/^(Replaceable|VerifiedReceipt)$/";
+const BRAND_MESSAGE = "Only checkout-view.ts makes a Replaceable or VerifiedReceipt, through replaceable() and verifiedReceipt().";
 const NO_BRAND_CASTS = ["TSAsExpression", "TSTypeAssertion"].map((cast) => ({
-  selector: `${cast}[typeAnnotation.typeName.name=${BRANDS}]`,
-  message: "Only checkout-view.ts makes a Replaceable or VerifiedReceipt, through replaceable() and verifiedReceipt().",
+  selector: `${cast} > .typeAnnotation Identifier[name=/^(Replaceable|VerifiedReceipt)$/]`,
+  message: BRAND_MESSAGE,
 }));
+const NO_BRAND_IMPORTS = {
+  regex: "(^|/)checkout-view(\\.[cm]?[jt]sx?)?$",
+  importNames: ["Replaceable", "VerifiedReceipt"],
+  message: BRAND_MESSAGE,
+};
 /** ESLint keeps only the last matching block's options for a rule, so each block that sets this lists every entry. */
 const restrictSyntax = (...entries) => ({ "no-restricted-syntax": ["error", ...NO_BRAND_CASTS, ...entries] });
 const NO_CHECK_FACTORY = {
@@ -106,10 +111,10 @@ const CODE = "{ts,tsx,js,jsx,mjs,cjs}";
  * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment.
  */
 const restrictServer = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, ...patterns] }],
+  "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
 const restrict = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, ...patterns] }],
+  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
 
 export default defineConfig([
@@ -146,7 +151,7 @@ export default defineConfig([
   {
     files: ["src/app/api/**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT] }],
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_BRAND_IMPORTS, NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT] }],
     },
   },
   {

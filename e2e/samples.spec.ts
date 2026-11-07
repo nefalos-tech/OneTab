@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { ACTIONS, SITUATIONS } from "../src/client/catalog";
+import { ACTIONS, SITUATIONS, STOP_REASONS } from "../src/client/catalog";
 import { deriveResultView, deriveRoomView } from "../src/client/checkout-view";
 import { FIXTURES, fixtureCases, personaParam } from "../src/client/fixtures";
 import { formatMoney, splitEqually, toTokenUnits } from "../src/client/units";
@@ -65,6 +65,14 @@ for (const [name, entry] of Object.entries(FIXTURES)) {
     await expect(page.locator("[data-situation]")).toHaveAttribute("data-situation", entry.situation);
   });
 }
+
+test("the organizer of failed-not-sent reads the cause their own Start heard, noted by this page", async ({ page }) => {
+  const organizer = fixtureCases().find((c) => c.id === "failed-not-sent as spot-1")!;
+  await page.goto(organizer.state.source.links.result);
+  const reason = page.locator("[data-status-block] [data-status-reason]");
+  await expect(reason).toHaveAttribute("data-reason-from", "this_page");
+  await expect(reason).toHaveText(`${STOP_REASONS.short_usdc.happened}${STOP_REASONS.short_usdc.next}`);
+});
 
 test("the room's primary action sits above the payer list when stacked, and beside the tab card when wide", async ({ page }) => {
   const cases = fixtureCases().filter((c) => SITUATIONS[c.situation].owner === "room" && deriveRoomView(c.state).actions.primary);

@@ -98,7 +98,8 @@ type Spec = {
   readonly purchase: keyof typeof PURCHASES;
   readonly joined?: number;
   readonly ready?: Spots;
-  readonly attempt?: AttemptSpec | "dropped";
+  readonly attempt?: AttemptSpec;
+  readonly paidMarker?: true;
 };
 
 const MASKED: AttemptError = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
@@ -110,7 +111,7 @@ const SPECS = {
   preparing: { purchase: "cabin", attempt: { state: "preparing" } },
   signing: { purchase: "cabin", attempt: { state: "signing", approved: [0] } },
   submitting: { purchase: "cabin", attempt: { state: "submitting", approved: "all", sent: true } },
-  "paid-no-receipt": { purchase: "cabin", attempt: "dropped" },
+  "paid-no-receipt": { purchase: "cabin", paidMarker: true },
   unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true, error: MASKED } },
   declined: { purchase: "cabin", attempt: { state: "declined", approved: [0] } },
   "failed-not-sent": { purchase: "cabin", attempt: { state: "failed", approved: [], canRetry: true, error: MASKED } },
@@ -151,8 +152,8 @@ function build(index: number, spec: Spec): RoomSnapshot {
   const purchase = PURCHASES[spec.purchase];
   const totalUnits = units(purchase.total);
   const shares = splitEqually(totalUnits, purchase.payers);
-  const attempt = spec.attempt === "dropped" ? undefined : spec.attempt;
-  const started = spec.attempt !== undefined;
+  const attempt = spec.attempt;
+  const started = attempt !== undefined || spec.paidMarker === true;
   const joined = started ? purchase.payers : (spec.joined ?? 1);
   const participants = shares.slice(0, joined).map((shareUnits, slot) => ({
     slot,
@@ -195,8 +196,10 @@ function build(index: number, spec: Spec): RoomSnapshot {
       }
     : null;
   const snapshot = { checkout, participants, attempt: summary };
-  return { ...snapshot, phase: phaseOf(snapshot, spec.attempt === "dropped") };
+  return { ...snapshot, phase: phaseOf(snapshot, spec.paidMarker === true) };
 }
+
+export const hasPaidMarker = (name: SampleName): boolean => "paidMarker" in SPECS[name];
 
 export const SNAPSHOTS = Object.fromEntries(
   Object.entries(SPECS).map(([name, spec], index) => [name, build(index, spec)]),
