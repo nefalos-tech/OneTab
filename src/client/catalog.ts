@@ -197,14 +197,20 @@ export const STOP_REASONS = {
   },
 } as const satisfies { readonly [K in StopReason]: StopWords };
 
-export const CAUSE_OF_CODE = {
+export const FUNDING_CAUSE_OF_CODE = {
   INSUFFICIENT_USDC: "short_usdc",
   INSUFFICIENT_SOL: "short_sol",
   TOKEN_ACCOUNT_MISSING: "no_token_account",
-  RPC_UNAVAILABLE: "network_unreachable",
 } as const satisfies Partial<Record<ErrorCode, StopReason>>;
 
-export type FundingCause = (typeof CAUSE_OF_CODE)["INSUFFICIENT_USDC" | "INSUFFICIENT_SOL" | "TOKEN_ACCOUNT_MISSING"];
+export type FundingCause = (typeof FUNDING_CAUSE_OF_CODE)[keyof typeof FUNDING_CAUSE_OF_CODE];
+
+export const FUNDING_CAUSES: readonly FundingCause[] = Object.values(FUNDING_CAUSE_OF_CODE);
+
+export const CAUSE_OF_CODE = {
+  ...FUNDING_CAUSE_OF_CODE,
+  RPC_UNAVAILABLE: "network_unreachable",
+} as const satisfies Partial<Record<ErrorCode, StopReason>>;
 
 const CAUSES_BY_CODE: Partial<Record<ErrorCode, StopReason>> = CAUSE_OF_CODE;
 
@@ -302,6 +308,7 @@ export const WORDS = {
     "Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then.",
   room_unreachable: "Can't reach OneTab right now. This page keeps trying and shows the last update it got.",
   keeps_checking_here: "This page keeps checking the same transaction, and no new payment will start.",
+  retry_stopped: "Your new try stopped before it was sent, so nothing moved. The reason is above.",
   keeps_checking_payers:
     "OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
 } as const;

@@ -10,6 +10,7 @@ import {
   deriveRoomView,
   busyShown,
   noticeApplies,
+  noticeOf,
   ownerOf,
   termsOf,
   type ActionsView,
@@ -375,7 +376,7 @@ describe("a notice applies while its wallet is signed in and its action is offer
     sample: null,
   });
   const join = offering({ kind: "join", checkoutId: FIXTURES["open-spots"].snapshot.checkout.id });
-  const notice: Notice = { text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: join.primary! };
+  const notice: Notice = noticeOf({ text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: join.primary! });
 
   it("applies to the wallet that raised it while the action is the primary or a secondary one", () => {
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: join })).toBe(true);
@@ -401,12 +402,12 @@ describe("a notice applies while its wallet is signed in and its action is offer
     const first = FIXTURES.signing.snapshot;
     const next = { ...first, attempt: { ...first.attempt!, id: FIXTURES.declined.snapshot.attempt!.id } };
     const approve = (room: typeof first) => offering({ kind: "approve", terms: termsOf(room, bea)! });
-    const rejected: Notice = {
+    const rejected: Notice = noticeOf({
       text: REQUEST_PROBLEMS.rejected,
       followUp: { kind: "decline", checkoutId: first.checkout.id, attemptId: first.attempt!.id },
       wallet: bea.wallet,
       raisedBy: approve(first).primary!,
-    };
+    });
 
     it("lasts while Approve is offered for the attempt the payer rejected", () => {
       expect(noticeApplies(rejected, { wallet: bea.wallet, actions: approve(first) })).toBe(true);
@@ -422,11 +423,17 @@ describe("a notice applies while its wallet is signed in and its action is offer
         deriveResultView({ ...caseById("failed-not-sent as spot-1").state, snapshot: room, source: { kind: "live", links: checkoutLinks(room.checkout.id) } }).actions;
       const failed = FIXTURES["failed-not-sent"].snapshot;
       const newer = { ...failed, attempt: { ...failed.attempt!, id: FIXTURES["failed-on-chain"].snapshot.attempt!.id } };
-      const refused: Notice = { text: REQUEST_PROBLEMS.short_usdc, followUp: null, wallet: SAMPLE_WALLETS.organizer, raisedBy: organizerSees(failed).primary! };
+      const refused = noticeOf({ text: REQUEST_PROBLEMS.short_usdc, followUp: null, wallet: SAMPLE_WALLETS.organizer, raisedBy: organizerSees(failed).primary! });
       expect(refused.raisedBy.kind).toBe("retry");
       expect(noticeApplies(refused, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(failed) })).toBe(true);
       expect(organizerSees(newer).primary?.kind).toBe("retry");
       expect(noticeApplies(refused, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(newer) })).toBe(false);
+
+      const stoppedAgain = noticeOf({ ...refused, text: WORDS.retry_stopped }, newer.attempt.id);
+      expect(noticeApplies(stoppedAgain, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(failed) })).toBe(false);
+      expect(noticeApplies(stoppedAgain, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(newer) })).toBe(true);
+      const third = { ...failed, attempt: { ...failed.attempt!, id: FIXTURES.expired.snapshot.attempt!.id } };
+      expect(noticeApplies(stoppedAgain, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(third) })).toBe(false);
     });
   });
 });
@@ -840,7 +847,7 @@ describe("page facts change words, never actions", () => {
       attempt: v.status.attempt,
       busy: busyShown(null, state.snapshot.attempt?.id ?? null, v.actions),
       notices: offeredKinds(v).map((kind) =>
-        views.map((w) => noticeApplies({ text: "", followUp: null, wallet, raisedBy: [v.actions.primary, ...v.actions.secondary].find((a) => a?.kind === kind)! }, { wallet, actions: w.actions })),
+        views.map((w) => noticeApplies(noticeOf({ text: "", followUp: null, wallet, raisedBy: [v.actions.primary, ...v.actions.secondary].find((a) => a?.kind === kind)! }), { wallet, actions: w.actions })),
       ),
     }));
   };

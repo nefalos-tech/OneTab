@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Screen as ScreenName } from "@/client/catalog";
 import { NOTHING_HEARD, ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
-import { live, roomTracker } from "@/client/live-actions";
+import { live } from "@/client/live-actions";
 import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
 import { ResultScreen } from "./result-screen";
@@ -34,7 +34,7 @@ export function Viewer(props: ViewerProps): ReactNode {
 function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly state: CheckoutState }): ReactNode {
   const [received, setReceived] = useState<CheckoutState["snapshot"] | null>(null);
   const [roomUnreachable, setRoomUnreachable] = useState(false);
-  const [track] = useState(() => roomTracker(setReceived, (answered) => setRoomUnreachable(!answered)));
+  const [track] = useState(() => live.tracker(setReceived, (answered) => setRoomUnreachable(!answered)));
   const noted = useSyncExternalStore(live.noted.subscribe, live.noted.current, () => NOTHING_HEARD.noted);
   const { session, expired } = useWalletSession();
   const router = useRouter();

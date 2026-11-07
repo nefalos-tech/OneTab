@@ -1,16 +1,7 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
-import { ACTIONS, CAUSE_OF_CODE, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords } from "./catalog";
-import {
-  NOTHING_HEARD,
-  checkoutLinks,
-  situationOf,
-  type Action,
-  type ActionOf,
-  type ApprovalTerms,
-  type NotedCause,
-  type Replaceable,
-} from "./checkout-view";
+import { ACTIONS, FUNDING_CAUSES, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords } from "./catalog";
+import { NOTHING_HEARD, checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms, type NotedCause } from "./checkout-view";
 import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
@@ -28,7 +19,7 @@ export type Outcome =
   | { readonly kind: "noted"; readonly text: string }
   | { readonly kind: "open"; readonly href: string }
   | { readonly kind: "signed_out" }
-  | { readonly kind: "notice"; readonly text: string; readonly followUp: Action | null };
+  | { readonly kind: "notice"; readonly text: string; readonly followUp: Action | null; readonly about?: AttemptId };
 
 export type Track = <F extends string>(
   intent: "read" | "write",
@@ -37,19 +28,24 @@ export type Track = <F extends string>(
 
 export const untracked: Track = (_intent, request) => request();
 
-export function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track {
+function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track {
   let sent = 0;
   let shown = 0;
   let reported = 0;
   let writesInFlight = 0;
+  let lastWrite = 0;
   return async (intent, request) => {
     sent += 1;
     const ticket = sent;
-    const straddlesWrite = intent === "read" && writesInFlight > 0;
-    if (intent === "write") writesInFlight += 1;
+    const sentDuringWrite = writesInFlight > 0;
+    if (intent === "write") {
+      writesInFlight += 1;
+      lastWrite = ticket;
+    }
     try {
       const answer = await request();
-      const current = !straddlesWrite && ticket > shown;
+      const overlapsWrite = intent === "read" && (sentDuringWrite || lastWrite > ticket);
+      const current = !overlapsWrite && ticket > shown;
       if (answer.ok && current) {
         shown = ticket;
         show(answer.value);
@@ -67,10 +63,14 @@ export function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (an
 
 export type Scope = { readonly track: Track; readonly signer: PaymentSigner };
 
-type RoomContext = { readonly api: CheckoutApi; readonly track: Track; readonly note: (noted: NotedCause) => void };
+type RoomContext = { readonly api: CheckoutApi; readonly track: Track };
+type StartContext = RoomContext & { readonly expect: (refused: Refused) => void };
 /** Approve alone also reaches the wallet's signer and the payment check. */
 type ApproveContext = RoomContext & { readonly signer: PaymentSigner; readonly check: PaymentCheck };
-type Run<K extends LiveKind> = (action: ActionOf<K>, context: K extends "approve" ? ApproveContext : RoomContext) => Promise<Outcome>;
+type Contexts = {
+  readonly [K in LiveKind]: K extends "approve" ? ApproveContext : K extends "start_payment" | "retry" ? StartContext : RoomContext;
+};
+type Run<K extends LiveKind> = (action: ActionOf<K>, context: Contexts[K]) => Promise<Outcome>;
 
 const DONE: Outcome = { kind: "done" };
 const DECLINED_UNSEEN: Outcome = { kind: "noted", text: WORDS.declined };
@@ -119,30 +119,28 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
   return outcomeOfWrite(c, terms.checkoutId, uploaded);
 }
 
-async function startAttempt(c: RoomContext, id: CheckoutId, retryOf: Replaceable | null): Promise<Outcome> {
-  const answer = await writeThenReadRoom(c, id, () => c.api.startAttempt(id, retryOf));
-  if (answer.ok || answer.failure === "unseen") return DONE;
-  if (!isFundingCause(answer.failure)) return settle(c, id, answer.failure);
-  const cause = answer.failure;
-  let noted = false;
-  await c.track("read", async () => {
-    const room = await c.api.readRoom(id);
-    const left = room.ok ? room.value.attempt : null;
-    if (left !== null && left.state === "failed" && left.transactionReference === null && left.id !== retryOf) {
-      c.note({ attemptId: left.id, cause });
-      noted = true;
-    }
-    return room;
+async function startAttempt(c: StartContext, id: CheckoutId, retryOf: AttemptId | null): Promise<Outcome> {
+  const answer = await writeThenReadRoom(c, id, async () => {
+    const started = await c.api.startAttempt(id, retryOf);
+    if (!started.ok && isFundingCause(started.failure)) c.expect({ cause: started.failure, replacing: retryOf });
+    return started;
   });
-  return noted ? DONE : notice(cause);
+  if (answer.ok || answer.failure === "unseen") return DONE;
+  if (!mayLeaveFailed(answer.failure)) return settle(c, id, answer.failure);
+  const read = await readRoomAgain(c, id);
+  const left = read.ok ? read.value.attempt : null;
+  if (!stoppedUnsent(left, retryOf)) return notice(answer.failure);
+  return retryOf === null ? DONE : { kind: "notice", text: WORDS.retry_stopped, followUp: null, about: left.id };
 }
 
-const FUNDING: readonly (RequestProblem | "unseen")[] = [
-  CAUSE_OF_CODE.INSUFFICIENT_USDC,
-  CAUSE_OF_CODE.INSUFFICIENT_SOL,
-  CAUSE_OF_CODE.TOKEN_ACCOUNT_MISSING,
-];
-const isFundingCause = (problem: RequestProblem | "unseen"): problem is FundingCause => FUNDING.includes(problem);
+const isFundingCause = (problem: RequestProblem): problem is FundingCause => (FUNDING_CAUSES as readonly string[]).includes(problem);
+
+/** Payments may have stored the new attempt as failed before it answered a start with one of these. */
+const mayLeaveFailed = (problem: RequestProblem): problem is FundingCause | "refused" | "unavailable" =>
+  isFundingCause(problem) || problem === "refused" || problem === "unavailable";
+
+const stoppedUnsent = (attempt: AttemptSummary | null, replacing: AttemptId | null): attempt is AttemptSummary =>
+  attempt !== null && attempt.state === "failed" && attempt.transactionReference === null && attempt.id !== replacing;
 
 async function roomWrite(c: RoomContext, id: CheckoutId, write: () => Promise<Result<RoomSnapshot, RequestProblem>>): Promise<Outcome> {
   const answer = await c.track("write", write);
@@ -326,16 +324,30 @@ export type NotedCauses = {
 export type Live = {
   run(action: LiveAction, scope: Scope): Promise<Outcome>;
   watch(room: Watched): () => void;
+  tracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track;
   readonly noted: NotedCauses;
 };
 
-function notedMemory(): NotedCauses & { note(noted: NotedCause): void } {
+type Refused = { readonly cause: FundingCause; readonly replacing: AttemptId | null };
+
+/**
+ * A funding refusal names no attempt, so the cause waits for the next room shown with an attempt other
+ * than the one being replaced, and is noted on it only if that attempt stopped before it was sent.
+ */
+function notedMemory(): NotedCauses & { expect(refused: Refused): void; observe(snapshot: RoomSnapshot): void } {
   let noted: readonly NotedCause[] = NOTHING_HEARD.noted;
+  let pending: Refused | null = null;
   const listeners = new Set<() => void>();
   return {
-    note(next) {
-      if (noted.some((n) => n.attemptId === next.attemptId)) return;
-      noted = [...noted, next];
+    expect(refused) {
+      pending = refused;
+    },
+    observe({ attempt }) {
+      if (pending === null || attempt === null || attempt.id === pending.replacing) return;
+      const { cause } = pending;
+      pending = null;
+      if (!stoppedUnsent(attempt, null) || noted.some((n) => n.attemptId === attempt.id)) return;
+      noted = [...noted, { attemptId: attempt.id, cause }];
       for (const listener of listeners) listener();
     },
     current: () => noted,
@@ -357,13 +369,18 @@ export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment
     });
   };
   return {
-    run: (action, scope) => run(action, { ...scope, api, check, note: memory.note }),
+    run: (action, scope) => run(action, { ...scope, api, check, expect: memory.expect }),
     watch: (room) => watch(api, env, room, refreshOnce),
+    tracker: (show, reached) =>
+      roomTracker((snapshot) => {
+        memory.observe(snapshot);
+        show(snapshot);
+      }, reached),
     noted: { subscribe: memory.subscribe, current: memory.current },
   };
 }
 
-function run<K extends LiveKind>(action: ActionOf<K>, context: ApproveContext): Promise<Outcome> {
+function run<K extends LiveKind>(action: ActionOf<K>, context: ApproveContext & StartContext): Promise<Outcome> {
   return RUN[action.kind](action, context);
 }
 

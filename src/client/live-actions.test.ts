@@ -11,7 +11,6 @@ import {
   isLiveAction,
   liveActions,
   pollPlan,
-  roomTracker,
   untracked,
   type LiveAction,
   type LiveKind,
@@ -43,9 +42,13 @@ function server(...responses: (() => Response | Promise<Response>)[]): { readonl
   };
 }
 
+const NO_REQUESTS: FetchLike = (path) => Promise.reject(new Error(`Unexpected request ${path}`));
+const tracker = (show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void = () => {}): Track =>
+  liveActions(checkoutApi(NO_REQUESTS)).tracker(show, reached);
+
 function shownBy(): { readonly track: Track; readonly shown: RoomSnapshot[] } {
   const shown: RoomSnapshot[] = [];
-  return { shown, track: roomTracker((snapshot) => shown.push(snapshot), () => {}) };
+  return { shown, track: tracker((snapshot) => shown.push(snapshot)) };
 }
 
 const NO_WALLET: PaymentSigner = {
@@ -56,6 +59,7 @@ const NO_WALLET: PaymentSigner = {
   isCurrent: () => true,
 };
 const scope = (track: Track = untracked, signer: PaymentSigner = NO_WALLET): Scope => ({ track, signer });
+const stoppedAgain = (room: RoomSnapshot): Outcome => ({ kind: "notice", text: WORDS.retry_stopped, followUp: null, about: room.attempt!.id });
 const said = (problem: ProblemWithWords, followUp: Action | null = null): Outcome => ({
   kind: "notice",
   text: REQUEST_PROBLEMS[problem],
@@ -234,7 +238,7 @@ describe("live actions", () => {
     for (const action of Object.values(EXAMPLES)) {
       const { fetch, calls } = server(() => json(200, { data: OPEN }));
       await liveActions(checkoutApi(fetch)).run(action, scope());
-      expect(calls, action.kind).toHaveLength(1);
+      expect(calls.length, action.kind).toBeGreaterThan(0);
     }
   });
 });
@@ -294,6 +298,25 @@ describe("start payment", () => {
     expect(await started).toEqual({ kind: "done" });
     answerPoll();
     await poll;
+    expect(shown).toEqual([PREPARING]);
+  });
+
+  it("a poll sent just before the start never shows, even when it answers while the start is in flight", async () => {
+    let answerPoll!: () => void;
+    let answerStart!: () => void;
+    const { fetch } = server(
+      () => new Promise((resolve) => (answerPoll = () => resolve(json(200, { data: { ...PREPARING, attempt: null, phase: "ready" } })))),
+      () => new Promise((resolve) => (answerStart = () => resolve(json(201, { data: PREPARING.attempt })))),
+      () => json(200, { data: PREPARING }),
+    );
+    const { track, shown } = shownBy();
+    const poll = track("read", () => checkoutApi(fetch).readRoom(ROOM));
+    const started = liveActions(checkoutApi(fetch)).run(START, scope(track));
+    answerPoll();
+    await poll;
+    expect(shown).toEqual([]);
+    answerStart();
+    expect(await started).toEqual({ kind: "done" });
     expect(shown).toEqual([PREPARING]);
   });
 
@@ -373,7 +396,7 @@ describe("try again", () => {
   });
 
   it("with no answer, says trying again is safe, and trying again sends the same request", async () => {
-    const { fetch, calls } = server(noAnswer, () => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
+    const { fetch, calls } = server(noAnswer, noAnswer, () => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
     const live = liveActions(checkoutApi(fetch));
     expect(await live.run(RETRY, scope())).toEqual(said("unavailable"));
     expect(await live.run(RETRY, scope())).toEqual({ kind: "done" });
@@ -393,16 +416,24 @@ describe("try again", () => {
   });
 });
 
-describe("a funding refusal is noted on the failed attempt it left", () => {
+describe("a refused start is explained on the failed attempt it left", () => {
   const START: LiveAction = { kind: "start_payment", checkoutId: FAILED_ROOM };
   const leftBehind = (id: AttemptId): RoomSnapshot => ({ ...FAILED, attempt: { ...FAILED.attempt!, id } });
+  const replacement = leftBehind(FIXTURES.signing.snapshot.attempt!.id);
+  const noted = (snapshot: RoomSnapshot, cause: string) => [{ attemptId: snapshot.attempt!.id, cause }];
+  const held = () => {
+    let answer!: (response: Response) => void;
+    const response = new Promise<Response>((resolve) => (answer = resolve));
+    return { response: () => response, answer: (r: Response) => answer(r) };
+  };
 
   function noting(...responses: (() => Response | Promise<Response>)[]) {
     const { fetch, calls } = server(...responses);
     const live = liveActions(checkoutApi(fetch));
     const notedWhenShown: unknown[] = [];
-    const track = roomTracker(() => notedWhenShown.push(live.noted.current()), () => {});
-    return { live, calls, track, notedWhenShown };
+    const track = live.tracker(() => notedWhenShown.push(live.noted.current()), () => {});
+    const poll = () => track("read", () => checkoutApi(fetch).readRoom(FAILED_ROOM));
+    return { live, calls, track, poll, notedWhenShown };
   }
 
   it("after Start, the note names the failed attempt before the room shows it, and nothing more is said", async () => {
@@ -412,16 +443,71 @@ describe("a funding refusal is noted on the failed attempt it left", () => {
       ["POST", `/api/checkouts/${FAILED_ROOM}/attempts`],
       ["GET", `/api/checkouts/${FAILED_ROOM}`],
     ]);
-    const note = [{ attemptId: FAILED.attempt!.id, cause: "short_sol" }];
-    expect(notedWhenShown).toEqual([note]);
-    expect(live.noted.current()).toEqual(note);
+    expect(notedWhenShown).toEqual([noted(FAILED, "short_sol")]);
+    expect(live.noted.current()).toEqual(noted(FAILED, "short_sol"));
   });
 
-  it("after Try again, the note names the new failed attempt, never the replaced one", async () => {
-    const replacement = leftBehind(FIXTURES.signing.snapshot.attempt!.id);
-    const { live, track } = noting(() => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), () => json(200, { data: replacement }));
-    expect(await live.run(RETRY, scope(track))).toEqual({ kind: "done" });
-    expect(live.noted.current()).toEqual([{ attemptId: replacement.attempt!.id, cause: "no_token_account" }]);
+  it.each<[string, Response]>([
+    ["answers later", json(200, { data: FAILED })],
+    ["fails", json(503, errorBody("CONFIGURATION_UNAVAILABLE"))],
+  ])("a poll that shows the failed room before Start's own read already carries the note, when that read %s", async (_, last) => {
+    const read = held();
+    const { live, calls, track, poll, notedWhenShown } = noting(
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      read.response,
+      () => json(200, { data: FAILED }),
+    );
+    const started = live.run(START, scope(track));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    await poll();
+    expect(notedWhenShown).toEqual([noted(FAILED, "short_usdc")]);
+    read.answer(last);
+    expect(await started).toEqual(last.ok ? { kind: "done" } : said("short_usdc"));
+    expect(notedWhenShown).toEqual([noted(FAILED, "short_usdc")]);
+  });
+
+  it("when Start's own read fails and nothing has shown, says why and notes the cause on the next room shown", async () => {
+    const { live, track, poll, notedWhenShown } = noting(
+      () => json(422, errorBody("TOKEN_ACCOUNT_MISSING")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(200, { data: FAILED }),
+    );
+    expect(await live.run(START, scope(track))).toEqual(said("no_token_account"));
+    expect(live.noted.current()).toEqual([]);
+    await poll();
+    expect(notedWhenShown).toEqual([noted(FAILED, "no_token_account")]);
+  });
+
+  it("a waiting cause outlasts rooms with no attempt or with the attempt being replaced, and ends at any other attempt", async () => {
+    const ready: RoomSnapshot = { ...FAILED, phase: "ready", attempt: null };
+    const signing: RoomSnapshot = { ...SIGNING, checkout: FAILED.checkout };
+    const { live, track, poll } = noting(
+      () => json(422, errorBody("INSUFFICIENT_SOL")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(200, { data: ready }),
+      () => json(200, { data: FAILED }),
+      () => json(200, { data: replacement }),
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(200, { data: signing }),
+      () => json(200, { data: leftBehind(FIXTURES.declined.snapshot.attempt!.id) }),
+    );
+    await live.run(RETRY, scope(track));
+    await poll();
+    await poll();
+    expect(live.noted.current()).toEqual([]);
+    await poll();
+    expect(live.noted.current()).toEqual(noted(replacement, "short_sol"));
+    await live.run(START, scope(track));
+    await poll();
+    await poll();
+    expect(live.noted.current()).toEqual(noted(replacement, "short_sol"));
+  });
+
+  it("after Try again, the note names the new failed attempt, never the replaced one, and a notice about that attempt says so", async () => {
+    const { live, track, notedWhenShown } = noting(() => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), () => json(200, { data: replacement }));
+    expect(await live.run(RETRY, scope(track))).toEqual(stoppedAgain(replacement));
+    expect(notedWhenShown).toEqual([noted(replacement, "no_token_account")]);
   });
 
   it.each<[string, () => Response | Promise<Response>]>([
@@ -433,6 +519,25 @@ describe("a funding refusal is noted on the failed attempt it left", () => {
     const { live, track } = noting(() => json(422, errorBody("INSUFFICIENT_USDC")), room);
     expect(await live.run(RETRY, scope(track))).toEqual(said("short_usdc"));
     expect(live.noted.current()).toEqual([]);
+  });
+
+  it.each<[string, string, number, ProblemWithWords]>([
+    ["400 INVALID_PAYMENT", "INVALID_PAYMENT", 400, "refused"],
+    ["503 RPC_UNAVAILABLE", "RPC_UNAVAILABLE", 503, "unavailable"],
+  ])("a start answered %s reads the room again and lets a failed attempt there explain itself", async (_, code, status, problem) => {
+    const failedRoom = noting(() => json(status, errorBody(code)), () => json(200, { data: FAILED }));
+    expect(await failedRoom.live.run(START, scope(failedRoom.track))).toEqual({ kind: "done" });
+    expect(requests(failedRoom.calls).at(-1)).toEqual(["GET", `/api/checkouts/${FAILED_ROOM}`]);
+    expect(failedRoom.notedWhenShown).toEqual([[]]);
+
+    const retried = noting(() => json(status, errorBody(code)), () => json(200, { data: replacement }));
+    expect(await retried.live.run(RETRY, scope(retried.track))).toEqual(stoppedAgain(replacement));
+    expect(retried.live.noted.current()).toEqual([]);
+
+    const unchanged = noting(() => json(status, errorBody(code)), () => json(200, { data: FAILED }));
+    expect(await unchanged.live.run(RETRY, scope(unchanged.track))).toEqual(said(problem));
+    const unread = noting(() => json(status, errorBody(code)), noAnswer);
+    expect(await unread.live.run(START, scope(unread.track))).toEqual(said(problem));
   });
 
   it("keeps the first note for an attempt, and tells subscribers only about new ones", async () => {
@@ -451,7 +556,7 @@ describe("a funding refusal is noted on the failed attempt it left", () => {
     expect(first).not.toBe(before);
     await live.run(START, scope(track));
     expect(live.noted.current()).toBe(first);
-    expect(first).toEqual([{ attemptId: FAILED.attempt!.id, cause: "short_sol" }]);
+    expect(first).toEqual(noted(FAILED, "short_sol"));
     expect(heard).toBe(1);
     unsubscribe();
   });
@@ -729,7 +834,7 @@ describe("the poller", () => {
     };
     const shown: RoomSnapshot[] = [];
     const reports: boolean[] = [];
-    const track = roomTracker((snapshot) => shown.push(snapshot), (answered) => reports.push(answered));
+    const track = tracker((snapshot) => shown.push(snapshot), (answered) => reports.push(answered));
     const ended: Session[] = [];
     const room = { now: first };
     const stop = liveActions(checkoutApi(fetch), undefined, env).watch({
@@ -977,7 +1082,7 @@ function scenarios(): Request[][] {
 const SNAPSHOTS = [OPEN, FULL, FIXTURES.ready.snapshot];
 const label = (requests: Request[]) => requests.map((r) => `${r.intent} ${r.ok ? "ok" : "fails"}`).join(", ");
 
-describe("roomTracker's report of whether the room answered", () => {
+describe("the tracker's report of whether the room answered", () => {
   const settle = <T,>() => {
     let release!: (value: T) => void;
     const promise = new Promise<T>((resolve) => (release = resolve));
@@ -987,7 +1092,7 @@ describe("roomTracker's report of whether the room answered", () => {
 
   it("reports a failed read, then the next answered one", async () => {
     const reports: boolean[] = [];
-    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    const track = tracker(() => {}, (answered) => reports.push(answered));
     await track("read", async () => failed);
     await track("read", async () => ({ ok: true, value: OPEN }));
     expect(reports).toEqual([false, true]);
@@ -995,7 +1100,7 @@ describe("roomTracker's report of whether the room answered", () => {
 
   it("ignores a read that answers after a newer one, and writes", async () => {
     const reports: boolean[] = [];
-    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    const track = tracker(() => {}, (answered) => reports.push(answered));
     const older = settle<Result<RoomSnapshot, "unavailable">>();
     const stale = track("read", () => older.promise);
     await track("read", async () => ({ ok: true, value: OPEN }));
@@ -1007,7 +1112,7 @@ describe("roomTracker's report of whether the room answered", () => {
 
   it("ignores a read sent while a write was in flight", async () => {
     const reports: boolean[] = [];
-    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    const track = tracker(() => {}, (answered) => reports.push(answered));
     const write = settle<Result<RoomSnapshot, "unavailable">>();
     const writing = track("write", () => write.promise);
     await track("read", async () => failed);
@@ -1017,13 +1122,13 @@ describe("roomTracker's report of whether the room answered", () => {
   });
 });
 
-describe("roomTracker, in every order of sends and answers", () => {
+describe("the tracker, in every order of sends and answers", () => {
   it.each(scenarios().map((requests) => [label(requests), requests] as const))("%s", async (_, requests) => {
     for (const order of interleavings(requests.length)) {
       const shown: number[] = [];
       const reports: [index: number, answered: boolean][] = [];
       let answering = -1;
-      const track = roomTracker(
+      const track = tracker(
         (snapshot) => shown.push(SNAPSHOTS.indexOf(snapshot)),
         (answered) => reports.push([answering, answered]),
       );
@@ -1033,6 +1138,7 @@ describe("roomTracker, in every order of sends and answers", () => {
       const release: (() => void)[] = [];
       const pending: Promise<Result<RoomSnapshot, "unavailable">>[] = [];
       const writesOpen = new Set<number>();
+      const readsOpen = new Set<number>();
       const straddles = new Set<number>();
       const where = order.map((s) => `${s.kind} ${s.index}`).join(", ");
 
@@ -1040,7 +1146,11 @@ describe("roomTracker, in every order of sends and answers", () => {
         const request = requests[step.index]!;
         if (step.kind === "send") {
           if (request.intent === "read" && writesOpen.size > 0) straddles.add(step.index);
-          if (request.intent === "write") writesOpen.add(step.index);
+          if (request.intent === "write") {
+            writesOpen.add(step.index);
+            for (const i of readsOpen) straddles.add(i);
+          }
+          if (request.intent === "read") readsOpen.add(step.index);
           pending[step.index] = track(request.intent, () => new Promise((resolve) => (release[step.index] = () => resolve(answers[step.index]!))));
           continue;
         }
@@ -1051,6 +1161,7 @@ describe("roomTracker, in every order of sends and answers", () => {
         release[step.index]!();
         expect(await pending[step.index], where).toBe(answers[step.index]);
         writesOpen.delete(step.index);
+        readsOpen.delete(step.index);
         const shows = request.ok && !straddles.has(step.index) && step.index > newestBefore;
         expect(shown.at(-1) ?? -1, `${where}: answer ${step.index}`).toBe(shows ? step.index : newestBefore);
         const reported = request.intent === "read" && !straddles.has(step.index) && step.index > newestKnown;

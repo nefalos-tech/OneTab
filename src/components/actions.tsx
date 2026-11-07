@@ -14,7 +14,7 @@ import {
   type RefObject,
 } from "react";
 import { ACTIONS, WORDS, type ActionKind } from "@/client/catalog";
-import { busyShown, noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
+import { busyShown, noticeApplies, noticeOf, type Action, type ActionsView, type AttemptId, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
@@ -52,8 +52,8 @@ export function ActionGroup({
     // A follow-up keeps the notice that offered it, so its busy label shows there, and what it says next
     // belongs to the action that raised that notice.
     const offeredBy = notice?.followUp?.kind === action.kind ? notice : null;
-    const raise = (text: string, followUp: Action | null) =>
-      setNotice({ text, followUp, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action });
+    const raise = (text: string, followUp: Action | null, about?: AttemptId) =>
+      setNotice(noticeOf({ text, followUp, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action }, about));
     inFlight.current = true;
     if (offeredBy === null) setNotice(null);
     setBusy(action.kind);
@@ -78,7 +78,7 @@ export function ActionGroup({
         if (sentAs) expired(sentAs);
         break;
       case "notice":
-        raise(outcome.text, outcome.followUp);
+        raise(outcome.text, outcome.followUp, outcome.about);
         break;
     }
     setBusy(null);
@@ -86,7 +86,7 @@ export function ActionGroup({
 
   const run = async (action: Action) => {
     if (inFlight.current) return;
-    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action });
+    const say = (text: string, followUp: Action | null = null) => setNotice(noticeOf({ text, followUp, wallet, raisedBy: action }));
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`, actions.sample.followUp);

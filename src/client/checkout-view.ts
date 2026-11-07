@@ -199,12 +199,16 @@ export type Notice = {
   readonly followUp: Action | null;
   readonly wallet: Address | null;
   readonly raisedBy: Action;
+  readonly about: AttemptId | null;
 };
+
+export function noticeOf(notice: Omit<Notice, "about">, about?: AttemptId): Notice {
+  return { ...notice, about: about ?? attemptOf(notice.raisedBy) };
+}
 
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
   const { kind } = notice.raisedBy;
-  const attempt = attemptOf(notice.raisedBy);
-  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === attempt);
+  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === notice.about);
 }
 
 export function busyShown(running: ActionKind | null, prompting: AttemptId | null, actions: ActionsView): ActionKind | null {

@@ -1,5 +1,5 @@
 import type { PaymentApproval, Result } from "@/lib/wallet/environment";
-import { CAUSE_OF_CODE, type FundingCause } from "./catalog";
+import { FUNDING_CAUSE_OF_CODE, type FundingCause } from "./catalog";
 import type { CreateRequest } from "./checkout-view";
 import {
   isErrorCode,
@@ -90,9 +90,7 @@ const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem,
   SIGNATURES_INCOMPLETE: "room_changed",
   RETRY_BLOCKED: "room_changed",
   CHECKOUT_PAID: "room_changed",
-  INSUFFICIENT_USDC: CAUSE_OF_CODE.INSUFFICIENT_USDC,
-  INSUFFICIENT_SOL: CAUSE_OF_CODE.INSUFFICIENT_SOL,
-  TOKEN_ACCOUNT_MISSING: CAUSE_OF_CODE.TOKEN_ACCOUNT_MISSING,
+  ...FUNDING_CAUSE_OF_CODE,
   RATE_LIMITED: "rate_limited",
   INVALID_INPUT: "refused",
   FORBIDDEN: "refused",

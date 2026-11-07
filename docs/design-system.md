@@ -447,6 +447,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `approvals_open` | Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then. |
 | `room_unreachable` | Can't reach OneTab right now. This page keeps trying and shows the last update it got. |
 | `keeps_checking_here` | This page keeps checking the same transaction, and no new payment will start. |
+| `retry_stopped` | Your new try stopped before it was sent, so nothing moved. The reason is above. |
 | `keeps_checking_payers` | OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
