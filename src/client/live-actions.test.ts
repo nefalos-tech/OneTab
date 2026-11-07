@@ -1,18 +1,31 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { Result } from "@/lib/wallet/environment";
+import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
-import { ACTIONS, REQUEST_PROBLEMS, type ActionKind } from "./catalog";
-import type { Action } from "./checkout-view";
+import { ACTIONS, REQUEST_PROBLEMS, type ActionKind, type ProblemWithWords } from "./catalog";
+import { termsOf, type Action } from "./checkout-view";
 import type { ClientRequestId, RoomSnapshot } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
-import { isLiveAction, liveActions, roomTracker, untracked, type LiveAction, type LiveKind, type Track } from "./live-actions";
+import {
+  isLiveAction,
+  liveActions,
+  roomTracker,
+  untracked,
+  type LiveAction,
+  type LiveKind,
+  type Outcome,
+  type Scope,
+  type Track,
+} from "./live-actions";
+import { paymentCheck, type CheckedPayment } from "./payment-check";
+import { wirePayloadFor } from "./payment-fixture";
 
 type Call = { readonly method: string; readonly path: string; readonly body: unknown };
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const errorBody = (code: string) => ({ error: { code, message: "Something the browser never shows." } });
+const noAnswer = () => Promise.reject(new TypeError("fetch failed"));
 
 function server(...responses: (() => Response | Promise<Response>)[]): { readonly fetch: FetchLike; readonly calls: Call[] } {
   const calls: Call[] = [];
@@ -31,6 +44,19 @@ function shownBy(): { readonly track: Track; readonly shown: RoomSnapshot[] } {
   const shown: RoomSnapshot[] = [];
   return { shown, track: roomTracker((snapshot) => shown.push(snapshot)) };
 }
+
+const NO_WALLET: PaymentSigner = {
+  sign: () => {
+    throw new Error("A wallet prompt opened");
+  },
+};
+const scope = (track: Track = untracked, signer: PaymentSigner = NO_WALLET): Scope => ({ track, signer });
+const said = (problem: ProblemWithWords, followUp: Action | null = null): Outcome => ({
+  kind: "notice",
+  text: REQUEST_PROBLEMS[problem],
+  followUp,
+});
+const requests = (calls: readonly Call[]) => calls.map((c) => [c.method, c.path]);
 
 const OPEN = FIXTURES["open-spots"].snapshot;
 const JOINED: RoomSnapshot = {
@@ -51,19 +77,78 @@ const CREATE: Extract<LiveAction, { kind: "create_checkout" }> = {
   clientRequestId: REQUEST_ID,
 };
 const JOIN: Extract<LiveAction, { kind: "join" }> = { kind: "join", checkoutId: ID };
-const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } = { create_checkout: CREATE, join: JOIN };
+
+const PAYER = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
+const SIGNING = FIXTURES.signing.snapshot;
+const ROOM = SIGNING.checkout.id;
+const ATTEMPT = SIGNING.attempt!.id;
+const TERMS = termsOf(SIGNING, PAYER)!;
+const WIRE = wirePayloadFor(SIGNING);
+const APPROVED: RoomSnapshot = { ...SIGNING, attempt: { ...SIGNING.attempt!, signedWallets: [SAMPLE_WALLETS.organizer, PAYER.wallet] } };
+const PREPARING: RoomSnapshot = { ...FIXTURES.preparing.snapshot, checkout: SIGNING.checkout };
+const DECLINED: RoomSnapshot = {
+  ...FIXTURES["declined-on-hold"].snapshot,
+  checkout: SIGNING.checkout,
+  attempt: { ...FIXTURES["declined-on-hold"].snapshot.attempt!, id: ATTEMPT },
+};
+const READY = FIXTURES.ready.snapshot;
+const SIGNATURE = "c2lnbmVkIGJ5IGJlYQ==" as SignatureBase64;
+const APPROVE: Extract<LiveAction, { kind: "approve" }> = { kind: "approve", terms: TERMS };
+const DECLINE: Extract<LiveAction, { kind: "decline" }> = { kind: "decline", checkoutId: ROOM, attemptId: ATTEMPT };
+const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } = {
+  create_checkout: CREATE,
+  join: JOIN,
+  mark_ready: { kind: "mark_ready", checkoutId: ID },
+  mark_not_ready: { kind: "mark_not_ready", checkoutId: ID },
+  start_payment: { kind: "start_payment", checkoutId: ID },
+  approve: APPROVE,
+  decline: DECLINE,
+};
+
+/** Answers every prompt with `answer` and keeps each payment it was shown. */
+function wallet(answer: Result<SignatureBase64, SignFailure>) {
+  const prompts: CheckedPayment[] = [];
+  const signer: PaymentSigner = {
+    sign: async (payment) => {
+      prompts.push(payment);
+      return answer.ok ? { ok: true, value: { messageHash: payment.messageHash, signature: answer.value } } : answer;
+    },
+  };
+  return { prompts, signer };
+}
+
+/** Keeps the store's promise: the same message approved again comes back with no second prompt. */
+function rememberingWallet() {
+  const prompts: CheckedPayment[] = [];
+  const approvals = new Map<string, PaymentApproval>();
+  const signer: PaymentSigner = {
+    sign: async (payment) => {
+      const kept = approvals.get(payment.messageHash);
+      if (kept) return { ok: true, value: kept };
+      prompts.push(payment);
+      const approval = { messageHash: payment.messageHash, signature: SIGNATURE };
+      approvals.set(payment.messageHash, approval);
+      return { ok: true, value: approval };
+    },
+  };
+  return { prompts, signer };
+}
+
+const bytesMatch = paymentCheck(async () => "match");
+const approver = (fetch: FetchLike) => liveActions(checkoutApi(fetch), bytesMatch);
+const upload = (approval: PaymentApproval) => ({ messageHash: approval.messageHash, signatureBase64: approval.signature });
 
 describe("live actions", () => {
   it("create opens the new room's link, with no query", async () => {
     const { fetch } = server(() => json(201, { data: OPEN }));
-    expect(await liveActions(checkoutApi(fetch)).run(CREATE, untracked)).toEqual({ kind: "open", href: `/checkouts/${ID}` });
+    expect(await liveActions(checkoutApi(fetch)).run(CREATE, scope())).toEqual({ kind: "open", href: `/checkouts/${ID}` });
   });
 
   it("create with no answer says trying again is safe, and trying again sends the same request ID", async () => {
-    const { fetch, calls } = server(() => Promise.reject(new TypeError("fetch failed")), () => json(200, { data: OPEN }));
+    const { fetch, calls } = server(noAnswer, () => json(200, { data: OPEN }));
     const live = liveActions(checkoutApi(fetch));
-    expect(await live.run(CREATE, untracked)).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.unavailable });
-    expect(await live.run(CREATE, untracked)).toEqual({ kind: "open", href: `/checkouts/${ID}` });
+    expect(await live.run(CREATE, scope())).toEqual(said("unavailable"));
+    expect(await live.run(CREATE, scope())).toEqual({ kind: "open", href: `/checkouts/${ID}` });
     expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
       ["POST", "/api/checkouts", { ...CREATE.request, clientRequestId: REQUEST_ID }],
       ["POST", "/api/checkouts", { ...CREATE.request, clientRequestId: REQUEST_ID }],
@@ -73,18 +158,18 @@ describe("live actions", () => {
   it("join puts the room it answers with on screen and has nothing to say", async () => {
     const { fetch, calls } = server(() => json(200, { data: JOINED }));
     const { track, shown } = shownBy();
-    expect(await liveActions(checkoutApi(fetch)).run(JOIN, track)).toEqual({ kind: "done" });
+    expect(await liveActions(checkoutApi(fetch)).run(JOIN, scope(track))).toEqual({ kind: "done" });
     expect(shown).toEqual([JOINED]);
-    expect(calls.map((c) => [c.method, c.path])).toEqual([["POST", `/api/checkouts/${ID}/join`]]);
+    expect(requests(calls)).toEqual([["POST", `/api/checkouts/${ID}/join`]]);
   });
 
   it("join to a room that filled first reads the room again and shows it full", async () => {
     const fullRoom = { ...FULL, checkout: { ...FULL.checkout, id: ID } };
     const { fetch, calls } = server(() => json(409, errorBody("ROOM_FULL")), () => json(200, { data: fullRoom }));
     const { track, shown } = shownBy();
-    expect(await liveActions(checkoutApi(fetch)).run(JOIN, track)).toEqual({ kind: "done" });
+    expect(await liveActions(checkoutApi(fetch)).run(JOIN, scope(track))).toEqual({ kind: "done" });
     expect(shown).toEqual([fullRoom]);
-    expect(calls.map((c) => [c.method, c.path])).toEqual([
+    expect(requests(calls)).toEqual([
       ["POST", `/api/checkouts/${ID}/join`],
       ["GET", `/api/checkouts/${ID}`],
     ]);
@@ -93,7 +178,7 @@ describe("live actions", () => {
   it("join to a full room says someone took the last spot when the room can't be read again", async () => {
     const { fetch } = server(() => json(409, errorBody("ROOM_FULL")), () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")));
     const { track, shown } = shownBy();
-    expect(await liveActions(checkoutApi(fetch)).run(JOIN, track)).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.room_full });
+    expect(await liveActions(checkoutApi(fetch)).run(JOIN, scope(track))).toEqual(said("room_full"));
     expect(shown).toEqual([]);
   });
 
@@ -101,8 +186,8 @@ describe("live actions", () => {
     const { fetch } = server(() => json(401, errorBody("UNAUTHENTICATED")), () => json(401, errorBody("UNAUTHENTICATED")));
     const { track, shown } = shownBy();
     const live = liveActions(checkoutApi(fetch));
-    expect(await live.run(CREATE, track)).toEqual({ kind: "signed_out" });
-    expect(await live.run(JOIN, track)).toEqual({ kind: "signed_out" });
+    expect(await live.run(CREATE, scope(track))).toEqual({ kind: "signed_out" });
+    expect(await live.run(JOIN, scope(track))).toEqual({ kind: "signed_out" });
     expect(shown).toEqual([]);
   });
 
@@ -110,28 +195,219 @@ describe("live actions", () => {
     const { fetch } = server(() => json(403, errorBody("ORIGIN_MISMATCH")), () => json(429, errorBody("RATE_LIMITED")));
     const { track, shown } = shownBy();
     const live = liveActions(checkoutApi(fetch));
-    expect(await live.run(JOIN, track)).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.refused });
-    expect(await live.run(JOIN, track)).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.rate_limited });
+    expect(await live.run(JOIN, scope(track))).toEqual(said("refused"));
+    expect(await live.run(JOIN, scope(track))).toEqual(said("rate_limited"));
     expect(shown).toEqual([]);
   });
 
-  it("refresh reads the room through the tracker", async () => {
-    const { fetch } = server(() => json(200, { data: OPEN }));
-    const { track, shown } = shownBy();
-    expect(await liveActions(checkoutApi(fetch)).refresh(ID, track)).toEqual({ ok: true, value: OPEN });
-    expect(shown).toEqual([OPEN]);
-  });
-
   it("is live exactly for the actions with a busy label, and runs each of them", async () => {
-    expectTypeOf<LiveKind>().toEqualTypeOf<"create_checkout" | "join">();
+    expectTypeOf<LiveKind>().toEqualTypeOf<
+      "create_checkout" | "join" | "mark_ready" | "mark_not_ready" | "start_payment" | "approve" | "decline"
+    >();
     for (const kind of Object.keys(ACTIONS) as ActionKind[]) {
       expect(isLiveAction({ kind } as Action), kind).toBe(kind in EXAMPLES);
     }
     for (const action of Object.values(EXAMPLES)) {
       const { fetch, calls } = server(() => json(200, { data: OPEN }));
-      await liveActions(checkoutApi(fetch)).run(action, untracked);
+      await liveActions(checkoutApi(fetch)).run(action, scope());
       expect(calls, action.kind).toHaveLength(1);
     }
+  });
+});
+
+describe("readiness", () => {
+  it.each([
+    ["I'm ready", true],
+    ["Not ready yet", false],
+  ] as const)("%s sends the choice and shows the room the server answers", async (_, ready) => {
+    const { fetch, calls } = server(() => json(200, { data: READY }));
+    const { track, shown } = shownBy();
+    const action: LiveAction = ready ? { kind: "mark_ready", checkoutId: READY.checkout.id } : { kind: "mark_not_ready", checkoutId: READY.checkout.id };
+    expect(await liveActions(checkoutApi(fetch)).run(action, scope(track))).toEqual({ kind: "done" });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([["PUT", `/api/checkouts/${READY.checkout.id}/readiness`, { ready }]]);
+    expect(shown).toEqual([READY]);
+  });
+
+  it("after the room moved on, reads it again and says the screen shows the latest", async () => {
+    const { fetch, calls } = server(() => json(409, errorBody("ROOM_NOT_READY")), () => json(200, { data: PREPARING }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run({ kind: "mark_not_ready", checkoutId: ROOM }, scope(track))).toEqual(said("room_changed"));
+    expect(requests(calls)).toEqual([
+      ["PUT", `/api/checkouts/${ROOM}/readiness`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
+    expect(shown).toEqual([PREPARING]);
+  });
+});
+
+describe("start payment", () => {
+  const START: LiveAction = { kind: "start_payment", checkoutId: ROOM };
+
+  it("starts the attempt, then shows the room read after it, never the attempt itself", async () => {
+    const { fetch, calls } = server(() => json(201, { data: PREPARING.attempt }), () => json(200, { data: PREPARING }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual({ kind: "done" });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["POST", `/api/checkouts/${ROOM}/attempts`, { retryOfAttemptId: null }],
+      ["GET", `/api/checkouts/${ROOM}`, null],
+    ]);
+    expect(shown).toEqual([PREPARING]);
+  });
+
+  it("a poll sent while the start is in flight never shows, even when it answers last", async () => {
+    let answerStart!: () => void;
+    let answerPoll!: () => void;
+    const { fetch } = server(
+      () => new Promise((resolve) => (answerStart = () => resolve(json(201, { data: PREPARING.attempt })))),
+      () => new Promise((resolve) => (answerPoll = () => resolve(json(200, { data: { ...PREPARING, attempt: null, phase: "ready" } })))),
+      () => json(200, { data: PREPARING }),
+    );
+    const { track, shown } = shownBy();
+    const live = liveActions(checkoutApi(fetch));
+    const started = live.run(START, scope(track));
+    const poll = track("read", () => checkoutApi(fetch).readRoom(ROOM));
+    answerStart();
+    expect(await started).toEqual({ kind: "done" });
+    answerPoll();
+    await poll;
+    expect(shown).toEqual([PREPARING]);
+  });
+
+  it("a start that lands when the room can't be read is done, and the next poll shows it", async () => {
+    const { fetch } = server(() => json(201, { data: PREPARING.attempt }), () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual({ kind: "done" });
+    expect(shown).toEqual([]);
+  });
+
+  it("a payment that can't be funded reads the room again and says why", async () => {
+    const { fetch, calls } = server(() => json(422, errorBody("INSUFFICIENT_USDC")), () => json(200, { data: SIGNING }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual(said("not_funded"));
+    expect(requests(calls).at(-1)).toEqual(["GET", `/api/checkouts/${ROOM}`]);
+    expect(shown).toEqual([SIGNING]);
+  });
+});
+
+describe("approve", () => {
+  it("checks the payment, opens one prompt with its exact bytes, uploads only the signature, and shows the room", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: APPROVED.attempt }), () => json(200, { data: APPROVED }));
+    const { track, shown } = shownBy();
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual({ kind: "done" });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toMatchObject({ account: PAYER.wallet, attemptId: ATTEMPT, messageHash: WIRE.messageHash });
+    expect(Buffer.from(prompts[0]!.transaction).toString("base64")).toBe(WIRE.transactionBase64);
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["GET", `/api/attempts/${ATTEMPT}/signing-payload`, null],
+      ["POST", `/api/attempts/${ATTEMPT}/signatures`, { messageHash: WIRE.messageHash, signatureBase64: SIGNATURE }],
+      ["GET", `/api/checkouts/${ROOM}`, null],
+    ]);
+    expect(shown).toEqual([APPROVED]);
+  });
+
+  it("a payload that differs from the screen opens no prompt and sends nothing more", async () => {
+    const tampered = { ...WIRE, payment: { ...(WIRE.payment as object), sellerWallet: SAMPLE_WALLETS.outsider } };
+    const { fetch, calls } = server(() => json(200, { data: tampered }));
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("mismatch"));
+    expect(prompts).toHaveLength(0);
+    expect(requests(calls)).toEqual([["GET", `/api/attempts/${ATTEMPT}/signing-payload`]]);
+  });
+
+  it("opens no prompt until Payments' byte check is wired", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    expect(await liveActions(checkoutApi(fetch)).run(APPROVE, scope(untracked, signer))).toEqual(said("unsupported"));
+    expect(prompts).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("an answer that arrives after the sign-in changed uploads nothing and says nothing", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { prompts, signer } = wallet({ ok: false, failure: "stale" });
+    expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
+    expect(prompts).toHaveLength(1);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("a refusal in the wallet sends nothing and offers Decline for this attempt", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { signer } = wallet({ ok: false, failure: "rejected" });
+    expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("rejected", DECLINE));
+    expect(calls).toHaveLength(1);
+  });
+
+  it.each(["busy", "failed"] as const)("a %s wallet sends nothing and says so, with no Decline", async (failure) => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { signer } = wallet({ ok: false, failure });
+    expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said(failure));
+    expect(calls).toHaveLength(1);
+  });
+
+  it("after an upload with no answer, Approve again resends the same approval without a second prompt", async () => {
+    const { fetch, calls } = server(
+      () => json(200, { data: WIRE }),
+      noAnswer,
+      () => json(200, { data: WIRE }),
+      () => json(200, { data: APPROVED.attempt }),
+      () => json(200, { data: APPROVED }),
+    );
+    const { prompts, signer } = rememberingWallet();
+    const live = approver(fetch);
+    expect(await live.run(APPROVE, scope(untracked, signer))).toEqual(said("unavailable"));
+    expect(await live.run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
+    expect(prompts).toHaveLength(1);
+    const uploads = calls.filter((c) => c.path.endsWith("/signatures")).map((c) => c.body);
+    expect(uploads).toEqual([upload({ messageHash: prompts[0]!.messageHash, signature: SIGNATURE }), uploads[0]]);
+  });
+
+  it("when approvals have closed, reads the room again and says the screen shows the latest", async () => {
+    const { fetch, calls } = server(() => json(409, errorBody("ATTEMPT_NOT_SIGNABLE")), () => json(200, { data: DECLINED }));
+    const { track, shown } = shownBy();
+    expect(await approver(fetch).run(APPROVE, scope(track))).toEqual(said("room_changed"));
+    expect(requests(calls)).toEqual([
+      ["GET", `/api/attempts/${ATTEMPT}/signing-payload`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
+    expect(shown).toEqual([DECLINED]);
+  });
+
+  it("an approval the server refuses never says trying again is safe", async () => {
+    const { fetch } = server(() => json(200, { data: WIRE }), () => json(400, errorBody("INVALID_SIGNATURE")));
+    const { signer } = wallet({ ok: true, value: SIGNATURE });
+    const outcome = await approver(fetch).run(APPROVE, scope(untracked, signer));
+    expect(outcome).toEqual(said("refused"));
+    expect(outcome.kind === "notice" && outcome.text).not.toMatch(/trying again is safe/i);
+  });
+
+  it("an ended sign-in at any step is signed_out", async () => {
+    for (const responses of [
+      [() => json(401, errorBody("UNAUTHENTICATED"))],
+      [() => json(200, { data: WIRE }), () => json(401, errorBody("UNAUTHENTICATED"))],
+    ]) {
+      const { fetch } = server(...responses);
+      const { signer } = wallet({ ok: true, value: SIGNATURE });
+      expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual({ kind: "signed_out" });
+    }
+  });
+});
+
+describe("decline", () => {
+  it("declines the attempt and shows the room read after it", async () => {
+    const { fetch, calls } = server(() => json(200, { data: DECLINED.attempt }), () => json(200, { data: DECLINED }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope(track))).toEqual({ kind: "done" });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["POST", `/api/attempts/${ATTEMPT}/decline`, null],
+      ["GET", `/api/checkouts/${ROOM}`, null],
+    ]);
+    expect(shown).toEqual([DECLINED]);
+  });
+
+  it("with no answer, says trying again is safe", async () => {
+    const { fetch } = server(noAnswer);
+    expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope())).toEqual(said("unavailable"));
   });
 });
 

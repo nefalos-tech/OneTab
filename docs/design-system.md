@@ -342,10 +342,11 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `copy_link` | Copy link | nothing | button |  |
 | `connect_wallet` | Connect wallet | wallet | button |  |
 | `join` | Join checkout | backend | button | Joining… |
-| `mark_ready` | I'm ready | backend | button |  |
-| `mark_not_ready` | Not ready yet | backend | button |  |
-| `start_payment` | Start payment | backend | button |  |
-| `approve` | Approve in wallet | wallet | button |  |
+| `mark_ready` | I'm ready | backend | button | Saving… |
+| `mark_not_ready` | Not ready yet | backend | button | Saving… |
+| `start_payment` | Start payment | backend | button | Starting… |
+| `approve` | Approve in wallet | wallet | button | Approving… |
+| `decline` | Decline payment | backend | button | Declining… |
 | `retry` | Try again | backend | button |  |
 | `view_status` | View payment status | nothing | link |  |
 | `view_receipt` | View receipt | nothing | link |  |

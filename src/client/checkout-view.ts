@@ -132,10 +132,11 @@ type ActionPayload = {
   readonly copy_link: Href;
   readonly connect_wallet: NoPayload;
   readonly join: { readonly checkoutId: CheckoutId };
-  readonly mark_ready: NoPayload;
-  readonly mark_not_ready: NoPayload;
-  readonly start_payment: NoPayload;
-  readonly approve: NoPayload;
+  readonly mark_ready: { readonly checkoutId: CheckoutId };
+  readonly mark_not_ready: { readonly checkoutId: CheckoutId };
+  readonly start_payment: { readonly checkoutId: CheckoutId };
+  readonly approve: { readonly terms: ApprovalTerms };
+  readonly decline: { readonly checkoutId: CheckoutId; readonly attemptId: AttemptId };
   readonly retry: { readonly retryOfAttemptId: AttemptId };
   readonly view_status: Href;
   readonly view_receipt: Href;
@@ -256,7 +257,13 @@ export function deriveRoomView(state: CheckoutState): RoomView {
   const tab = tabOf(state.snapshot, role);
   const me = tab.spots.find((s) => s.isViewer) ?? null;
   const plan = isOwnedBy(c.situation, "room")
-    ? ROOM_ACTIONS[c.situation]({ checkoutId: state.snapshot.checkout.id, role, me: me?.status ?? null, links: state.source.links })
+    ? ROOM_ACTIONS[c.situation]({
+        checkoutId: state.snapshot.checkout.id,
+        role,
+        me: me?.status ?? null,
+        links: state.source.links,
+        terms: termsOf(state.snapshot, state.session),
+      })
     : {
         primary:
           c.situation === "paid"
@@ -579,21 +586,22 @@ type ActorContext = {
   readonly role: ViewerRole;
   readonly me: SpotStatus | null;
   readonly links: ScreenLinks;
+  readonly terms: ApprovalTerms | null;
 };
 type ActionPlan = { readonly primary: Action | null; readonly secondary: readonly Action[] };
 
 const NONE: ActionPlan = { primary: null, secondary: [] };
 const CONNECT: ActionPlan = { primary: { kind: "connect_wallet" }, secondary: [] };
 const isMember = (role: ViewerRole): boolean => role.kind === "organizer" || role.kind === "payer";
-const readinessToggle = (me: SpotStatus | null): Action =>
-  me === "ready" ? { kind: "mark_not_ready" } : { kind: "mark_ready" };
+const readinessToggle = (c: ActorContext): Action =>
+  c.me === "ready" ? { kind: "mark_not_ready", checkoutId: c.checkoutId } : { kind: "mark_ready", checkoutId: c.checkoutId };
 
 const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => ActionPlan } = {
   open_spots: (c) =>
     c.role.kind === "signed_out"
       ? CONNECT
       : isMember(c.role)
-        ? { primary: { kind: "copy_link", href: c.links.room }, secondary: [readinessToggle(c.me)] }
+        ? { primary: { kind: "copy_link", href: c.links.room }, secondary: [readinessToggle(c)] }
         : c.role.kind === "guest"
           ? { primary: { kind: "join", checkoutId: c.checkoutId }, secondary: [] }
           : NONE,
@@ -603,24 +611,20 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
       : !isMember(c.role)
         ? NONE
         : c.me === "ready"
-          ? { primary: null, secondary: [{ kind: "mark_not_ready" }] }
-          : { primary: { kind: "mark_ready" }, secondary: [] },
+          ? { primary: null, secondary: [readinessToggle(c)] }
+          : { primary: readinessToggle(c), secondary: [] },
   ready: (c) =>
     c.role.kind === "signed_out"
       ? CONNECT
       : !isMember(c.role)
         ? NONE
         : {
-            primary: c.role.kind === "organizer" ? { kind: "start_payment" } : null,
-            secondary: [{ kind: "mark_not_ready" }],
+            primary: c.role.kind === "organizer" ? { kind: "start_payment", checkoutId: c.checkoutId } : null,
+            secondary: [{ kind: "mark_not_ready", checkoutId: c.checkoutId }],
           },
   preparing: (c) => (c.role.kind === "signed_out" ? CONNECT : NONE),
   signing: (c) =>
-    c.role.kind === "signed_out"
-      ? CONNECT
-      : isMember(c.role) && c.me !== "approved"
-        ? { primary: { kind: "approve" }, secondary: [] }
-        : NONE,
+    c.role.kind === "signed_out" ? CONNECT : c.terms ? { primary: { kind: "approve", terms: c.terms }, secondary: [] } : NONE,
 };
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;

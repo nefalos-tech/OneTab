@@ -33,7 +33,7 @@ export function ActionGroup({
   readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children?: ReactNode;
 }): ReactNode {
-  const { session, expired } = useWalletSession();
+  const { session, signer, approving, expired } = useWalletSession();
   const track = use(RoomTrack);
   const router = useRouter();
   const [busy, setBusy] = useState<LiveKind | null>(null);
@@ -45,12 +45,18 @@ export function ActionGroup({
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
+  // A payment prompt opened on another page still holds this page's Approve.
+  const shownBusy = busy ?? (approving && [actions.primary, ...actions.secondary].some((a) => a?.kind === "approve") ? "approve" : null);
+
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
+    // A follow-up runs under the notice that offered it, so its busy label shows there, and if it fails
+    // the notice keeps offering it.
+    const offeredBy = notice?.followUp?.kind === action.kind ? notice : null;
     inFlight.current = true;
-    setNotice(null);
+    if (offeredBy === null) setNotice(null);
     setBusy(action.kind);
-    const outcome = await live.run(action, track);
+    const outcome = await live.run(action, { track, signer });
     inFlight.current = false;
     switch (outcome.kind) {
       case "open":
@@ -67,7 +73,12 @@ export function ActionGroup({
         if (sentAs) expired(sentAs);
         break;
       case "notice":
-        setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: action.kind });
+        setNotice({
+          text: outcome.text,
+          followUp: outcome.followUp ?? offeredBy?.followUp ?? null,
+          wallet: sentAs?.wallet ?? null,
+          raisedBy: offeredBy?.raisedBy ?? action.kind,
+        });
         break;
     }
     setBusy(null);
@@ -111,7 +122,7 @@ export function ActionGroup({
     <div {...focusFallback} className="flex flex-col gap-4">
       {actions.primary && (
         <div>
-          <ActionControl action={actions.primary} variant="primary" busy={busy} onRun={run} />
+          <ActionControl action={actions.primary} variant="primary" busy={shownBusy} onRun={run} />
         </div>
       )}
       {children}
@@ -122,7 +133,7 @@ export function ActionGroup({
               key={a.kind}
               action={a}
               variant={a.kind === "back_to_checkout" ? "link" : "quiet"}
-              busy={busy}
+              busy={shownBusy}
               onRun={run}
             />
           ))}
@@ -135,7 +146,7 @@ export function ActionGroup({
               <Icon name="info" />
               {notice.text}
             </p>
-            {notice.followUp && <ActionControl action={notice.followUp} variant="link" busy={busy} onRun={run} />}
+            {notice.followUp && <ActionControl action={notice.followUp} variant="link" busy={shownBusy} onRun={run} />}
           </>
         ) : (
           stubbed && <p className="text-muted">{WORDS.sample_caption}</p>
