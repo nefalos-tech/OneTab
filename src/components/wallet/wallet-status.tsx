@@ -8,14 +8,9 @@ import { Icon } from "../icon";
 import { WALLET_CONTROL_ID } from "./wallet-control";
 import { useWalletSession } from "./wallet-scope";
 
-/** The sample panel's End sign-in moves focus here, to the fix that follows it. */
 export const WALLET_STATUS_ACTION_ID = "wallet-status-action";
 
-/**
- * The line under the header. The polite region always exists, so every change is announced. The one
- * action sits beside the region, not in it, and keeps its DOM node while the wallet moves between a
- * fix and Cancel, so keyboard focus stays put.
- */
+/** The polite region always exists, so every change is announced. */
 export function WalletStatus(): ReactNode {
   const { view, cancel, connect } = useWalletSession();
   const { status } = view;

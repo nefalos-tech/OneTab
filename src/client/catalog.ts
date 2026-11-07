@@ -205,7 +205,6 @@ type WalletFixMeta =
   | { readonly label: string; readonly element: "button" }
   | { readonly label: string; readonly element: "external_link"; readonly href: string };
 
-/** The one action each wallet problem offers. Every button runs Connect wallet's flow again. */
 export const WALLET_FIXES = {
   connect_wallet: { label: ACTIONS.connect_wallet.label, element: "button" },
   sign_in_again: { label: "Sign in again", element: "button" },
@@ -214,7 +213,6 @@ export const WALLET_FIXES = {
 } as const satisfies Record<string, WalletFixMeta>;
 export type WalletFixKind = keyof typeof WALLET_FIXES;
 
-/** While Connect wallet runs. `control` is the header button's label, `line` the status line with Cancel. */
 export const WALLET_WAITING = {
   connect_prompt: { state: "Connecting", control: "Connecting…", line: "Approve the connection in your wallet." },
   sign_prompt: {
@@ -226,7 +224,6 @@ export const WALLET_WAITING = {
 } as const satisfies Record<string, { readonly state: string; readonly control: string; readonly line: string }>;
 export type WalletWaiting = keyof typeof WALLET_WAITING;
 
-/** `{address}` becomes the short form of the wallet's current account. */
 export const WALLET_PROBLEMS = {
   no_wallet: {
     state: "No wallet found",

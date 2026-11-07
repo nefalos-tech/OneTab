@@ -59,7 +59,6 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const check = checkDraft(input, ctx);
   const errors = check.ok ? {} : check.errors;
   const errorOf = (field: DraftField) => (touched.has(field) ? errors[field] : undefined);
-  // Derived each render, so an identity change re-checks the draft against the new organizer.
   const review = reviewing && check.ok ? check.review : null;
   const showingReview = review !== null;
 

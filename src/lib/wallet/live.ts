@@ -1,5 +1,3 @@
-// The live environment. The only module that knows the auth routes' URLs, bodies and error codes.
-
 import {
   looksLikeAddress,
   type AuthChallenge,
@@ -19,21 +17,10 @@ import {
   type WalletEnvironment,
 } from "./environment";
 
-/**
- * THE SEAM. When P1 records a proven package set, add src/lib/wallet/wallet-standard.ts implementing
- * WalletBridge (discovery via getWallets(), register/unregister, standard:connect without `silent`,
- * standard:events -> onAccountChange, assertCurrent before and after each prompt, 4001 -> "rejected",
- * capabilityFailure() on connect) and replace `unavailableBridge` below. machine.ts, store.ts and every
- * screen stay unchanged.
- */
 export function liveEnvironment(): WalletEnvironment {
   return { bridge: unavailableBridge, service: liveSignInService((path, init) => globalThis.fetch(path, init)) };
 }
 
-/**
- * Until the adapter lands, connecting reports `failed` ("Sign-in isn't available right now"), not
- * `no_wallet`: Phantom may well be installed, and saying otherwise would be false.
- */
 const unavailableBridge: WalletBridge = {
   connect: async () => ({ ok: false, failure: "failed" }),
   disconnect: async () => {},
@@ -49,7 +36,6 @@ const SESSION_PATH = "/api/auth/session";
 const CHALLENGE_PATH = "/api/auth/challenge";
 const VERIFY_PATH = "/api/auth/verify";
 
-/** The error envelope's code, mapped once. Every code not listed is `unavailable`. */
 const FAILURE_BY_CODE: Partial<Record<ErrorCode, ServiceFailure>> = {
   CHALLENGE_EXPIRED: "stale_challenge",
   CHALLENGE_USED: "stale_challenge",
@@ -60,11 +46,6 @@ const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
 
 type Reply = { readonly status: number; readonly body: unknown };
 
-/**
- * contracts.md's auth routes. Same-origin cookie, no-store, and a timeout so the store's serial
- * queue can't stall. 404 (B2 not deployed yet), 429, 503, network and timeout errors all map to
- * `unavailable`. Nothing here logs a request or response body.
- */
 export function liveSignInService(fetchImpl: FetchLike): SignInService {
   const send = async (method: "GET" | "POST" | "DELETE", path: string, body?: object): Promise<Reply | null> => {
     try {
@@ -110,7 +91,6 @@ function failureOf(reply: Reply | null): { readonly ok: false; readonly failure:
   return { ok: false, failure: failure ?? "unavailable" };
 }
 
-/** An unknown code passes as a string and maps to nothing, so it reads as `unavailable`. */
 function isErrorEnvelope(body: unknown): body is ErrorEnvelope {
   return isRecord(body) && isRecord(body.error) && typeof body.error.code === "string";
 }
@@ -133,7 +113,6 @@ function parseSession(data: unknown): Session | null {
     : null;
 }
 
-/** AuthChallenge (wire) to Challenge (domain). The wire type never leaves this file. */
 function parseChallenge(data: unknown): Challenge | null {
   if (!isAuthChallenge(data) || data.challengeId === "") return null;
   const bytes = fromBase64(data.messageBase64);

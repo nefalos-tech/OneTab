@@ -168,7 +168,6 @@ export function sampleCreateState(): CreateState {
   };
 }
 
-/** The sample wallet's accounts. It starts on the persona's wallet, or on the outsider when signed out. */
 function sampleWalletSeed(session: Session | null): SampleWalletSeed {
   return {
     accounts: [

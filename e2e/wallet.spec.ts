@@ -14,7 +14,6 @@ const switchedTo = (short: string) => `Your wallet switched to ${short}. Sign in
 const CONNECT_ANNOUNCEMENT = "Sample wallet: OneTab asks you to approve the connection.";
 const SIGN_ANNOUNCEMENT = "Sample wallet: OneTab asks you to sign the sign-in message.";
 
-/** Every flow here runs on sample data or on a live page before P1 and B2, so none may call an API route. */
 const test = base.extend<{ apiCalls: string[] }>({
   apiCalls: [
     async ({ page }, use) => {

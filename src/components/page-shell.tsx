@@ -43,7 +43,6 @@ export function PageShell(props: Props): ReactNode {
   );
 }
 
-/** Pages without a checkout, such as not found, error and the sample index, pass no wallet. */
 export function SiteHeader({
   networkLabel,
   wallet = null,

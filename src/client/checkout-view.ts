@@ -27,7 +27,6 @@ import type { SampleWalletSeed } from "@/lib/wallet/sample";
 export type CheckoutState = {
   readonly config: PublicConfig;
   readonly snapshot: RoomSnapshot;
-  /** The viewer's identity. Loaders supply the sample persona's; Viewer replaces it with the wallet's. */
   readonly session: Session | null;
   readonly source: CheckoutSource;
 };
@@ -109,7 +108,6 @@ export type TabView = {
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
 
-/** The POST /api/checkouts body without clientRequestId, which F3 adds. */
 export type CreateRequest = {
   readonly title: string;
   readonly sellerWallet: Address;

@@ -1,12 +1,3 @@
-// Bounded exhaustive check of the real reducer. Drives `step` through every event sequence up to
-// DEPTH from every seed, and after every step asserts the identity rule and the stale-answer rule
-// against a model of the world (which account the wallet has selected right now).
-//
-// Completeness: the future depends only on (state without gen, world), because the reducer reads gen
-// only to compare it with an answer's gen, and the harness generates answers as "current gen" or
-// "older gen". So memoizing on (key, remaining depth) visits every distinct prefix class once and
-// still covers every sequence of length <= DEPTH.
-
 import { describe, expect, it } from "vitest";
 import type { Address } from "@/client/contracts";
 import { authMessage, type Challenge, type ChallengeId, type SignatureBase64 } from "./environment";
@@ -30,7 +21,6 @@ const MESSAGE = authMessage(new TextEncoder().encode("Sign in to OneTab. Signing
 const CHALLENGE: Challenge = { id: "challenge-1" as ChallengeId, message: MESSAGE };
 const DEPTH = 8;
 
-/** What the wallet has selected right now, which the machine can only learn through events. */
 type World = { readonly wallet: Address | null };
 type Move = { readonly event: SessionEvent; readonly world: World };
 
@@ -68,8 +58,6 @@ function moves(s: SessionState, w: World): readonly Move[] {
     at({ type: "account_changed", account: null }, { wallet: null }),
     at({ type: "expired", session: { wallet: A, expiresAt: EXP_1 } }),
     ...(session ? [at({ type: "expired", session })] : []),
-    // A connect answer while connecting is the account the user approved, so it becomes the world's
-    // account. Anywhere else no prompt was open, so the world doesn't move.
     ...ANY_ANSWER.map((answer) =>
       at(
         { type: "answer", gen: s.gen, answer },
@@ -133,7 +121,6 @@ describe("session machine, every sequence up to DEPTH events", () => {
     for (const seed of SEEDS) explore(seed.state, seed.world, DEPTH);
     console.info(`exhaustive machine check: ${seen.size} visits, ${steps} steps, ${Math.round(performance.now() - started)} ms`);
 
-    // The harness must reach every stage, or the assertions above could pass vacuously.
     expect([...reached].sort()).toEqual(
       [
         "connected",
@@ -151,7 +138,6 @@ describe("session machine, every sequence up to DEPTH events", () => {
 
 type Play = SessionEvent | ((s: SessionState) => SessionEvent);
 
-/** Folds events through `step`. A function event is built from the state it is sent to. */
 function play(start: SessionState, ...events: readonly Play[]): { readonly state: SessionState; readonly effects: readonly Effect[] } {
   let current: { state: SessionState; effects: readonly Effect[] } = { state: start, effects: [] };
   for (const e of events) current = step(current.state, typeof e === "function" ? e(current.state) : e);
@@ -166,7 +152,6 @@ const signedOut = initialState({ account: null, session: null });
 const signedInA = initialState({ account: A, session: { wallet: A, expiresAt: EXP_1 } });
 const switchTo = (account: Address | null): SessionEvent => ({ type: "account_changed", account });
 
-/** signed_out -> connected to `account` -> waiting at the given sign-in step. */
 function signingIn(account: Address, until: "session" | "challenge" | "signature" | "verify"): SessionState {
   const path: Play[] = [{ type: "connect" }, reply({ kind: "connect", result: ok(account) })];
   if (until !== "session") path.push(reply({ kind: "session", result: ok(null) }));

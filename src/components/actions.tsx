@@ -124,11 +124,6 @@ function ActionControl({
   );
 }
 
-/**
- * The room's Connect wallet, drawn from the wallet view so it always matches the header. Busy and fix
- * share one <button>, so focus stays put while the wallet moves between them. The sample wallet is a
- * real device on sample pages, so this works there too.
- */
 function ConnectWallet({
   variant,
   dataAction,

@@ -1,7 +1,3 @@
-// The one driver. Holds the current SessionState, runs effects, and turns every result into an
-// `answer` stamped with the gen of the state that issued it. No policy lives here: which effect
-// runs and whether an answer counts is decided in machine.ts.
-
 import type { BridgeResult, ServiceResult, WalletEnvironment } from "./environment";
 import { step, type Answer, type Effect, type Gen, type Intent, type SessionEvent, type SessionState } from "./machine";
 
@@ -10,24 +6,18 @@ export type SessionStore = {
   getSnapshot(): SessionState;
   subscribe(listener: () => void): () => void;
   send(intent: Intent): void;
-  /** Subscribes to the bridge's account changes. Client only (called from useEffect). Returns stop. */
   start(): () => void;
 };
 
-/** setTimeout's ceiling. A later expiry (sample data expires in 2099) schedules nothing. */
+/** setTimeout's ceiling. A later expiry schedules nothing. */
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
-/** An adapter that throws anyway is a bug, never a rejection by the user. */
 const BRIDGE_THREW: BridgeResult<never> = { ok: false, failure: "failed" };
 const SERVICE_THREW: ServiceResult<never> = { ok: false, failure: "unavailable" };
 
 export function createSessionStore(env: WalletEnvironment, initial: SessionState): SessionStore {
   let state = initial;
   const listeners = new Set<() => void>();
-  /**
-   * Every auth route call chains here, one at a time. The browser has one cookie, so Set-Cookie and
-   * DELETE must reach the server in the order the machine issued them.
-   */
   let server: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -88,7 +78,6 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
         clearTimeout(expiryTimer);
         const delay = Date.parse(effect.session.expiresAt) - Date.now();
         if (delay > MAX_TIMER_MS) return;
-        // A timer for an older session is harmless: the machine ignores `expired` for a session that isn't current.
         expiryTimer = setTimeout(() => dispatch({ type: "expired", session: effect.session }), Math.max(0, delay));
         return;
       }

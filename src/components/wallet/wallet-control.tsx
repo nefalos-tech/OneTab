@@ -7,17 +7,10 @@ import { Icon } from "../icon";
 import { AddressText } from "../values";
 import { useWalletSession } from "./wallet-scope";
 
-/** WalletStatus and the sample panel move focus here when the control they acted on goes away. */
 export const WALLET_CONTROL_ID = "wallet-control";
 const MENU_ID = "wallet-menu";
 const MENU_ITEM = "inline-flex min-h-11 w-full items-center gap-2 rounded-control px-3 font-semibold text-brand hover:bg-brand-soft";
 
-/**
- * The header slot. Every variant renders the same <button> at the same position, so React keeps the
- * DOM node and keyboard focus survives Connect wallet, the busy step, the address and Disconnect.
- * When a wallet is connected the button discloses Copy address and Disconnect. A disclosure, not
- * role="menu", so no arrow-key contract is promised.
- */
 export function WalletControl(): ReactNode {
   const { view, connect, disconnect } = useWalletSession();
   const { control } = view;

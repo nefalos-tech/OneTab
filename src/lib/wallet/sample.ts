@@ -1,8 +1,3 @@
-// The sample environment: an in-page wallet and an in-memory sign-in service built together, so
-// sample data can never pair with a real wallet or a real route. Nothing here calls fetch or reads
-// window wallets. The same object is the scriptable fake for unit tests: tests call approve(),
-// reject() and select() exactly as the panel's buttons do.
-
 import type { Address, Session } from "@/client/contracts";
 import {
   authMessage,
@@ -17,46 +12,37 @@ import { initialState, type SessionState } from "./machine";
 
 export type SampleAccount = { readonly label: string; readonly wallet: Address };
 
-/** Built by src/client/fixtures.ts from the `?as=` persona and carried on the sample `source`. */
 export type SampleWalletSeed = {
   readonly accounts: readonly SampleAccount[];
-  /** The persona's wallet, or the outsider for the signed-out persona (what Connect wallet would share). */
   readonly selected: Address;
 };
 
-/** The connect prompt shares whichever account is selected when the user approves. */
 export type SamplePrompt =
   | { readonly kind: "connect" }
   | { readonly kind: "sign"; readonly account: Address; readonly text: string };
 
-/** What the sample wallet panel renders. */
 export type SampleWalletView = {
   readonly accounts: readonly SampleAccount[];
   readonly selected: Address;
   readonly connected: boolean;
-  /** At most one open prompt, like a wallet popup. A newer request replaces it and fails the older one. */
   readonly prompt: SamplePrompt | null;
 };
 
-/** The panel's (and tests') handle on the device. */
 export type SampleWallet = {
   /** Stable between changes, so it can be useSyncExternalStore's snapshot. */
   view(): SampleWalletView;
   subscribe(listener: () => void): () => void;
   approve(): void;
   reject(): void;
-  /** Switch accounts. While connected, reports the change through onAccountChange. */
   select(wallet: Address): void;
 };
 
 export type SampleEnvironment = {
   readonly environment: WalletEnvironment;
   readonly wallet: SampleWallet;
-  /** initialState() for this seed, so the server render and the first client render agree. */
   readonly initial: SessionState;
 };
 
-/** Sample sign-ins don't expire on their own. The panel's End sign-in shows an expiry instead. */
 export const SAMPLE_SIGN_IN_EXPIRY = "2099-01-01T00:00:00.000Z";
 
 type Pending =
@@ -74,10 +60,6 @@ type Pending =
 const FAILED = { ok: false, failure: "failed" } as const;
 const REJECTED = { ok: false, failure: "rejected" } as const;
 
-/**
- * `session` is the persona's session from the page state. Non-null means the sample wallet starts
- * connected to `seed.selected` and the sample service starts holding that session.
- */
 export function sampleEnvironment(seed: SampleWalletSeed, session: Session | null): SampleEnvironment {
   let selected = seed.selected;
   let connected = session !== null;
@@ -95,7 +77,6 @@ export function sampleEnvironment(seed: SampleWalletSeed, session: Session | nul
     for (const listener of viewListeners) listener();
   }
 
-  /** Closes the open prompt, if any, with `failed`, the way a wallet drops a superseded request. */
   function dropPending(): void {
     const dropped = pending;
     pending = null;
@@ -171,7 +152,6 @@ export function sampleEnvironment(seed: SampleWalletSeed, session: Session | nul
   };
 }
 
-/** An in-memory stand-in for B2's routes. Resolves on a microtask, like a fast server. */
 function sampleSignInService(initial: Session | null): SignInService {
   let session = initial;
   let issued = 0;
@@ -204,7 +184,6 @@ function sampleSignInService(initial: Session | null): SignInService {
   };
 }
 
-/** A deterministic stand-in for a signature. Recognizably fake and never valid on any chain. */
 function sampleSignature(wallet: Address, messageText: string): SignatureBase64 {
   return btoa(`sample-signature:${wallet}:${messageText}`) as SignatureBase64;
 }

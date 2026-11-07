@@ -1,8 +1,4 @@
 "use client";
-// Where a loaded page state becomes what this viewer sees now. Pages render <Viewer> instead of a
-// screen. F2 supplies the identity here. F4 adds its poller here, so identity and polling meet in one
-// component and the screens stay pure functions of their state.
-//
 // The screen is chosen by a string prop because a server page can't pass a component function
 // across the client boundary.
 
@@ -19,8 +15,6 @@ export type ViewerProps =
 
 export function Viewer(props: ViewerProps): ReactNode {
   const { source } = props.state;
-  // Only the sample branch of `source` carries a wallet seed, so a live page can't build a sample
-  // environment and a sample page can't fall through to the live one.
   if (source.kind === "sample") {
     const key = props.screen === "create" ? `create ${source.wallet.selected}` : props.state.source.links.room;
     return (

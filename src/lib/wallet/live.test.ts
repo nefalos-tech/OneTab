@@ -9,7 +9,6 @@ const MESSAGE = "Sign in to OneTab as SAMP…Bea2. Signing in can't move money."
 
 type Call = { readonly path: string; readonly init: RequestInit };
 
-/** A fetch that answers every call with `respond` and records what it was asked. */
 function stubFetch(respond: (call: Call) => Response | Promise<Response>): { readonly fetch: FetchLike; readonly calls: Call[] } {
   const calls: Call[] = [];
   return {

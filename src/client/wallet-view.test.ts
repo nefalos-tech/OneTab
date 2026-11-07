@@ -7,7 +7,6 @@ const BEA = "SAMPLEpayerBea11111111111111111111111111Bea2" as Address;
 const SIGN_PROMPT =
   "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.";
 
-/** The design brief's problem table: the exact message and the one action for each problem. */
 const BRIEF: Record<Problem, { readonly message: string; readonly action: string }> = {
   no_wallet: { message: "No Solana wallet found. Install Phantom, then reload this page.", action: "Get Phantom" },
   wrong_network: {

@@ -28,7 +28,6 @@ const FAR_EXPIRY = "2099-01-01T00:00:00.000Z";
 const SIGNATURE = "c2ln" as SignatureBase64;
 const CHALLENGE = { id: "c-1" as ChallengeId, message: authMessage(new TextEncoder().encode("Sign in to OneTab."))! };
 
-/** Lets every queued promise callback run, including the store's serial chain. */
 const settled = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 function deferred<T>() {
@@ -37,7 +36,6 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-/** A wallet that approves at once and a service that records the order its calls start in. */
 function scripted(overrides: { readonly bridge?: Partial<WalletBridge>; readonly service?: Partial<SignInService> } = {}) {
   const log: string[] = [];
   let accountListener: (account: Address | null) => void = () => {};

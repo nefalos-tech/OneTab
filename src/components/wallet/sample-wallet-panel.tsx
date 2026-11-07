@@ -17,19 +17,11 @@ const PROMPT_WORDS = {
   sign: { request: WORDS.sign_request, announcement: WORDS.sign_request_announcement },
 } as const;
 
-/**
- * The in-page stand-in for a wallet on sample pages. Styled like the sample banner so nobody mistakes
- * it for a real wallet. Returns null outside a sample page, so a live page can never show it.
- */
 export function SampleWalletPanel(): ReactNode {
   const wallet = useSampleWallet();
   return wallet && <Panel wallet={wallet} />;
 }
 
-/**
- * One line while idle, so the checkout stays above the fold. A request expands it with Approve and
- * Reject, and the polite region announces it without moving focus.
- */
 function Panel({ wallet }: { readonly wallet: SampleWallet }): ReactNode {
   const view = useSyncExternalStore(wallet.subscribe, wallet.view, wallet.view);
   const { session, expired } = useWalletSession();
@@ -44,7 +36,6 @@ function Panel({ wallet }: { readonly wallet: SampleWallet }): ReactNode {
     document.getElementById(WALLET_STATUS_ACTION_ID)?.focus();
   };
 
-  // Approve and Reject leave with the request they answer, so focus moves to Switch account.
   const answer = (send: () => void) => {
     flushSync(send);
     switchAccount.current?.focus();

@@ -1,5 +1,3 @@
-//   node scripts/design-system.mjs           check: exit 1 on drift, a missing reset or role, a failing contrast pair or an arbitrary value
-//   node scripts/design-system.mjs --write   regenerate the generated regions in place, then run the same checks
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { relative } from "node:path";
@@ -21,8 +19,6 @@ const REQUIRED_RESETS = [
   "--breakpoint-*",
   "--container-*",
 ];
-// Tailwind arbitrary values (`bg-[#fff]`, `max-w-[640px]`) and CSS-variable shorthands (`bg-(--x)`) bypass the tokens.
-// The wallet table shows the account-switched message with a sample address in place of `{address}`.
 const EXAMPLE_ADDRESS = "SAMP…Bea2";
 const ARBITRARY_VALUE = /(?<![\w-])-?[a-z][a-z0-9-]*-(?:\[[^\]\s]+\]|\(--[^)\s]+\))/g;
 
