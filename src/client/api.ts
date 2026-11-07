@@ -140,7 +140,7 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
     },
     async startAttempt(id) {
       const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: null });
-      return reply.kind === "data" ? attemptOf(reply.data, null) : failureOf(reply);
+      return reply.kind === "data" ? startedAttempt(reply.data) : failureOf(reply);
     },
     async signingPayload(id) {
       const reply = await send(fetchImpl, "GET", `/api/attempts/${id}/signing-payload`);
@@ -169,9 +169,15 @@ function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailabl
   return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
 }
 
-function attemptOf(data: unknown, id: AttemptId | null): Result<AttemptSummary, "unavailable"> {
+/** A start answers with the attempt it reserved, whose ID the browser can't know beforehand. */
+function startedAttempt(data: unknown): Result<AttemptSummary, "unavailable"> {
   const attempt = parseAttemptSummary(data);
-  return attempt !== null && (id === null || attempt.id === id) ? { ok: true, value: attempt } : UNAVAILABLE;
+  return attempt === null ? UNAVAILABLE : { ok: true, value: attempt };
+}
+
+function attemptOf(data: unknown, id: AttemptId): Result<AttemptSummary, "unavailable"> {
+  const attempt = parseAttemptSummary(data);
+  return attempt !== null && attempt.id === id ? { ok: true, value: attempt } : UNAVAILABLE;
 }
 
 function failureOf(reply: Exclude<Reply, { readonly kind: "data" }>): { readonly ok: false; readonly failure: RequestProblem } {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { termsOf, type ApprovalTerms } from "./checkout-view";
 import type { SignatureBase64 } from "@/lib/wallet/environment";
-import { parseSigningPayload, type Address, type MessageHash, type Network, type SigningPayload, type TokenUnits } from "./contracts";
+import { parseSigningPayload, type Address, type BlockHeight, type MessageHash, type Network, type SigningPayload, type TokenUnits } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
 import { checkPayment, paymentCheck, type MessageCheck, type ReturnCheck } from "./payment-check";
@@ -23,7 +23,7 @@ const withContributions = (change: (c: Contribution, slot: number) => Partial<Co
 const [first, second] = payload.payment.contributions.map((c) => BigInt(c.amountUnits));
 const total = BigInt(terms.totalUnits);
 
-function agreeing(change: (c: Contribution, slot: number) => Partial<Contribution>, patch: Partial<ApprovalTerms> = {}) {
+function withScreenShowingTheSame(change: (c: Contribution, slot: number) => Partial<Contribution>, patch: Partial<ApprovalTerms> = {}) {
   const tampered = withContributions(change);
   return [
     tampered,
@@ -65,32 +65,32 @@ describe("the payment check before any wallet prompt", () => {
     ["two payers in each other's spots", withContributions((_, slot) => (slot === 1 ? { wallet: SAMPLE_WALLETS.cam } : slot === 2 ? { wallet: SAMPLE_WALLETS.bea } : {}))],
     ["someone else in a payer's spot", withContributions((_, slot) => (slot === 2 ? { wallet: SAMPLE_WALLETS.outsider } : {}))],
     ["a payer missing", withPayment({ contributions: payload.payment.contributions.slice(0, 2) })],
-    ["another expiry height than the room's", { ...payload, lastValidBlockHeight: payload.lastValidBlockHeight + 150n }],
+    ["another expiry height than the room's", { ...payload, lastValidBlockHeight: String(BigInt(payload.lastValidBlockHeight) + 150n) as BlockHeight }],
   ])("refuses %s before the wallet opens, whatever the bytes", async (_, tampered) => {
     expect(await check(tampered, terms)).toEqual({ ok: false, failure: "mismatch" });
   });
 
   it.each<[string, readonly [SigningPayload, ApprovalTerms]]>([
-    ["the seller as a payer", agreeing((_, slot) => (slot === 2 ? { wallet: room.checkout.sellerWallet } : {}))],
-    ["one wallet in two spots", agreeing((_, slot) => (slot === 2 ? { wallet: SAMPLE_WALLETS.bea } : {}))],
-    ["shares that don't add up to the total", agreeing(() => ({}), { totalUnits: units(BigInt(terms.totalUnits) + 1n) })],
-    ["a viewer who isn't a payer", agreeing(() => ({}), { payer: SAMPLE_WALLETS.outsider as Address })],
-    ["shares that aren't the equal split", agreeing((_, slot) => ({ amountUnits: units([15_000_000n, 10_000_000n, 5_000_000n][slot]!) }), { totalUnits: units(30_000_000n) })],
-    ["one payer paying most of the total", agreeing((_, slot) => ({ amountUnits: units([total / 6n, total - (total / 6n) * 2n, total / 6n][slot]!) }))],
-    ["a payer paying nothing", agreeing((_, slot) => ({ amountUnits: units([total / 2n, total - total / 2n, 0n][slot]!) }))],
+    ["the seller as a payer", withScreenShowingTheSame((_, slot) => (slot === 2 ? { wallet: room.checkout.sellerWallet } : {}))],
+    ["one wallet in two spots", withScreenShowingTheSame((_, slot) => (slot === 2 ? { wallet: SAMPLE_WALLETS.bea } : {}))],
+    ["shares that don't add up to the total", withScreenShowingTheSame(() => ({}), { totalUnits: units(BigInt(terms.totalUnits) + 1n) })],
+    ["a viewer who isn't a payer", withScreenShowingTheSame(() => ({}), { payer: SAMPLE_WALLETS.outsider as Address })],
+    ["shares that aren't the equal split", withScreenShowingTheSame((_, slot) => ({ amountUnits: units([15_000_000n, 10_000_000n, 5_000_000n][slot]!) }), { totalUnits: units(30_000_000n) })],
+    ["one payer paying most of the total", withScreenShowingTheSame((_, slot) => ({ amountUnits: units([total / 6n, total - (total / 6n) * 2n, total / 6n][slot]!) }))],
+    ["a payer paying nothing", withScreenShowingTheSame((_, slot) => ({ amountUnits: units([total / 2n, total - total / 2n, 0n][slot]!) }))],
   ])("refuses %s even when the room shows the same", async (_, [tampered, shown]) => {
     expect(await check(tampered, shown)).toEqual({ ok: false, failure: "mismatch" });
   });
 
   it("refuses a payload that leaves out a payer whose share is zero, though the rest adds up", async () => {
-    const [whole, shown] = agreeing((_, slot) => ({ amountUnits: units(slot === 2 ? 0n : 1n) }), { totalUnits: units(2n) });
+    const [whole, shown] = withScreenShowingTheSame((_, slot) => ({ amountUnits: units(slot === 2 ? 0n : 1n) }), { totalUnits: units(2n) });
     const leftOut = { ...whole, payment: { ...whole.payment, contributions: whole.payment.contributions.slice(0, 2) } };
     expect((await check(whole, shown)).ok).toBe(true);
     expect(await check(leftOut, shown)).toEqual({ ok: false, failure: "mismatch" });
   });
 
   it("accepts any expiry height while the room has none yet", async () => {
-    const result = await check({ ...payload, lastValidBlockHeight: 1n }, { ...terms, lastValidBlockHeight: null });
+    const result = await check({ ...payload, lastValidBlockHeight: "1" as BlockHeight }, { ...terms, lastValidBlockHeight: null });
     expect(result.ok).toBe(true);
   });
 

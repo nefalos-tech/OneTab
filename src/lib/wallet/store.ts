@@ -17,11 +17,10 @@ export type SessionStore = {
   subscribe(listener: () => void): () => void;
   send(intent: Intent): void;
   start(): () => void;
-  signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+  keptOrNewApproval(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
   forgetApproval(gen: Gen, approval: PaymentApproval): void;
   isCurrent(gen: Gen, account: Address): boolean;
-  /** The attempt whose payment prompt this page is waiting on, or null. */
-  approving(): AttemptId | null;
+  waitingOnPrompt(): AttemptId | null;
   cancelPayment(): void;
 };
 
@@ -41,7 +40,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
   let signInCallsInOrder: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   let paymentPromptOpen = false;
-  let waiting: { readonly gen: Gen; readonly attemptId: AttemptId; readonly end: (answer: Ended) => void } | null = null;
+  let promptWait: { readonly gen: Gen; readonly attemptId: AttemptId; readonly end: (answer: Ended) => void } | null = null;
   let approved: { readonly gen: Gen; readonly approval: PaymentApproval } | null = null;
 
   function notify(): void {
@@ -52,7 +51,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     const result = step(state, event);
     if (result.state === state) return;
     state = result.state;
-    if (waiting !== null && waiting.gen !== state.gen) waiting.end(STALE);
+    if (promptWait !== null && promptWait.gen !== state.gen) promptWait.end(STALE);
     notify();
     for (const effect of result.effects) run(effect, state.gen);
   }
@@ -61,7 +60,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     return state.kind === "signed_in" && state.gen === gen && state.account === account;
   }
 
-  async function signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>> {
+  async function keptOrNewApproval(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>> {
     const current = () => isCurrent(gen, payment.account);
     if (!current()) return STALE;
     if (approved?.gen === gen && approved.approval.messageHash === payment.messageHash) return { ok: true, value: approved.approval };
@@ -78,11 +77,11 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
       paymentPromptOpen = false;
     });
     const ended = new Promise<Ended>((resolve) => {
-      waiting = {
+      promptWait = {
         gen,
         attemptId: payment.attemptId,
         end: (answer) => {
-          waiting = null;
+          promptWait = null;
           resolve(answer);
         },
       };
@@ -91,7 +90,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
 
     const first = await Promise.race([walletAnswer.then((answer) => ({ answer })), ended]);
     if (!("answer" in first)) return first;
-    waiting = null;
+    promptWait = null;
     notify();
     const { answer } = first;
     if (!current()) return STALE;
@@ -166,17 +165,17 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     start() {
       return env.bridge.onAccountChange((account) => dispatch({ type: "account_changed", account }));
     },
-    signPayment,
+    keptOrNewApproval,
     forgetApproval(gen, approval) {
       if (approved?.gen === gen && approved.approval.messageHash === approval.messageHash && approved.approval.signature === approval.signature) {
         approved = null;
       }
     },
     isCurrent,
-    approving: () => waiting?.attemptId ?? null,
+    waitingOnPrompt: () => promptWait?.attemptId ?? null,
     cancelPayment() {
-      if (waiting === null) return;
-      waiting.end({ ok: false, failure: "rejected" });
+      if (promptWait === null) return;
+      promptWait.end({ ok: false, failure: "rejected" });
       notify();
     },
   };

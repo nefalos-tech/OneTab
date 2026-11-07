@@ -286,7 +286,7 @@ describe("the payment prompt", () => {
     const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
     store.start();
     const heard: (string | null)[] = [];
-    store.subscribe(() => heard.push(store.approving()));
+    store.subscribe(() => heard.push(store.waitingOnPrompt()));
     return { store, world, prompts, heard, gen: store.getSnapshot().gen };
   }
 
@@ -313,15 +313,15 @@ describe("the payment prompt", () => {
     it("with no account change, answers with it and holds the prompt until then", async () => {
       const w = signedIn();
       const pay = await payment();
-      const pending = w.store.signPayment(w.gen, pay);
+      const pending = w.store.keptOrNewApproval(w.gen, pay);
       expect(w.prompts.map((p) => p.payment)).toEqual([pay]);
-      expect(w.store.approving(), "the page waits on the prompt for this attempt").toBe(pay.attemptId);
+      expect(w.store.waitingOnPrompt(), "the page waits on the prompt for this attempt").toBe(pay.attemptId);
       w.prompts[0]!.answer(walletAnswer);
       expect(outcomeOf(await pending)).toBe(OUTCOME[walletAnswer]);
-      expect(w.store.approving()).toBeNull();
+      expect(w.store.waitingOnPrompt()).toBeNull();
       expect(w.heard).toEqual([pay.attemptId, null]);
 
-      const again = w.store.signPayment(w.gen, pay);
+      const again = w.store.keptOrNewApproval(w.gen, pay);
       if (walletAnswer === "approves") {
         expect(outcomeOf(await again)).toBe("approved");
         expect(w.prompts, "the same message is approved once").toHaveLength(1);
@@ -334,7 +334,7 @@ describe("the payment prompt", () => {
       it("before the prompt, nothing opens", async () => {
         const w = signedIn();
         move(w, how);
-        expect(await w.store.signPayment(w.gen, await payment())).toEqual({ ok: false, failure: "stale" });
+        expect(await w.store.keptOrNewApproval(w.gen, await payment())).toEqual({ ok: false, failure: "stale" });
         expect(w.prompts).toHaveLength(0);
         expect(w.heard.filter((attempt) => attempt !== null), "the page never waited on a prompt").toEqual([]);
       });
@@ -342,29 +342,29 @@ describe("the payment prompt", () => {
       it("during the prompt, the wait ends at once and the answer is dropped", async () => {
         const w = signedIn();
         const pay = await payment();
-        const pending = w.store.signPayment(w.gen, pay);
+        const pending = w.store.keptOrNewApproval(w.gen, pay);
         move(w, how);
         expect(await pending).toEqual({ ok: false, failure: "stale" });
-        expect(w.store.approving()).toBeNull();
+        expect(w.store.waitingOnPrompt()).toBeNull();
         w.prompts[0]!.answer(walletAnswer);
         await settled();
 
         const gen = await signInAgain(w);
-        void w.store.signPayment(gen, pay);
+        void w.store.keptOrNewApproval(gen, pay);
         expect(w.prompts, "the dropped answer is never reused").toHaveLength(2);
       });
 
       it("after the answer, the old signer is stale and the new sign-in asks again", async () => {
         const w = signedIn();
         const pay = await payment();
-        const pending = w.store.signPayment(w.gen, pay);
+        const pending = w.store.keptOrNewApproval(w.gen, pay);
         w.prompts[0]!.answer(walletAnswer);
         expect(outcomeOf(await pending)).toBe(OUTCOME[walletAnswer]);
         move(w, how);
-        expect(await w.store.signPayment(w.gen, pay)).toEqual({ ok: false, failure: "stale" });
+        expect(await w.store.keptOrNewApproval(w.gen, pay)).toEqual({ ok: false, failure: "stale" });
 
         const gen = await signInAgain(w);
-        void w.store.signPayment(gen, pay);
+        void w.store.keptOrNewApproval(gen, pay);
         expect(w.prompts, "an approval belongs to the sign-in that asked for it").toHaveLength(2);
       });
     });
@@ -372,29 +372,29 @@ describe("the payment prompt", () => {
 
   it("a second call while the prompt is open is busy and opens nothing, and a later one asks again", async () => {
     const w = signedIn();
-    const first = w.store.signPayment(w.gen, await payment());
-    expect(await w.store.signPayment(w.gen, await payment())).toEqual({ ok: false, failure: "busy" });
-    expect(await w.store.signPayment(w.gen, await payment("6b".repeat(32)))).toEqual({ ok: false, failure: "busy" });
+    const first = w.store.keptOrNewApproval(w.gen, await payment());
+    expect(await w.store.keptOrNewApproval(w.gen, await payment())).toEqual({ ok: false, failure: "busy" });
+    expect(await w.store.keptOrNewApproval(w.gen, await payment("6b".repeat(32)))).toEqual({ ok: false, failure: "busy" });
     expect(w.prompts).toHaveLength(1);
     w.prompts[0]!.answer("approves");
     expect(outcomeOf(await first)).toBe("approved");
-    void w.store.signPayment(w.gen, await payment("6b".repeat(32)));
+    void w.store.keptOrNewApproval(w.gen, await payment("6b".repeat(32)));
     expect(w.prompts, "another message asks again").toHaveLength(2);
   });
 
   it("Cancel ends the wait as a refusal, the wallet's prompt stays the only one until it answers, and its late approval is dropped", async () => {
     const w = signedIn();
     const pay = await payment();
-    const pending = w.store.signPayment(w.gen, pay);
+    const pending = w.store.keptOrNewApproval(w.gen, pay);
     w.store.cancelPayment();
     expect(await pending).toEqual({ ok: false, failure: "rejected" });
-    expect(w.store.approving()).toBeNull();
+    expect(w.store.waitingOnPrompt()).toBeNull();
     expect(w.heard).toEqual([pay.attemptId, null]);
-    expect(await w.store.signPayment(w.gen, pay)).toEqual({ ok: false, failure: "busy" });
+    expect(await w.store.keptOrNewApproval(w.gen, pay)).toEqual({ ok: false, failure: "busy" });
 
     w.prompts[0]!.answer("approves");
     await settled();
-    void w.store.signPayment(w.gen, pay);
+    void w.store.keptOrNewApproval(w.gen, pay);
     expect(w.prompts, "the approval after Cancel isn't kept").toHaveLength(2);
   });
 
@@ -415,23 +415,23 @@ describe("the payment prompt", () => {
       const world = scripted({ bridge: { signPayment }, service: { verify: async () => ({ ok: true, value: SESSION }) } });
       const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
       const gen = store.getSnapshot().gen;
-      expect(await store.signPayment(gen, await payment())).toEqual({ ok: false, failure: "failed" });
-      expect(store.approving()).toBeNull();
-      expect(await store.signPayment(gen, await payment()), "the prompt was freed").toEqual({ ok: false, failure: "failed" });
+      expect(await store.keptOrNewApproval(gen, await payment())).toEqual({ ok: false, failure: "failed" });
+      expect(store.waitingOnPrompt()).toBeNull();
+      expect(await store.keptOrNewApproval(gen, await payment()), "the prompt was freed").toEqual({ ok: false, failure: "failed" });
     }
   });
 
   it("forgets a kept approval when told, so the next call for that message asks the wallet again", async () => {
     const w = signedIn();
     const pay = await payment();
-    const first = w.store.signPayment(w.gen, pay);
+    const first = w.store.keptOrNewApproval(w.gen, pay);
     w.prompts[0]!.answer("approves");
     const approved = await first;
     if (!approved.ok) throw new Error("The wallet approved");
     w.store.forgetApproval(w.gen, { ...approved.value, signature: "b3RoZXI=" as SignatureBase64 });
-    expect(await w.store.signPayment(w.gen, pay), "another approval leaves the kept one").toEqual(approved);
+    expect(await w.store.keptOrNewApproval(w.gen, pay), "another approval leaves the kept one").toEqual(approved);
     w.store.forgetApproval(w.gen, approved.value);
-    void w.store.signPayment(w.gen, pay);
+    void w.store.keptOrNewApproval(w.gen, pay);
     expect(w.prompts, "a forgotten approval is asked for again").toHaveLength(2);
   });
 
@@ -446,13 +446,13 @@ describe("the payment prompt", () => {
   it("refuses a payment for another account than the one signed in, with no prompt", async () => {
     const w = signedIn();
     const theirs = { ...(await payment()), account: OTHER };
-    expect(await w.store.signPayment(w.gen, theirs)).toEqual({ ok: false, failure: "stale" });
+    expect(await w.store.keptOrNewApproval(w.gen, theirs)).toEqual({ ok: false, failure: "stale" });
     expect(w.prompts).toHaveLength(0);
   });
 
   it("asks nothing of a wallet that isn't signed in", async () => {
     const world = scripted({ bridge: { signPayment: () => Promise.reject(new Error("prompted")) } });
     const store = createSessionStore(world.environment, initialState({ account: PAYER, session: null }));
-    expect(await store.signPayment(store.getSnapshot().gen, await payment())).toEqual({ ok: false, failure: "stale" });
+    expect(await store.keptOrNewApproval(store.getSnapshot().gen, await payment())).toEqual({ ok: false, failure: "stale" });
   });
 });

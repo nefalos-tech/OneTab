@@ -424,7 +424,7 @@ describe("the payment a payer approves", () => {
         { slot: 2, wallet: SAMPLE_WALLETS.cam, amountUnits: "3333333" },
       ],
       payer: SAMPLE_WALLETS.bea,
-      lastValidBlockHeight: 312345678n,
+      lastValidBlockHeight: "312345678",
     });
   });
 

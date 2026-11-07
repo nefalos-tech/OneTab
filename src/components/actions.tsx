@@ -33,7 +33,7 @@ export function ActionGroup({
   readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children?: ReactNode;
 }): ReactNode {
-  const { session, signer, approving, expired } = useWalletSession();
+  const { session, signer, waitingOnPrompt, expired } = useWalletSession();
   const track = use(RoomTrack);
   const router = useRouter();
   const [busy, setBusy] = useState<LiveKind | null>(null);
@@ -45,11 +45,15 @@ export function ActionGroup({
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
-  const shownBusy = busyShown(busy, approving, actions);
+  const shownBusy = busyShown(busy, waitingOnPrompt, actions);
 
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
+    // A follow-up keeps the notice that offered it, so its busy label shows there, and what it says next
+    // belongs to the action that raised that notice.
     const offeredBy = notice?.followUp?.kind === action.kind ? notice : null;
+    const raise = (text: string, followUp: Action | null) =>
+      setNotice({ text, followUp, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action });
     inFlight.current = true;
     if (offeredBy === null) setNotice(null);
     setBusy(action.kind);
@@ -68,18 +72,13 @@ export function ActionGroup({
         setNotice(null);
         break;
       case "noted":
-        setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action });
+        raise(outcome.text, null);
         break;
       case "signed_out":
         if (sentAs) expired(sentAs);
         break;
       case "notice":
-        setNotice({
-          text: outcome.text,
-          followUp: outcome.followUp ?? offeredBy?.followUp ?? null,
-          wallet: sentAs?.wallet ?? null,
-          raisedBy: offeredBy?.raisedBy ?? action,
-        });
+        raise(outcome.text, outcome.followUp);
         break;
     }
     setBusy(null);

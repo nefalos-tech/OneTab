@@ -14,8 +14,7 @@ export type WalletSessionApi = {
   readonly view: WalletView;
   readonly session: Session | null;
   readonly signer: PaymentSigner;
-  /** The attempt whose payment prompt this page is waiting on, or null. */
-  readonly approving: AttemptId | null;
+  readonly waitingOnPrompt: AttemptId | null;
   connect(): void;
   cancel(): void;
   disconnect(): void;
@@ -61,17 +60,17 @@ export function useWalletSession(): WalletSessionApi {
   const store = use(StoreContext);
   if (store === null) throw new Error("useWalletSession needs LiveWalletProvider in the root layout");
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const approving = useSyncExternalStore(store.subscribe, store.approving, store.approving);
+  const waitingOnPrompt = useSyncExternalStore(store.subscribe, store.waitingOnPrompt, store.waitingOnPrompt);
   return useMemo(
     () => ({
-      view: deriveWalletView(state, approving !== null),
+      view: deriveWalletView(state, waitingOnPrompt !== null),
       session: sessionOf(state),
       signer: {
-        sign: (payment) => store.signPayment(state.gen, payment),
+        keptOrNewApproval: (payment) => store.keptOrNewApproval(state.gen, payment),
         forget: (approval) => store.forgetApproval(state.gen, approval),
         isCurrent: (payment) => store.isCurrent(state.gen, payment.account),
       },
-      approving,
+      waitingOnPrompt,
       connect: () => store.send({ type: "connect" }),
       cancel: () => {
         store.cancelPayment();
@@ -80,7 +79,7 @@ export function useWalletSession(): WalletSessionApi {
       disconnect: () => store.send({ type: "disconnect" }),
       expired: (session: Session) => store.send({ type: "expired", session }),
     }),
-    [store, state, approving],
+    [store, state, waitingOnPrompt],
   );
 }
 

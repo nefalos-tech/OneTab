@@ -9,7 +9,11 @@ export type CheckoutId = string & { readonly __brand: "CheckoutId" };
 
 export type AttemptId = string & { readonly __brand: "AttemptId" };
 
+/** The SHA-256 of a payment message, as 64 lowercase hex digits. */
 export type MessageHash = string & { readonly __brand: "MessageHash" };
+
+/** The last block height a payment message is valid for, as a decimal string in the u64 range. */
+export type BlockHeight = string & { readonly __brand: "BlockHeight" };
 
 export const U64_MAX = 18446744073709551615n;
 
@@ -17,6 +21,14 @@ const isU64Decimal = (s: string): boolean => /^(0|[1-9][0-9]*)$/.test(s) && BigI
 
 export function isTokenUnits(s: string): s is TokenUnits {
   return isU64Decimal(s);
+}
+
+export function isBlockHeight(s: string): s is BlockHeight {
+  return isU64Decimal(s);
+}
+
+export function isMessageHash(s: string): s is MessageHash {
+  return /^[0-9a-f]{64}$/.test(s);
 }
 
 export function looksLikeAddress(s: string): s is Address {
@@ -61,7 +73,11 @@ export type PublicConfig = {
 /** GET /api/auth/session data. Signed out is `null` at use sites. */
 export type Session = { readonly wallet: Address; readonly expiresAt: string };
 
-export type PayerCount = 2 | 3;
+const PAYER_COUNTS = [2, 3] as const;
+export type PayerCount = (typeof PAYER_COUNTS)[number];
+const MOST_PAYERS: PayerCount = 3;
+
+const isPayerCount = (value: unknown): value is PayerCount => PAYER_COUNTS.some((n) => n === value);
 
 export type Checkout = {
   readonly id: CheckoutId;
@@ -159,7 +175,7 @@ export type AttemptSummary = {
   readonly state: AttemptState;
   readonly signedWallets: readonly Address[];
   readonly transactionReference: string | null;
-  readonly lastValidBlockHeight: string | null;
+  readonly lastValidBlockHeight: BlockHeight | null;
   readonly error: AttemptError | null;
   /** Server decision. The only input that can enable Try again. */
   readonly canRetry: boolean;
@@ -196,7 +212,7 @@ export type SigningPayload = {
   readonly message: Uint8Array;
   readonly messageHash: MessageHash;
   readonly blockhash: string;
-  readonly lastValidBlockHeight: bigint;
+  readonly lastValidBlockHeight: BlockHeight;
   readonly payment: {
     readonly network: Network;
     readonly mint: Address;
@@ -228,7 +244,7 @@ export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
 }
 
 export function parseAttemptSummary(data: unknown): AttemptSummary | null {
-  return parseAttempt(data, 3) ?? null;
+  return parseAttempt(data, MOST_PAYERS) ?? null;
 }
 
 export function parseSigningPayload(data: unknown): SigningPayload | null {
@@ -237,21 +253,19 @@ export function parseSigningPayload(data: unknown): SigningPayload | null {
   const { network, mint, tokenDecimals, sellerWallet, sellerTokenAccount, feePayerWallet } = data.payment;
   const attemptId = typeof data.attemptId === "string" ? parseAttemptId(data.attemptId) : null;
   const checkoutId = typeof data.checkoutId === "string" ? parseCheckoutId(data.checkoutId) : null;
-  const transaction = typeof data.transactionBase64 === "string" ? decodeBase64(data.transactionBase64) : null;
-  const message = typeof data.messageBase64 === "string" ? decodeBase64(data.messageBase64) : null;
+  const transaction = typeof data.transactionBase64 === "string" ? decodePaddedBase64(data.transactionBase64) : null;
+  const message = typeof data.messageBase64 === "string" ? decodePaddedBase64(data.messageBase64) : null;
   const contributions = listOf(data.payment.contributions, parsePaymentContribution);
   const inSlotOrder =
-    contributions !== undefined &&
-    (contributions.length === 2 || contributions.length === 3) &&
-    contributions.every((c, index) => c.slot === index);
+    contributions !== undefined && isPayerCount(contributions.length) && contributions.every((c, index) => c.slot === index);
   return attemptId !== null &&
     checkoutId !== null &&
-    transaction !== null &&
-    message !== null &&
+    isSomeBytes(transaction) &&
+    isSomeBytes(message) &&
     typeof messageHash === "string" &&
-    /^[0-9a-f]{64}$/.test(messageHash) &&
+    isMessageHash(messageHash) &&
     isAddress(blockhash) &&
-    isU64(lastValidBlockHeight) &&
+    isHeight(lastValidBlockHeight) &&
     network === "devnet" &&
     isAddress(mint) &&
     isDecimals(tokenDecimals) &&
@@ -264,9 +278,9 @@ export function parseSigningPayload(data: unknown): SigningPayload | null {
         checkoutId,
         transaction,
         message,
-        messageHash: messageHash as MessageHash,
+        messageHash,
         blockhash,
-        lastValidBlockHeight: BigInt(lastValidBlockHeight),
+        lastValidBlockHeight,
         payment: { network, mint, tokenDecimals, sellerWallet, sellerTokenAccount, feePayerWallet, contributions },
       }
     : null;
@@ -292,7 +306,7 @@ function parseCheckout(data: unknown): Checkout | undefined {
     isAddress(mint) &&
     isDecimals(tokenDecimals) &&
     isUnits(totalUnits) &&
-    (payerCount === 2 || payerCount === 3) &&
+    isPayerCount(payerCount) &&
     isTimestamp(createdAt)
     ? { id, title, organizerWallet, sellerWallet, network, mint, tokenDecimals, totalUnits, payerCount, createdAt }
     : undefined;
@@ -317,7 +331,7 @@ function parseAttempt(data: unknown, payerCount: PayerCount): AttemptSummary | u
     isOneOf(state, ATTEMPT_STATES) &&
     signedWallets !== undefined &&
     isStringOrNull(transactionReference) &&
-    (lastValidBlockHeight === null || isU64(lastValidBlockHeight)) &&
+    (lastValidBlockHeight === null || isHeight(lastValidBlockHeight)) &&
     error !== undefined &&
     typeof canRetry === "boolean" &&
     receipt !== undefined
@@ -355,15 +369,20 @@ function parseContribution(data: unknown, payerCount: PayerCount): ReceiptContri
 function parsePaymentContribution(data: unknown): PaymentContribution | undefined {
   if (!isRecord(data)) return undefined;
   const { slot, wallet, sourceTokenAccount, amountUnits } = data;
-  return isSlot(slot, 3) && isAddress(wallet) && isAddress(sourceTokenAccount) && isUnits(amountUnits)
+  return isSlot(slot, MOST_PAYERS) && isAddress(wallet) && isAddress(sourceTokenAccount) && isUnits(amountUnits)
     ? { slot, wallet, sourceTokenAccount, amountUnits }
     : undefined;
 }
 
-function decodeBase64(text: string): Uint8Array | null {
-  if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return null;
-  return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
+/** The standard alphabet in whole four-character groups, with `=` padding only at the end. */
+const PADDED_BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+
+function decodePaddedBase64(text: string): Uint8Array | null {
+  return PADDED_BASE64.test(text) ? Uint8Array.from(atob(text), (char) => char.charCodeAt(0)) : null;
 }
+
+/** Empty bytes are no payment. */
+const isSomeBytes = (bytes: Uint8Array | null): bytes is Uint8Array => bytes !== null && bytes.length > 0;
 
 function listOf<T>(data: unknown, parse: (item: unknown) => T | undefined): readonly T[] | undefined {
   if (!Array.isArray(data)) return undefined;
@@ -382,7 +401,7 @@ function isOneOf<T extends string>(value: unknown, options: readonly T[]): value
 
 const isAddress = (value: unknown): value is Address => typeof value === "string" && looksLikeAddress(value);
 const isUnits = (value: unknown): value is TokenUnits => typeof value === "string" && isTokenUnits(value);
-const isU64 = (value: unknown): value is string => typeof value === "string" && isU64Decimal(value);
+const isHeight = (value: unknown): value is BlockHeight => typeof value === "string" && isBlockHeight(value);
 const isStringOrNull = (value: unknown): value is string | null => value === null || typeof value === "string";
 const isTimestamp = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 const isSlot = (value: unknown, payerCount: PayerCount): value is number =>

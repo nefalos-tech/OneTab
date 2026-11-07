@@ -1,6 +1,7 @@
 import {
   looksLikeAddress,
   isAttemptId,
+  isBlockHeight,
   isCheckoutId,
   isTokenUnits,
   type Address,
@@ -8,6 +9,7 @@ import {
   type AttemptError,
   type AttemptState,
   type AttemptSummary,
+  type BlockHeight,
   type CheckoutId,
   type PayerCount,
   type Phase,
@@ -31,6 +33,11 @@ function sampleAddress(word: string, ending: string): Address {
 
 function units(s: string): TokenUnits {
   if (!isTokenUnits(s)) throw new Error(`Sample amount is not integer units: ${s}`);
+  return s;
+}
+
+function height(s: string): BlockHeight {
+  if (!isBlockHeight(s)) throw new Error(`Sample height is not a block height: ${s}`);
   return s;
 }
 
@@ -67,7 +74,7 @@ export const SAMPLE_SESSION_EXPIRY = "2099-01-01T00:00:00.000Z";
 
 const SPOT_WALLETS = [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam] as const;
 const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 88);
-const LAST_VALID_BLOCK_HEIGHT = "312345678";
+const LAST_VALID_BLOCK_HEIGHT = height("312345678");
 const CREATED_AT = "2026-11-07T09:00:00.000Z";
 const OBSERVED_AT = "2026-11-07T14:05:00.000Z";
 

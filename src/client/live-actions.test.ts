@@ -49,7 +49,7 @@ function shownBy(): { readonly track: Track; readonly shown: RoomSnapshot[] } {
 }
 
 const NO_WALLET: PaymentSigner = {
-  sign: () => {
+  keptOrNewApproval: () => {
     throw new Error("A wallet prompt opened");
   },
   forget: () => {},
@@ -114,7 +114,7 @@ const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } =
 function wallet(answer: Result<SignatureBase64, SignFailure>, current = () => true) {
   const prompts: CheckedPayment[] = [];
   const signer: PaymentSigner = {
-    sign: async (payment) => {
+    keptOrNewApproval: async (payment) => {
       prompts.push(payment);
       return answer.ok ? { ok: true, value: { messageHash: payment.messageHash, signature: answer.value } } : answer;
     },
@@ -128,7 +128,7 @@ function rememberingWallet() {
   const prompts: CheckedPayment[] = [];
   const approvals = new Map<string, PaymentApproval>();
   const signer: PaymentSigner = {
-    sign: async (payment) => {
+    keptOrNewApproval: async (payment) => {
       const kept = approvals.get(payment.messageHash);
       if (kept) return { ok: true, value: kept };
       prompts.push(payment);
@@ -325,6 +325,37 @@ describe("approve", () => {
     expect(shown).toEqual([APPROVED]);
   });
 
+  it("a poll while the wallet's prompt is open still updates the room, and the upload's room shows after it", async () => {
+    const camApproved: RoomSnapshot = { ...SIGNING, attempt: { ...SIGNING.attempt!, signedWallets: [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.cam] } };
+    const allApproved: RoomSnapshot = { ...SIGNING, attempt: { ...camApproved.attempt!, signedWallets: [...camApproved.attempt!.signedWallets, PAYER.wallet] } };
+    const { fetch } = server(
+      () => json(200, { data: WIRE }),
+      () => json(200, { data: camApproved }),
+      () => json(200, { data: allApproved.attempt }),
+      () => json(200, { data: allApproved }),
+    );
+    const { track, shown } = shownBy();
+    let answer!: (approval: PaymentApproval) => void;
+    let approving!: Promise<Outcome>;
+    const prompted = new Promise<void>((opened) => {
+      const signer: PaymentSigner = {
+        keptOrNewApproval: () => {
+          opened();
+          return new Promise((resolve) => (answer = (approval) => resolve({ ok: true, value: approval })));
+        },
+        forget: () => {},
+        isCurrent: () => true,
+      };
+      approving = approver(fetch).run(APPROVE, scope(track, signer));
+    });
+    await prompted;
+    await track("read", () => checkoutApi(fetch).readRoom(ROOM));
+    expect(shown, "the poll's room shows while the prompt is open").toEqual([camApproved]);
+    answer({ messageHash: WIRE.messageHash as PaymentApproval["messageHash"], signature: SIGNATURE });
+    expect(await approving).toEqual({ kind: "done" });
+    expect(shown).toEqual([camApproved, allApproved]);
+  });
+
   it("a payload that differs from the screen opens no prompt and sends nothing more", async () => {
     const tampered = { ...WIRE, payment: { ...(WIRE.payment as object), sellerWallet: SAMPLE_WALLETS.outsider } };
     const { fetch, calls } = server(() => json(200, { data: tampered }));
@@ -478,9 +509,9 @@ describe("decline", () => {
     expect(shown).toEqual([DECLINED]);
   });
 
-  it("with no answer, says trying again is safe", async () => {
+  it("with no answer, says trying again is safe and stays offered", async () => {
     const { fetch } = server(noAnswer);
-    expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope())).toEqual(said("unavailable"));
+    expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope())).toEqual(said("unavailable", DECLINE));
   });
 
   it("a decline that lands when the room can't be read says it went through, and offers nothing more", async () => {
@@ -500,21 +531,21 @@ describe("what each poll sends", () => {
   const attemptOf = (name: keyof typeof FIXTURES) => FIXTURES[name].snapshot.attempt!.id;
 
   it.each<[string, RoomSnapshot, Session | null, ReturnType<typeof pollPlan>]>([
-    ["an open room, signed out", OPEN, null, { read: true, refresh: null }],
-    ["approvals open, to a payer", SIGNING, PAYER, { read: true, refresh: ATTEMPT }],
-    ["approvals open, to a payer who approved", SIGNING, as(SAMPLE_WALLETS.organizer), { read: true, refresh: ATTEMPT }],
-    ["approvals open, to someone with the link", SIGNING, as(SAMPLE_WALLETS.outsider), { read: true, refresh: null }],
-    ["approvals open, to the seller", SIGNING, as(SAMPLE_WALLETS.seller), { read: true, refresh: null }],
-    ["approvals open, signed out", SIGNING, null, { read: true, refresh: null }],
-    ["a payment being prepared, to a payer", FIXTURES.preparing.snapshot, PAYER, { read: true, refresh: attemptOf("preparing") }],
-    ["a payment being sent, to a payer", FIXTURES.submitting.snapshot, PAYER, { read: true, refresh: attemptOf("submitting") }],
-    ["an unresolved payment, to a payer", FIXTURES.unresolved.snapshot, PAYER, { read: true, refresh: attemptOf("unresolved") }],
-    ["a decline on hold, to a payer", FIXTURES["declined-on-hold"].snapshot, PAYER, { read: true, refresh: attemptOf("declined-on-hold") }],
-    ["a decline that is safe to retry, to a payer", FIXTURES["declined-retry"].snapshot, PAYER, { read: true, refresh: null }],
-    ["an expiry that is safe to retry, to a payer", FIXTURES["expired-retry"].snapshot, PAYER, { read: true, refresh: null }],
-    ["a failure on hold, to a payer", FIXTURES["failed-on-hold"].snapshot, PAYER, { read: true, refresh: attemptOf("failed-on-hold") }],
-    ["a confirmed payment awaiting its receipt, to a payer", FIXTURES.confirming.snapshot, PAYER, { read: true, refresh: null }],
-    ["a paid checkout, to a payer", FIXTURES.paid.snapshot, as(SAMPLE_WALLETS.organizer), { read: false, refresh: null }],
+    ["an open room, signed out", OPEN, null, { stop: false, refresh: null }],
+    ["approvals open, to a payer", SIGNING, PAYER, { stop: false, refresh: ATTEMPT }],
+    ["approvals open, to a payer who approved", SIGNING, as(SAMPLE_WALLETS.organizer), { stop: false, refresh: ATTEMPT }],
+    ["approvals open, to someone with the link", SIGNING, as(SAMPLE_WALLETS.outsider), { stop: false, refresh: null }],
+    ["approvals open, to the seller", SIGNING, as(SAMPLE_WALLETS.seller), { stop: false, refresh: null }],
+    ["approvals open, signed out", SIGNING, null, { stop: false, refresh: null }],
+    ["a payment being prepared, to a payer", FIXTURES.preparing.snapshot, PAYER, { stop: false, refresh: attemptOf("preparing") }],
+    ["a payment being sent, to a payer", FIXTURES.submitting.snapshot, PAYER, { stop: false, refresh: attemptOf("submitting") }],
+    ["an unresolved payment, to a payer", FIXTURES.unresolved.snapshot, PAYER, { stop: false, refresh: attemptOf("unresolved") }],
+    ["a decline on hold, to a payer", FIXTURES["declined-on-hold"].snapshot, PAYER, { stop: false, refresh: attemptOf("declined-on-hold") }],
+    ["a decline that is safe to retry, to a payer", FIXTURES["declined-retry"].snapshot, PAYER, { stop: false, refresh: null }],
+    ["an expiry that is safe to retry, to a payer", FIXTURES["expired-retry"].snapshot, PAYER, { stop: false, refresh: null }],
+    ["a failure on hold, to a payer", FIXTURES["failed-on-hold"].snapshot, PAYER, { stop: false, refresh: attemptOf("failed-on-hold") }],
+    ["a confirmed payment awaiting its receipt, to a payer", FIXTURES.confirming.snapshot, PAYER, { stop: false, refresh: null }],
+    ["a paid checkout, to a payer", FIXTURES.paid.snapshot, as(SAMPLE_WALLETS.organizer), { stop: true, refresh: null }],
   ])("%s", (_, room, session, plan) => {
     expect(pollPlan(room, session)).toEqual(plan);
   });
@@ -688,7 +719,7 @@ describe("the poller", () => {
     expect(p.calls).toEqual(sentBeforeStop);
   });
 
-  it("keeps one refresh in flight per browser when the page remounts its watch", async () => {
+  it("keeps one refresh in flight per page when the page remounts its watch", async () => {
     vi.useFakeTimers();
     const env: PollEnv = { wait: browserPollEnv.wait, visible: () => true, onResume: () => () => {} };
     const answers: (() => void)[] = [];

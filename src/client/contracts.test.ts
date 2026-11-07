@@ -100,7 +100,7 @@ describe("parseSigningPayload", () => {
     const message = new TextEncoder().encode(`OneTab payment for ${signing.attempt!.id}`);
     expect(parsed?.message).toEqual(message);
     expect(parsed?.transaction).toEqual(new Uint8Array([1, ...new Uint8Array(64), ...message]));
-    expect(parsed?.lastValidBlockHeight).toBe(312345678n);
+    expect(parsed?.lastValidBlockHeight).toBe("312345678");
     expect(parsed?.attemptId).toBe(signing.attempt!.id);
     expect(parsed?.payment.contributions.map((c) => [c.slot, c.wallet, c.amountUnits])).toEqual(
       signing.participants.map((p) => [p.slot, p.wallet, p.shareUnits]),

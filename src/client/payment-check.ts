@@ -41,8 +41,8 @@ export type MessageCheck = (payload: SigningPayload) => Promise<CheckAnswer>;
  */
 export type ReturnCheck = (payment: CheckedPayment, signature: SignatureBase64) => Promise<CheckAnswer>;
 
-const PAYMENTS_MESSAGE_CHECK: MessageCheck = async () => "unsupported";
-const PAYMENTS_RETURN_CHECK: ReturnCheck = async () => "unsupported";
+const MESSAGE_CHECK_PLACEHOLDER: MessageCheck = async () => "unsupported";
+const RETURN_CHECK_PLACEHOLDER: ReturnCheck = async () => "unsupported";
 
 export function paymentCheck(messageCheck: MessageCheck, returnCheck: ReturnCheck): PaymentCheck {
   return {
@@ -77,7 +77,7 @@ async function answerOf(check: () => Promise<CheckAnswer>): Promise<CheckAnswer>
   }
 }
 
-export const checkPayment: PaymentCheck = paymentCheck(PAYMENTS_MESSAGE_CHECK, PAYMENTS_RETURN_CHECK);
+export const checkPayment: PaymentCheck = paymentCheck(MESSAGE_CHECK_PLACEHOLDER, RETURN_CHECK_PLACEHOLDER);
 
 /**
  * The payload must describe the payment on screen, split equally as spec.md requires. The expiry height

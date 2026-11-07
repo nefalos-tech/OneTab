@@ -2,6 +2,7 @@ import type {
   Address,
   AttemptId,
   AttemptSummary,
+  BlockHeight,
   CheckoutId,
   ClientRequestId,
   Network,
@@ -169,7 +170,7 @@ export type ApprovalTerms = {
   readonly feePayer: Address;
   readonly contributions: readonly { readonly slot: number; readonly wallet: Address; readonly amountUnits: TokenUnits }[];
   readonly payer: Address;
-  readonly lastValidBlockHeight: bigint | null;
+  readonly lastValidBlockHeight: BlockHeight | null;
 };
 
 export type ActionsView = {
@@ -185,14 +186,12 @@ export type Notice = {
   readonly raisedBy: Action;
 };
 
-/** A notice lasts while its wallet is signed in and the action that raised it, for the same attempt, is offered. */
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
   const { kind } = notice.raisedBy;
   const attempt = attemptOf(notice.raisedBy);
   return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === attempt);
 }
 
-/** Approve shows as busy while this page waits on the wallet's prompt for the attempt that Approve is for. */
 export function busyShown(running: ActionKind | null, prompting: AttemptId | null, actions: ActionsView): ActionKind | null {
   if (running !== null) return running;
   return offered(actions).some((a) => a.kind === "approve" && a.terms.attemptId === prompting) ? "approve" : null;
@@ -294,14 +293,16 @@ export function deriveRoomView(state: CheckoutState): RoomView {
     status: statusOf(c, role, tab),
     tab,
     you: me && { share: me.share, status: me.status, isOrganizer: me.isOrganizer },
-    approval: terms && me && approvalOf(terms, me.share),
+    approval: terms && approvalOf(terms),
     actions: { ...plan, sample: sampleActions(state) },
   };
 }
 
-function approvalOf(terms: ApprovalTerms, share: Money): ApprovalView {
+function approvalOf(terms: ApprovalTerms): ApprovalView | null {
+  const mine = terms.contributions.find((c) => c.wallet === terms.payer);
+  if (mine === undefined) return null;
   return {
-    share,
+    share: { units: mine.amountUnits, decimals: terms.tokenDecimals },
     seller: terms.seller,
     total: { units: terms.totalUnits, decimals: terms.tokenDecimals },
     network: NETWORK_LABELS[terms.network],
@@ -377,7 +378,7 @@ export function termsOf(snapshot: RoomSnapshot, session: Session | null): Approv
       .sort((a, b) => a.slot - b.slot)
       .map((p) => ({ slot: p.slot, wallet: p.wallet, amountUnits: p.shareUnits })),
     payer: session.wallet,
-    lastValidBlockHeight: attempt.lastValidBlockHeight === null ? null : BigInt(attempt.lastValidBlockHeight),
+    lastValidBlockHeight: attempt.lastValidBlockHeight,
   };
 }
 
