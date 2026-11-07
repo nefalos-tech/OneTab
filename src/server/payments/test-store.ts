@@ -4,7 +4,6 @@ import type { AttemptStore, Lease, StoredAttempt } from "../attempt-store/index.
 import { PaymentFailure } from "./errors.js";
 import { projectAttempt, type PaymentLifecycle } from "./service.js";
 
-// Test-only, in-process transitions. These are not evidence of database concurrency or durability.
 export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
   readonly attempts = new Map<string, StoredAttempt>();
   currentId: string | null = null;
