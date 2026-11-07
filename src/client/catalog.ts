@@ -1,7 +1,7 @@
 import type { SignFailure } from "@/lib/wallet/environment";
 import type { Problem } from "@/lib/wallet/machine";
 import type { RequestProblem } from "./api";
-import type { Network } from "./contracts";
+import type { ErrorCode, Network } from "./contracts";
 import type { CheckFailure, ReturnFailure } from "./payment-check";
 
 export type Screen = "room" | "result";
@@ -156,6 +156,67 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
+export type StopReason =
+  | "short_usdc"
+  | "short_sol"
+  | "no_token_account"
+  | "network_unreachable"
+  | "network_rejected"
+  | "not_sent";
+
+type StopWords = { readonly happened: string; readonly next: string | null };
+
+/** Who can act next is the status line's job, so `next` says only what must be true before the next try. */
+export const STOP_REASONS = {
+  short_usdc: {
+    happened:
+      "A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid.",
+    next: "Each payer checks that their wallet holds their share in test USDC on Solana Devnet.",
+  },
+  short_sol: {
+    happened:
+      "The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid.",
+    next: "The organizer adds SOL on Solana Devnet to their wallet.",
+  },
+  no_token_account: {
+    happened:
+      "A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid.",
+    next: "That wallet receives test USDC on Solana Devnet once before the next try.",
+  },
+  network_unreachable: {
+    happened: "OneTab couldn't reach Solana Devnet while preparing the payment, so nothing was sent and no network fee was paid.",
+    next: null,
+  },
+  network_rejected: {
+    happened:
+      "The network rejected the payment, so no share reached the seller. The organizer's wallet may have paid a small network fee in SOL.",
+    next: "Before the next try, each payer checks that their wallet still holds their share in test USDC.",
+  },
+  not_sent: {
+    happened: "The payment stopped before it was sent, so nothing reached the seller and no network fee was paid.",
+    next: "Before the next try, each payer checks that their wallet holds their share in test USDC, and the organizer checks that theirs holds SOL for the network fee.",
+  },
+} as const satisfies { readonly [K in StopReason]: StopWords };
+
+/** INVALID_PAYMENT, the room's mask for every stop code, names no cause, so it has no row. */
+export const CAUSE_OF_CODE = {
+  INSUFFICIENT_USDC: "short_usdc",
+  INSUFFICIENT_SOL: "short_sol",
+  TOKEN_ACCOUNT_MISSING: "no_token_account",
+  RPC_UNAVAILABLE: "network_unreachable",
+} as const satisfies Partial<Record<ErrorCode, StopReason>>;
+
+/** The refusals a Start or Try again meets after the server kept the attempt, failed, before sending it. */
+export type FundingCause = (typeof CAUSE_OF_CODE)["INSUFFICIENT_USDC" | "INSUFFICIENT_SOL" | "TOKEN_ACCOUNT_MISSING"];
+
+const CAUSES_BY_CODE: Partial<Record<ErrorCode, StopReason>> = CAUSE_OF_CODE;
+
+export function causeOfCode(code: ErrorCode): StopReason | null {
+  return CAUSES_BY_CODE[code] ?? null;
+}
+
+const toldInFull = (words: { readonly happened: string; readonly next: string }) => `${words.happened} ${words.next}`;
+
 export type ProblemWithWords =
   | Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">
   | "approval_refused"
@@ -165,8 +226,9 @@ export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
   room_changed: "The checkout moved on before this went through. It shows the latest now.",
   room_changed_unread: "The checkout moved on before this went through. OneTab couldn't load the latest yet.",
-  not_funded:
-    "The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent.",
+  short_usdc: toldInFull(STOP_REASONS.short_usdc),
+  short_sol: toldInFull(STOP_REASONS.short_sol),
+  no_token_account: toldInFull(STOP_REASONS.no_token_account),
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
   refused: "OneTab couldn't accept this, so nothing changed. Reload the page and try again.",
   unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",

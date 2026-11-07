@@ -362,7 +362,9 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `room_full` | Someone took the last spot first. This checkout is full. |
 | `room_changed` | The checkout moved on before this went through. It shows the latest now. |
 | `room_changed_unread` | The checkout moved on before this went through. OneTab couldn't load the latest yet. |
-| `not_funded` | The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent. |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid. Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid. The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid. That wallet receives test USDC on Solana Devnet once before the next try. |
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
@@ -373,6 +375,15 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `failed` | Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again. |
 | `unchecked` | OneTab couldn't check the approval your wallet returned, so nothing was sent. |
 | `approval_refused` | OneTab couldn't accept this approval, so nothing was sent. You can approve again. |
+
+| Stop reason | What happened | What to do next |
+| --- | --- | --- |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid. | Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid. | The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid. | That wallet receives test USDC on Solana Devnet once before the next try. |
+| `network_unreachable` | OneTab couldn't reach Solana Devnet while preparing the payment, so nothing was sent and no network fee was paid. | None. The status line says who can act. |
+| `network_rejected` | The network rejected the payment, so no share reached the seller. The organizer's wallet may have paid a small network fee in SOL. | Before the next try, each payer checks that their wallet still holds their share in test USDC. |
+| `not_sent` | The payment stopped before it was sent, so nothing reached the seller and no network fee was paid. | Before the next try, each payer checks that their wallet holds their share in test USDC, and the organizer checks that theirs holds SOL for the network fee. |
 
 | Word | Text |
 | --- | --- |

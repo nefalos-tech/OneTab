@@ -155,7 +155,9 @@ const SAY: After = { readAgain: false };
 const AFTER: { readonly [P in Exclude<RequestProblem, "signed_out">]: After } = {
   room_full: { readAgain: true, ifShown: null, ifUnread: "room_full" },
   room_changed: { readAgain: true, ifShown: "room_changed", ifUnread: "room_changed_unread" },
-  not_funded: { readAgain: true, ifShown: "not_funded", ifUnread: "not_funded" },
+  short_usdc: { readAgain: true, ifShown: "short_usdc", ifUnread: "short_usdc" },
+  short_sol: { readAgain: true, ifShown: "short_sol", ifUnread: "short_sol" },
+  no_token_account: { readAgain: true, ifShown: "no_token_account", ifUnread: "no_token_account" },
   rate_limited: SAY,
   refused: SAY,
   unavailable: SAY,

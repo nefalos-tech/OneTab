@@ -1,4 +1,5 @@
 import type { PaymentApproval, Result } from "@/lib/wallet/environment";
+import { CAUSE_OF_CODE, type FundingCause } from "./catalog";
 import type { CreateRequest } from "./checkout-view";
 import {
   isErrorCode,
@@ -62,7 +63,7 @@ export type RequestProblem =
   | "signed_out"
   | "room_full"
   | "room_changed"
-  | "not_funded"
+  | FundingCause
   | "rate_limited"
   | "refused"
   | "unavailable";
@@ -81,6 +82,7 @@ export type CheckoutApi = {
   decline(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
 };
 
+/** RPC_UNAVAILABLE isn't a cause here: a 503 to a Start doesn't prove that an attempt failed. */
 const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem, "signed_out">>> = {
   ROOM_FULL: "room_full",
   ROOM_NOT_READY: "room_changed",
@@ -89,9 +91,9 @@ const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem,
   SIGNATURES_INCOMPLETE: "room_changed",
   RETRY_BLOCKED: "room_changed",
   CHECKOUT_PAID: "room_changed",
-  INSUFFICIENT_USDC: "not_funded",
-  INSUFFICIENT_SOL: "not_funded",
-  TOKEN_ACCOUNT_MISSING: "not_funded",
+  INSUFFICIENT_USDC: CAUSE_OF_CODE.INSUFFICIENT_USDC,
+  INSUFFICIENT_SOL: CAUSE_OF_CODE.INSUFFICIENT_SOL,
+  TOKEN_ACCOUNT_MISSING: CAUSE_OF_CODE.TOKEN_ACCOUNT_MISSING,
   RATE_LIMITED: "rate_limited",
   INVALID_INPUT: "refused",
   FORBIDDEN: "refused",

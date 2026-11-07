@@ -299,10 +299,14 @@ describe("start payment", () => {
     expect(shown).toEqual([]);
   });
 
-  it("a payment that can't be funded reads the room again and says why", async () => {
-    const { fetch, calls } = server(() => json(422, errorBody("INSUFFICIENT_USDC")), () => json(200, { data: SIGNING }));
+  it.each([
+    ["INSUFFICIENT_USDC", "short_usdc"],
+    ["INSUFFICIENT_SOL", "short_sol"],
+    ["TOKEN_ACCOUNT_MISSING", "no_token_account"],
+  ] as const)("a payment refused with %s reads the room again and says why", async (code, cause) => {
+    const { fetch, calls } = server(() => json(422, errorBody(code)), () => json(200, { data: SIGNING }));
     const { track, shown } = shownBy();
-    expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual(said("not_funded"));
+    expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual(said(cause));
     expect(requests(calls).at(-1)).toEqual(["GET", `/api/checkouts/${ROOM}`]);
     expect(shown).toEqual([SIGNING]);
   });
