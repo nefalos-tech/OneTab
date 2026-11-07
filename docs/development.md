@@ -75,6 +75,19 @@ B1 provides versioned migrations and proves them against a disposable local or d
 
 Keep experiment dependencies under spikes/payment-proof/ until integration. Do not introduce its own lockfile into the root. If no compatible wallet combination works, report the failing step on P1 before claiming that the payment path is implemented.
 
+## Change the UI design
+
+[The design system](design-system.md) is the UI contract. To change a color, size, component, state, word or interaction:
+
+1. Make the change in code. Tokens live only in the `@theme` block of `src/app/globals.css`, each with a one-line role comment above it. States, button labels and fixed words live only in `src/client/catalog.ts`.
+2. Run `npm run design:write`. It regenerates the token, contrast, state and word tables in `docs/design-system.md`.
+3. Update the hand-written sections of `docs/design-system.md` that the change affects, such as rules, layouts, components and the glossary. To add a contrast pair, add a row to the contrast table with its foreground, background, minimum and use, then run `npm run design:write` again.
+4. If the reason behind a rule changed, update [design decisions](design-decisions.md).
+5. Add a row to the design system's change log with the date, the change, the reason and the PR.
+6. Run `npm run check`, then `npm run test:e2e`. Look at the screenshots in `test-results/` for every state the change touches.
+
+To compare new accent or status colors before choosing one, run `node scripts/palette-candidates.mjs "#RRGGBB"`. It prints contrast and color-blindness distances against the current tokens.
+
 ## Verify and hand off each card
 
 Use the card's Done when list and the [spec acceptance criteria](../spec.md#acceptance-criteria). Record the scenario, observed outcome and relevant command or public transaction reference. Distinguish fixtures, local integration, hosted Devnet and submission confirmation.
