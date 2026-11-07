@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createContext, use, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createContext, use, useLayoutEffect, useRef, useState, useTransition, type ReactNode, type RefObject } from "react";
 import { ACTIONS, WORDS } from "@/client/catalog";
 import { noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
@@ -27,6 +27,7 @@ export function ActionGroup({
   const track = use(RoomTrack);
   const router = useRouter();
   const [busy, setBusy] = useState<LiveKind | null>(null);
+  const [, startNavigation] = useTransition();
   const [notice, setNotice] = useState<Notice | null>(null);
   const inFlight = useRef(false);
   const root = useRef<HTMLDivElement>(null);
@@ -49,9 +50,15 @@ export function ActionGroup({
     setNotice(null);
     setBusy(action.kind);
     const outcome = await live.run(action, track);
+    inFlight.current = false;
     switch (outcome.kind) {
       case "open":
-        router.push(outcome.href);
+        // Inside the navigation's transition, the busy label lasts until the new page renders, and goes
+        // back to idle when another navigation replaces this one.
+        startNavigation(() => {
+          setBusy(null);
+          router.push(outcome.href);
+        });
         return;
       case "done":
         break;
@@ -62,7 +69,6 @@ export function ActionGroup({
         setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: action.kind });
         break;
     }
-    inFlight.current = false;
     setBusy(null);
   };
 
