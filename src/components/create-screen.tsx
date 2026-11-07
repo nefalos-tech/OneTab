@@ -127,7 +127,7 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
             <TextField
               id="total"
               label={`Total in ${WORDS.asset}`}
-              hint="The full price. Each payer's exact share appears beside the form."
+              hint="The full price. Each payer's exact share appears in the preview."
               value={input.total}
               error={errorOf("total")}
               onChange={set("total")}

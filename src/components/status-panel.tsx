@@ -39,12 +39,15 @@ export function StatusPanel({
   you,
   actions,
   heading,
+  reason = null,
   children,
 }: {
   readonly status: StatusView;
   readonly you: YouView | null;
   readonly actions: ActionsView;
   readonly heading: "h1" | "h2";
+  /** Why the payment stopped. Sits under the status line so it is read before any retry. */
+  readonly reason?: string | null;
   /** Shown between the primary action and the quiet ones, such as the receipt. */
   readonly children?: ReactNode;
 }): ReactNode {
@@ -61,6 +64,11 @@ export function StatusPanel({
       <p role="status" data-status-line="" className="max-w-prose">
         {status.line}
       </p>
+      {reason && (
+        <p data-status-reason="" className="max-w-prose text-muted">
+          {reason}
+        </p>
+      )}
       {you && (
         <div className="border-l-4 border-accent pl-4">
           <h3 className="font-semibold text-muted">{WORDS.your_share}</h3>

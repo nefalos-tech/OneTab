@@ -1,6 +1,16 @@
 import type { ReactNode } from "react";
 
-export type IconName = "check" | "clock" | "info" | "alert" | "failed" | "external" | "copy" | "spinner" | "arrow-left";
+export type IconName =
+  | "check"
+  | "clock"
+  | "info"
+  | "alert"
+  | "failed"
+  | "external"
+  | "copy"
+  | "spinner"
+  | "arrow-left"
+  | "wallet";
 
 const PATHS: { readonly [N in IconName]: ReactNode } = {
   check: <path d="M20 6 9 17l-5-5" />,
@@ -32,6 +42,12 @@ const PATHS: { readonly [N in IconName]: ReactNode } = {
   ),
   spinner: <path d="M21 12a9 9 0 1 1-6.2-8.6" />,
   "arrow-left": <path d="m12 19-7-7 7-7M19 12H5" />,
+  wallet: (
+    <>
+      <path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v3h-4a2 2 0 0 0 0 4h4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5" />
+      <path d="M21 12v4" />
+    </>
+  ),
 };
 
 /** Decorative and hidden from assistive technology. Every icon sits beside text that says the same thing. */

@@ -13,6 +13,11 @@ async function expectNoAxeViolations(page: Page) {
   expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
 }
 
+async function expectBefore(first: Locator, second: Locator) {
+  const handle = await second.elementHandle();
+  expect(await first.evaluate((a, b) => Boolean(b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING), handle)).toBe(true);
+}
+
 async function expectEveryAmountLabeled(page: Page) {
   const amounts = await page.locator("[data-amount]").all();
   expect(amounts.length).toBeGreaterThan(0);
@@ -34,6 +39,12 @@ for (const c of fixtureCases()) {
     const primary = page.locator("[data-action='primary']");
     expect(await primary.count()).toBeLessThanOrEqual(1);
     if (view.actions.primary) await expect(primary).toContainText(ACTIONS[view.actions.primary.kind].label);
+    if ("body" in view && view.body.kind === "needs_attention" && view.body.detail) {
+      const reason = page.getByText(view.body.detail, { exact: true });
+      await expect(reason).toBeVisible();
+      await expectBefore(page.locator("[data-status-line]"), reason);
+      await expectBefore(reason, page.locator("[data-action]").first());
+    }
     await expectEveryAmountLabeled(page);
     await expectNoAxeViolations(page);
     await page.screenshot({ path: `test-results/screens/${c.id}.png`, fullPage: true });
@@ -54,6 +65,49 @@ for (const [name, entry] of Object.entries(FIXTURES)) {
     await expect(page.locator("[data-situation]")).toHaveAttribute("data-situation", entry.situation);
   });
 }
+
+test("the room's primary action sits above the payer list when stacked, and beside the tab card when wide", async ({ page }) => {
+  const cases = fixtureCases().filter((c) => SITUATIONS[c.situation].owner === "room" && deriveRoomView(c.state).actions.primary);
+  expect(cases.length).toBeGreaterThan(0);
+  for (const c of cases) {
+    await page.setViewportSize({ width: 640, height: 900 });
+    await page.goto(c.state.source.links.room);
+    const primary = await page.locator("[data-action='primary']").boundingBox();
+    const payers = await page.getByRole("heading", { name: "Payers", exact: true }).boundingBox();
+    expect(primary!.y, c.id).toBeLessThan(payers!.y);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const tab = await page.locator("[data-surface='brand']").boundingBox();
+    const status = await page.locator("[data-situation]").boundingBox();
+    expect(status!.x, c.id).toBeGreaterThan(tab!.x + tab!.width);
+    expect(status!.y, c.id).toBe(tab!.y);
+    expect((await page.getByRole("heading", { name: "Payers", exact: true }).boundingBox())!.y, c.id).toBeGreaterThan(tab!.y + tab!.height);
+  }
+});
+
+test("the header wallet slot is plain status text, not a control", async ({ page }) => {
+  const signedIn = fixtureCases().find((c) => c.state.source.links.room === "/checkouts/sample-signing?as=spot-2");
+  const wallet = deriveRoomView(signedIn!.state).chrome.viewerWallet!;
+  const views = [
+    { href: signedIn!.state.source.links.room, text: `Viewing as ${wallet.slice(0, 4)}…${wallet.slice(-4)}` },
+    { href: "/checkouts/sample-signing?as=signed-out", text: "No wallet connected" },
+  ];
+  for (const { href, text } of views) {
+    await page.goto(href);
+    const slot = page.getByRole("banner").locator("p", { hasText: text.replace("Viewing as ", "") });
+    await expect(slot).toHaveText(text);
+    const findings = await slot.evaluate((el) => {
+      const found: string[] = [];
+      if (el.closest("a, button, [role='button'], [role='link'], [tabindex]")) found.push("inside a control");
+      for (let node: Element | null = el; node && node.tagName !== "HEADER"; node = node.parentElement) {
+        if (parseFloat(getComputedStyle(node).borderTopWidth) > 0) found.push(`${node.tagName} has a border`);
+      }
+      for (const child of el.querySelectorAll("*")) if (parseFloat(getComputedStyle(child).borderTopWidth) > 0) found.push("child has a border");
+      return found;
+    });
+    expect(findings, href).toEqual([]);
+  }
+});
 
 test("a stubbed action announces that nothing was sent and stays put", async ({ page }) => {
   await page.goto("/checkouts/sample-signing?as=spot-2");

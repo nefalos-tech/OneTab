@@ -13,7 +13,13 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
   return (
     <PageShell chrome={view.chrome} layout="single">
       <div className="rounded-card border border-line p-6 wide:p-8">
-        <StatusPanel status={view.status} you={null} actions={view.actions} heading="h1">
+        <StatusPanel
+          status={view.status}
+          you={null}
+          actions={view.actions}
+          heading="h1"
+          reason={view.body.kind === "needs_attention" ? view.body.detail : null}
+        >
           <ResultDetails body={view.body} />
         </StatusPanel>
       </div>
@@ -29,14 +35,8 @@ function ResultDetails({ body }: { readonly body: ResultBody }): ReactNode {
       return <p className="text-muted">No payment has started yet. Its status appears here once everyone approves.</p>;
     case "in_progress":
     case "unresolved":
-      return <Reference value={body.transactionReference} />;
     case "needs_attention":
-      return (
-        <>
-          {body.detail && <p className="text-muted">{body.detail}</p>}
-          <Reference value={body.transactionReference} />
-        </>
-      );
+      return <Reference value={body.transactionReference} />;
     case "paid":
       return <Receipt receipt={body.receipt} />;
   }

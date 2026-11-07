@@ -6,7 +6,13 @@ import { Icon } from "./icon";
 import { AddressText } from "./values";
 
 type Props = { readonly chrome: Chrome } & (
-  | { readonly layout: "split"; readonly main: ReactNode; readonly side: ReactNode }
+  | {
+      readonly layout: "split";
+      readonly main: ReactNode;
+      readonly side: ReactNode;
+      /** Below `main` in the wide layout, but after `side` when stacked, so the side's action stays near the top. */
+      readonly mainEnd?: ReactNode;
+    }
   | { readonly layout: "single"; readonly children: ReactNode }
 );
 
@@ -24,7 +30,8 @@ export function PageShell(props: Props): ReactNode {
         {props.layout === "split" ? (
           <div className="grid gap-8 wide:grid-cols-12">
             <div className="flex min-w-0 flex-col gap-8 wide:col-span-7">{props.main}</div>
-            <div className="min-w-0 wide:col-span-5">{props.side}</div>
+            <div className={`min-w-0 wide:col-span-5 ${props.mainEnd ? "wide:row-span-2" : ""}`}>{props.side}</div>
+            {props.mainEnd && <div className="flex min-w-0 flex-col gap-8 wide:col-span-7">{props.mainEnd}</div>}
           </div>
         ) : (
           <div className="mx-auto flex max-w-result flex-col gap-8">{props.children}</div>
@@ -51,8 +58,16 @@ export function SiteHeader({
         </Link>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-small">
           <p className="font-semibold">{networkLabel}</p>
-          <p className="inline-flex min-h-11 items-center rounded-control border border-line-strong px-3 text-ink">
-            {viewerWallet ? <AddressText value={viewerWallet} form="short" /> : WORDS.wallet_not_connected}
+          <p data-wallet-slot="" className="inline-flex items-center gap-2 text-muted">
+            <Icon name="wallet" className="size-4" />
+            {viewerWallet ? (
+              <>
+                <span className="sr-only">{WORDS.viewing_as} </span>
+                <AddressText value={viewerWallet} form="short" />
+              </>
+            ) : (
+              WORDS.wallet_not_connected
+            )}
           </p>
         </div>
       </div>

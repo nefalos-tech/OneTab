@@ -185,6 +185,7 @@ export const WORDS = {
   spot: "Spot",
   total: "Total",
   wallet_not_connected: "No wallet connected",
+  viewing_as: "Viewing as",
   link_copied: "Link copied.",
   copy: "Copy",
   copied: "Copied.",

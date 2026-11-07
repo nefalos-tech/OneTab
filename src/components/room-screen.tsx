@@ -12,13 +12,9 @@ export function RoomScreen({ state }: { readonly state: CheckoutState }): ReactN
     <PageShell
       chrome={view.chrome}
       layout="split"
-      main={
-        <>
-          <TabCard tab={view.tab} heading="h1" hero={view.you === null} />
-          <SpotList spots={view.tab.spots} />
-        </>
-      }
+      main={<TabCard tab={view.tab} heading="h1" hero={view.you === null} />}
       side={<StatusPanel status={view.status} you={view.you} actions={view.actions} heading="h2" />}
+      mainEnd={<SpotList spots={view.tab.spots} />}
     />
   );
 }
