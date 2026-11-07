@@ -1,4 +1,14 @@
-import { isErrorCode, isRecord, type ErrorCode } from "./contracts";
+import type { Result } from "@/lib/wallet/environment";
+import {
+  isErrorCode,
+  isRecord,
+  parsePublicConfig,
+  parseRoomSnapshot,
+  type CheckoutId,
+  type ErrorCode,
+  type PublicConfig,
+  type RoomSnapshot,
+} from "./contracts";
 
 export type FetchLike = (path: string, init: RequestInit) => Promise<Response>;
 
@@ -43,4 +53,75 @@ export async function send(
   }
   const code = isRecord(json) && isRecord(json.error) && isErrorCode(json.error.code) ? json.error.code : null;
   return { kind: "error", status: response.status, code };
+}
+
+/** Why a room read produced no snapshot. Only the contract's CHECKOUT_NOT_FOUND is `not_found`. */
+export type RoomReadProblem = "not_found" | "unavailable";
+
+export type CheckoutApi = {
+  /** GET /api/config. */
+  readConfig(): Promise<Result<PublicConfig, "unavailable">>;
+  /** GET /api/checkouts/:checkoutId. A snapshot of another checkout is `unavailable`. */
+  readRoom(id: CheckoutId): Promise<Result<RoomSnapshot, RoomReadProblem>>;
+};
+
+const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
+
+export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
+  return {
+    async readConfig() {
+      const reply = await send(fetchImpl, "GET", "/api/config");
+      const config = reply.kind === "data" ? parsePublicConfig(reply.data) : null;
+      return config === null ? UNAVAILABLE : { ok: true, value: config };
+    },
+    async readRoom(id) {
+      const reply = await send(fetchImpl, "GET", `/api/checkouts/${id}`);
+      if (reply.kind === "data") return roomOf(reply.data, id);
+      return reply.kind === "error" && reply.code === "CHECKOUT_NOT_FOUND" ? { ok: false, failure: "not_found" } : UNAVAILABLE;
+    },
+  };
+}
+
+function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailable"> {
+  const snapshot = parseRoomSnapshot(data);
+  return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
+}
+
+/** The server's configuration for page loads. Never read from the incoming request. */
+export type ApiEnv = { readonly [name: string]: string | undefined };
+
+/**
+ * The origin that page loads read the API from: ONETAB_API_ORIGIN, else APP_ORIGIN. Null unless the
+ * value is an http or https origin with no path, query or fragment. The request's Host header is never
+ * used, because a crafted request could then point the server's fetch at any host it can reach.
+ */
+export function apiOrigin(env: ApiEnv): string | null {
+  const value = env.ONETAB_API_ORIGIN || env.APP_ORIGIN;
+  if (!value) return null;
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  const isHttp = url.protocol === "https:" || url.protocol === "http:";
+  return isHttp && url.origin === value.replace(/\/$/, "") ? url.origin : null;
+}
+
+/**
+ * The server's FetchLike. It reads the origin on every call, so `next start` honors the environment it
+ * started with, and rejects a path that would leave that origin. A rejection reads as no answer. No
+ * cookie or header from the viewer's request is forwarded: page loads read only public routes.
+ */
+export function originFetch(
+  env: ApiEnv,
+  fetchImpl: typeof fetch = (input, init) => globalThis.fetch(input, init),
+): FetchLike {
+  return async (path, init) => {
+    const origin = apiOrigin(env);
+    if (origin === null) throw new Error("Set ONETAB_API_ORIGIN or APP_ORIGIN to read live checkouts.");
+    const url = new URL(path, origin);
+    if (url.origin !== origin) throw new Error(`${path} leaves the API origin.`);
+    return fetchImpl(url, init);
+  };
 }

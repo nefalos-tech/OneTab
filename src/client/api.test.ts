@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { send, type FetchLike } from "./api";
+import { apiOrigin, checkoutApi, originFetch, send, type FetchLike } from "./api";
+import { SAMPLE_CONFIG } from "./fixture-data";
+import { FIXTURES } from "./fixtures";
 
 type Call = { readonly path: string; readonly init: RequestInit };
 
@@ -68,5 +70,92 @@ describe("send", () => {
       const reply = await send(stubFetch(() => Promise.reject(failure)).fetch, "POST", "/api/x");
       expect(reply, failure.message).toEqual({ kind: "no_answer" });
     }
+  });
+});
+
+const ROOM = FIXTURES["open-spots"].snapshot;
+const ID = ROOM.checkout.id;
+const api = (respond: (call: Call) => Response | Promise<Response>) => checkoutApi(stubFetch(respond).fetch);
+
+describe("checkoutApi reads", () => {
+  it("reads the room at its contract path", async () => {
+    const { fetch, calls } = stubFetch(() => json(200, { data: ROOM }));
+    expect(await checkoutApi(fetch).readRoom(ID)).toEqual({ ok: true, value: ROOM });
+    expect(calls.map((c) => [c.init.method, c.path])).toEqual([["GET", `/api/checkouts/${ID}`]]);
+  });
+
+  it("calls a room missing only when the server says CHECKOUT_NOT_FOUND", async () => {
+    expect(await api(() => json(404, errorBody("CHECKOUT_NOT_FOUND"))).readRoom(ID)).toEqual({ ok: false, failure: "not_found" });
+    expect(await api(html404).readRoom(ID)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it("reads an outage, rate limiting and no answer as unavailable", async () => {
+    for (const respond of [
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(429, errorBody("RATE_LIMITED")),
+      () => Promise.reject(new TypeError("fetch failed")),
+    ]) {
+      expect(await api(respond).readRoom(ID)).toEqual({ ok: false, failure: "unavailable" });
+    }
+  });
+
+  it("refuses a snapshot of another checkout or one that doesn't parse", async () => {
+    const other = FIXTURES.paid.snapshot;
+    expect(await api(() => json(200, { data: other })).readRoom(ID)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await api(() => json(200, { data: { ...ROOM, phase: "closed" } })).readRoom(ID)).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+
+  it("reads the configuration, and anything else as unavailable", async () => {
+    const { fetch, calls } = stubFetch(() => json(200, { data: SAMPLE_CONFIG }));
+    expect(await checkoutApi(fetch).readConfig()).toEqual({ ok: true, value: SAMPLE_CONFIG });
+    expect(calls.map((c) => [c.init.method, c.path])).toEqual([["GET", "/api/config"]]);
+    expect(await api(() => json(503, errorBody("CONFIGURATION_UNAVAILABLE"))).readConfig()).toEqual({ ok: false, failure: "unavailable" });
+    expect(await api(() => json(200, { data: { ...SAMPLE_CONFIG, network: "mainnet-beta" } })).readConfig()).toEqual({
+      ok: false,
+      failure: "unavailable",
+    });
+  });
+});
+
+describe("the server's API origin", () => {
+  it("prefers ONETAB_API_ORIGIN, then APP_ORIGIN", () => {
+    expect(apiOrigin({ ONETAB_API_ORIGIN: "http://localhost:3199", APP_ORIGIN: "https://onetab.example" })).toBe("http://localhost:3199");
+    expect(apiOrigin({ APP_ORIGIN: "https://onetab.example/" })).toBe("https://onetab.example");
+    expect(apiOrigin({ ONETAB_API_ORIGIN: "", APP_ORIGIN: "https://onetab.example" })).toBe("https://onetab.example");
+  });
+
+  it.each(["", "onetab.example", "https://onetab.example/api", "https://onetab.example?x=1", "file:///etc", "ftp://onetab.example"])(
+    "refuses %j",
+    (value) => {
+      expect(apiOrigin({ ONETAB_API_ORIGIN: value })).toBeNull();
+    },
+  );
+
+  it("resolves each contract path against the configured origin and nothing else", async () => {
+    const urls: string[] = [];
+    const fetchImpl = (async (input: URL) => {
+      urls.push(input.href);
+      return json(200, { data: ROOM });
+    }) as typeof fetch;
+    const room = await checkoutApi(originFetch({ ONETAB_API_ORIGIN: "http://localhost:3199" }, fetchImpl)).readRoom(ID);
+    expect(room.ok).toBe(true);
+    expect(urls).toEqual([`http://localhost:3199/api/checkouts/${ID}`]);
+
+    const escape = originFetch({ ONETAB_API_ORIGIN: "http://localhost:3199" }, fetchImpl);
+    expect(await send(escape, "GET", "//attacker.example/api/config")).toEqual({ kind: "no_answer" });
+    expect(urls).toHaveLength(1);
+  });
+
+  it("with no origin sends nothing, and the room reads as unavailable", async () => {
+    let sent = 0;
+    const fetchImpl = (async () => {
+      sent += 1;
+      return json(200, { data: ROOM });
+    }) as typeof fetch;
+    expect(await checkoutApi(originFetch({}, fetchImpl)).readRoom(ID)).toEqual({ ok: false, failure: "unavailable" });
+    expect(sent).toBe(0);
   });
 });

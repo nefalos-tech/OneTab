@@ -381,6 +381,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `receipt` | Receipt |
 | `transaction_reference` | Transaction reference |
 | `finalized_at` | Final on |
+| `creation_unavailable` | OneTab can't reach its payment service right now, so it can't create a checkout. Try again in a moment. |
 | `try_sample` | Try it with sample data |
 | `home` | Go to the start |
 | `steps` | Checkout steps |

@@ -30,7 +30,7 @@ export function CreateScreen({ state }: { readonly state: CreateState }): ReactN
     return (
       <PageShell chrome={view.chrome} layout="single">
         <h1 className="text-title font-bold">Checkouts can&apos;t be created right now</h1>
-        <p>This version of OneTab isn&apos;t connected to its payment service yet, so it can&apos;t create a checkout.</p>
+        <p>{WORDS.creation_unavailable}</p>
         {view.samples && (
           <p className="flex flex-wrap gap-x-6">
             <Link href={view.samples.createHref} className={BUTTON.link}>
