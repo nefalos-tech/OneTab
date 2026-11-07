@@ -1,8 +1,8 @@
 import { z } from "zod";
-import type { Checkout, Participant, PublicConfig, SigningPayload } from "../../contracts/index.js";
-import { buildPaymentMessage } from "../../lib/payments/payment-core.js";
-import { createCheckoutPaymentPlan, toBase64 } from "../../lib/payments/signing-payload.js";
-import { checkPaymentFee, preparePayment, type PaymentRpc } from "./preflight.js";
+import type { Checkout, Participant, PublicConfig, SigningPayload } from "../../contracts/index";
+import { buildPaymentMessage } from "../../lib/payments/payment-core";
+import { createCheckoutPaymentPlan, toBase64 } from "../../lib/payments/signing-payload";
+import { checkPaymentFee, preparePayment, type PaymentRpc } from "./preflight";
 
 /** The caller reserves and leases the attempt, supplies frozen membership, and persists this result before exposure. */
 export async function buildSigningPayload(input: {

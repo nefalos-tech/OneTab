@@ -1,8 +1,8 @@
 import { blockhash, getAddressDecoder } from "@solana/kit";
 import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { z } from "zod";
-import type { Lifetime, PaymentPlan } from "../../lib/payments/payment-core.js";
-import { fromBase64 } from "../../lib/payments/signing-payload.js";
+import type { Lifetime, PaymentPlan } from "../../lib/payments/payment-core";
+import { fromBase64 } from "../../lib/payments/signing-payload";
 
 export const DEVNET_GENESIS_HASH = "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG";
 const integer = z.number().int().nonnegative().safe();
