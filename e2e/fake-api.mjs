@@ -66,9 +66,10 @@ function respond(dataset, reads, method, path) {
   if (method === "GET" && path === "/api/config") {
     return dataset === "rooms" ? json(200, { data: CONFIG }) : error(503, "CONFIGURATION_UNAVAILABLE");
   }
-  const room = /^\/api\/checkouts\/([0-9a-f-]{36})$/.exec(path);
+  const room = /^\/api\/checkouts\/([0-9a-fA-F-]{36})$/.exec(path);
   if (method !== "GET" || !room) return html404;
-  const id = room[1];
+  // Like Backend's uuid column, any case finds the room, and the answer carries the lowercase ID.
+  const id = room[1].toLowerCase();
   reads.set(id, (reads.get(id) ?? 0) + 1);
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;

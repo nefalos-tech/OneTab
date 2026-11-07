@@ -4,7 +4,7 @@ export type TokenUnits = string & { readonly __brand: "TokenUnits" };
 /** A base58 public key: a wallet, the seller or the mint. */
 export type Address = string & { readonly __brand: "Address" };
 
-/** The UUID of a real checkout. A `sample-<name>` route segment can never parse as one. */
+/** The UUID of a real checkout, in lowercase. A `sample-<name>` route segment can never parse as one. */
 export type CheckoutId = string & { readonly __brand: "CheckoutId" };
 
 export const U64_MAX = 18446744073709551615n;
@@ -22,7 +22,13 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isCheckoutId(s: string): s is CheckoutId {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s);
+}
+
+/** A UUID names the same checkout in any case, so every request, link and comparison uses one spelling. */
+export function parseCheckoutId(text: string): CheckoutId | null {
+  const id = text.toLowerCase();
+  return isCheckoutId(id) ? id : null;
 }
 
 export type Network = "devnet";
@@ -186,9 +192,9 @@ export function parsePublicConfig(data: unknown): PublicConfig | null {
 
 function parseCheckout(data: unknown): Checkout | undefined {
   if (!isRecord(data)) return undefined;
-  const { id, title, organizerWallet, sellerWallet, network, mint, tokenDecimals, totalUnits, payerCount, createdAt } = data;
-  return typeof id === "string" &&
-    isCheckoutId(id) &&
+  const { title, organizerWallet, sellerWallet, network, mint, tokenDecimals, totalUnits, payerCount, createdAt } = data;
+  const id = typeof data.id === "string" ? parseCheckoutId(data.id) : null;
+  return id !== null &&
     typeof title === "string" &&
     isAddress(organizerWallet) &&
     isAddress(sellerWallet) &&

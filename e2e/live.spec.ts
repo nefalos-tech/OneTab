@@ -70,6 +70,14 @@ test("reloading a live room shows the same fixed details", async ({ page }) => {
   expect(await readDetails(page)).toEqual(before);
 });
 
+test("an uppercase checkout ID opens the same room, and its links use the lowercase ID", async ({ page }) => {
+  const shouted = room(LIVE.open.toUpperCase());
+  expect((await page.goto(shouted))?.status()).toBe(200);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cabin groceries");
+  expect((await page.goto(`${shouted}/result`))?.status()).toBe(200);
+  await expect(page.getByRole("link", { name: "Back to checkout" })).toHaveAttribute("href", room(LIVE.open));
+});
+
 test("the server reads a live room once per page load", async ({ page, request }) => {
   await page.goto(room(LIVE.counted));
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cabin groceries");

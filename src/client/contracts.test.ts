@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parsePublicConfig, parseRoomSnapshot } from "./contracts";
+import { parseCheckoutId, parsePublicConfig, parseRoomSnapshot } from "./contracts";
 import { SAMPLE_CONFIG } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
 
 const overTheWire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
+const LOWER = "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c01";
+const UPPER = "0B8F3C1E-7D2A-4C55-9F10-2A6B8E4D1C01";
 
 describe("parseRoomSnapshot", () => {
   it.each(Object.entries(FIXTURES))("reads the %s sample exactly as it was sent", (_, entry) => {
@@ -31,10 +33,26 @@ describe("parseRoomSnapshot", () => {
     expect(parseRoomSnapshot(overTheWire(data))).toBeNull();
   });
 
+  it("reads an uppercase checkout ID as its lowercase form", () => {
+    const shouted = { ...open, checkout: { ...open.checkout, id: UPPER } };
+    expect(parseRoomSnapshot(overTheWire(shouted))?.checkout.id).toBe(LOWER);
+  });
+
   it("keeps only the contract's fields", () => {
     const parsed = parseRoomSnapshot({ ...overTheWire(open) as object, debug: "server internals" });
     expect(parsed).toEqual(open);
     expect(parsed).not.toHaveProperty("debug");
+  });
+});
+
+describe("parseCheckoutId", () => {
+  it("reads a UUID in any case as its lowercase form", () => {
+    expect(parseCheckoutId(UPPER)).toBe(LOWER);
+    expect(parseCheckoutId(LOWER)).toBe(LOWER);
+  });
+
+  it.each(["", "sample-open-spots", `{${LOWER}}`, LOWER.replaceAll("-", ""), `${LOWER.slice(0, -1)}g`, ` ${LOWER}`])("refuses %j", (text) => {
+    expect(parseCheckoutId(text)).toBeNull();
   });
 });
 

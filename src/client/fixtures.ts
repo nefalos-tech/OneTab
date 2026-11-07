@@ -1,4 +1,4 @@
-import { isCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
+import { parseCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
 import { SITUATIONS, type Screen, type Situation } from "./catalog";
 import { checkoutLinks, spotNumber, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
@@ -117,7 +117,8 @@ export function parseCheckoutRef(input: {
   readonly as: string | readonly string[] | undefined;
   readonly fixturesOn: boolean;
 }): CheckoutRef | null {
-  if (isCheckoutId(input.id)) return { kind: "live", checkoutId: input.id };
+  const checkoutId = parseCheckoutId(input.id);
+  if (checkoutId !== null) return { kind: "live", checkoutId };
   if (!input.fixturesOn || !input.id.startsWith(SAMPLE_PREFIX)) return null;
   const name = input.id.slice(SAMPLE_PREFIX.length);
   if (!isFixtureName(name) || typeof input.as === "object") return null;
