@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { WORDS } from "@/client/catalog";
 import type { SampleWallet } from "@/lib/wallet/sample";
@@ -10,7 +10,12 @@ import { AddressText } from "../values";
 import { WALLET_STATUS_ACTION_ID } from "./wallet-status";
 import { useSampleWallet, useWalletSession } from "./wallet-scope";
 
-const PANEL_BUTTON = `${BUTTON.quiet} aria-disabled:cursor-not-allowed aria-disabled:text-muted aria-disabled:hover:bg-white`;
+const ACCOUNTS_ID = "sample-wallet-accounts";
+
+const PROMPT_WORDS = {
+  connect: { request: WORDS.connect_request, announcement: WORDS.connect_request_announcement },
+  sign: { request: WORDS.sign_request, announcement: WORDS.sign_request_announcement },
+} as const;
 
 /**
  * The in-page stand-in for a wallet on sample pages. Styled like the sample banner so nobody mistakes
@@ -21,11 +26,17 @@ export function SampleWalletPanel(): ReactNode {
   return wallet && <Panel wallet={wallet} />;
 }
 
+/**
+ * One line while idle, so the checkout stays above the fold. A request expands it with Approve and
+ * Reject, and the polite region announces it without moving focus.
+ */
 function Panel({ wallet }: { readonly wallet: SampleWallet }): ReactNode {
   const view = useSyncExternalStore(wallet.subscribe, wallet.view, wallet.view);
   const { session, expired } = useWalletSession();
+  const [accountsOpen, setAccountsOpen] = useState(false);
+  const switchAccount = useRef<HTMLButtonElement>(null);
   const { prompt } = view;
-  const idle = prompt === null;
+  const selected = view.accounts.find((account) => account.wallet === view.selected);
 
   const endSignIn = () => {
     if (!session) return;
@@ -33,16 +44,44 @@ function Panel({ wallet }: { readonly wallet: SampleWallet }): ReactNode {
     document.getElementById(WALLET_STATUS_ACTION_ID)?.focus();
   };
 
+  // Approve and Reject leave with the request they answer, so focus moves to Switch account.
+  const answer = (send: () => void) => {
+    flushSync(send);
+    switchAccount.current?.focus();
+  };
+
   return (
-    <aside aria-label={WORDS.sample_wallet} className="mt-3 flex flex-col gap-3 rounded-control bg-brand-soft px-4 py-3 text-ink">
-      <p className="flex items-start gap-2">
-        <Icon name="wallet" />
-        <span>
-          <strong className="font-semibold">{WORDS.sample_wallet}.</strong> {WORDS.sample_wallet_note}
-        </span>
-      </p>
-      <div className="grid gap-4 pl-7 wide:grid-cols-12">
-        <fieldset className="flex flex-col wide:col-span-5">
+    <aside aria-label={WORDS.sample_wallet} className="mt-3 flex flex-col gap-3 rounded-control bg-brand-soft px-4 py-1 text-ink">
+      <div className="flex flex-wrap items-center gap-x-4">
+        <p className="flex items-center gap-2">
+          <Icon name="wallet" />
+          <strong className="font-semibold">{WORDS.sample_wallet}</strong>
+        </p>
+        {selected && (
+          <p className="flex items-center gap-2">
+            {selected.label}
+            <AddressText value={selected.wallet} form="short" />
+          </p>
+        )}
+        {session && (
+          <button type="button" onClick={endSignIn} className={BUTTON.link}>
+            {WORDS.end_sign_in}
+          </button>
+        )}
+        <button
+          ref={switchAccount}
+          type="button"
+          aria-expanded={accountsOpen}
+          aria-controls={ACCOUNTS_ID}
+          onClick={() => setAccountsOpen(!accountsOpen)}
+          className={BUTTON.link}
+        >
+          {WORDS.switch_account}
+        </button>
+      </div>
+      {(accountsOpen || prompt) && <p className="pl-7 text-small text-muted">{WORDS.sample_wallet_note}</p>}
+      {accountsOpen && (
+        <fieldset id={ACCOUNTS_ID} className="flex flex-col pl-7">
           <legend className="text-small font-semibold text-muted">{WORDS.sample_account}</legend>
           {view.accounts.map((account) => (
             <label key={account.wallet} className="flex min-h-11 cursor-pointer items-center gap-3">
@@ -58,31 +97,28 @@ function Panel({ wallet }: { readonly wallet: SampleWallet }): ReactNode {
             </label>
           ))}
         </fieldset>
-        <section aria-labelledby="sample-wallet-requests" className="flex flex-col gap-2 wide:col-span-7">
-          <p id="sample-wallet-requests" className="text-small font-semibold text-muted">
-            {WORDS.sample_requests}
+      )}
+      {prompt && (
+        <div className="flex flex-col gap-2 pb-2 pl-7">
+          <p data-sample-prompt={prompt.kind} className="font-semibold">
+            {PROMPT_WORDS[prompt.kind].request}
           </p>
-          <p data-sample-prompt={prompt?.kind ?? "none"}>
-            {prompt === null ? WORDS.no_requests : prompt.kind === "connect" ? WORDS.connect_request : WORDS.sign_request}
-          </p>
-          {prompt?.kind === "sign" && (
+          {prompt.kind === "sign" && (
             <p className="rounded-control border border-line-strong bg-white px-3 py-2 text-small break-words">{prompt.text}</p>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <button type="button" aria-disabled={idle || undefined} onClick={() => wallet.approve()} className={PANEL_BUTTON}>
+            <button type="button" onClick={() => answer(() => wallet.approve())} className={BUTTON.quiet}>
               {WORDS.approve}
             </button>
-            <button type="button" aria-disabled={idle || undefined} onClick={() => wallet.reject()} className={PANEL_BUTTON}>
+            <button type="button" onClick={() => answer(() => wallet.reject())} className={BUTTON.quiet}>
               {WORDS.reject}
             </button>
-            {session && (
-              <button type="button" onClick={endSignIn} className={BUTTON.link}>
-                {WORDS.end_sign_in}
-              </button>
-            )}
           </div>
-        </section>
-      </div>
+        </div>
+      )}
+      <p role="status" className="sr-only">
+        {prompt && PROMPT_WORDS[prompt.kind].announcement}
+      </p>
     </aside>
   );
 }

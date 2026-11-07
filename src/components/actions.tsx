@@ -20,11 +20,8 @@ export function ActionGroup({
   readonly children?: ReactNode;
 }): ReactNode {
   const [notice, setNotice] = useState<Notice | null>(null);
-  const wallet = useWalletSession();
 
   const run = async (action: Action) => {
-    // The sample wallet is a real device on sample pages, so Connect wallet works there too.
-    if (action.kind === "connect_wallet") return wallet.connect();
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       setNotice({
@@ -101,6 +98,7 @@ function ActionControl({
 }): ReactNode {
   const meta = ACTIONS[action.kind];
   const dataAction = variant === "primary" ? "primary" : "secondary";
+  if (action.kind === "connect_wallet") return <ConnectWallet variant={variant} dataAction={dataAction} />;
   if ("href" in action && meta.element === "external_link") {
     return (
       <a href={action.href} target="_blank" rel="noreferrer" data-action={dataAction} className={BUTTON[variant]}>
@@ -122,6 +120,45 @@ function ActionControl({
     <button type="button" data-action={dataAction} onClick={() => onRun(action)} className={BUTTON[variant]}>
       {action.kind === "copy_link" && <Icon name="copy" />}
       {meta.label}
+    </button>
+  );
+}
+
+/**
+ * The room's Connect wallet, drawn from the wallet view so it always matches the header. Busy and fix
+ * share one <button>, so focus stays put while the wallet moves between them. The sample wallet is a
+ * real device on sample pages, so this works there too.
+ */
+function ConnectWallet({
+  variant,
+  dataAction,
+}: {
+  readonly variant: keyof typeof BUTTON;
+  readonly dataAction: "primary" | "secondary";
+}): ReactNode {
+  const { view, connect } = useWalletSession();
+  const action = view.connectAction;
+  if (action === null) return null;
+  if (action.kind === "get_phantom") {
+    return (
+      <a href={action.href} target="_blank" rel="noreferrer" data-action={dataAction} className={BUTTON[variant]}>
+        {action.label}
+        <Icon name="external" />
+        <span className="sr-only"> {WORDS.opens_new_tab}</span>
+      </a>
+    );
+  }
+  const busy = action.kind === "busy";
+  return (
+    <button
+      type="button"
+      data-action={dataAction}
+      aria-disabled={busy || undefined}
+      onClick={busy ? undefined : connect}
+      className={`${BUTTON[variant]} aria-disabled:cursor-progress`}
+    >
+      {busy && <Icon name="spinner" />}
+      {action.label}
     </button>
   );
 }

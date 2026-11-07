@@ -11,6 +11,8 @@ const ORGANIZER = "SAMP…org1";
 const BEA = "SAMP…Bea2";
 const CAM = "SAMP…Cam3";
 const switchedTo = (short: string) => `Your wallet switched to ${short}. Sign in again to continue as that wallet.`;
+const CONNECT_ANNOUNCEMENT = "Sample wallet: OneTab asks you to approve the connection.";
+const SIGN_ANNOUNCEMENT = "Sample wallet: OneTab asks you to sign the sign-in message.";
 
 /** Every flow here runs on sample data or on a live page before P1 and B2, so none may call an API route. */
 const test = base.extend<{ apiCalls: string[] }>({
@@ -50,8 +52,16 @@ function wallet(page: Page) {
     request: panel.locator("[data-sample-prompt]"),
     approve: panel.getByRole("button", { name: "Approve", exact: true }),
     reject: panel.getByRole("button", { name: "Reject", exact: true }),
+    announcement: panel.getByRole("status"),
+    switchAccount: panel.getByRole("button", { name: "Switch account" }),
     account: (label: string) => panel.getByRole("radio", { name: new RegExp(`^${label} `) }),
   };
+}
+
+async function chooseAccount(page: Page, label: string) {
+  const w = wallet(page);
+  if ((await w.switchAccount.getAttribute("aria-expanded")) !== "true") await w.switchAccount.click();
+  await w.account(label).check();
 }
 
 const roomLine = (page: Page) => page.locator("[data-status-line]");
@@ -74,11 +84,18 @@ test("Connect wallet in the header runs both prompts and signs in as the selecte
   await page.goto("/checkouts/sample-open-spots?as=signed-out");
   await expect(roomPrimary(page)).toHaveText("Connect wallet");
 
+  await expect(w.approve).toHaveCount(0);
+  await expect(w.announcement).toHaveText("");
   await w.connect.click();
   await expect(w.control).toHaveText("Connecting…");
   await expect(w.line).toHaveText(CONNECT_LINE);
   await expect(w.action).toHaveText("Cancel");
   await expect(w.request).toHaveText("OneTab wants to see your wallet address.");
+  await expect(w.announcement).toHaveText(CONNECT_ANNOUNCEMENT);
+  await expect(w.approve).toBeVisible();
+  await expect(w.reject).toBeVisible();
+  await expect(roomPrimary(page)).toHaveText("Connecting…");
+  await expect(roomPrimary(page)).toHaveAttribute("aria-disabled", "true");
   await capture(page, "connect-prompt");
 
   await w.approve.click();
@@ -86,12 +103,21 @@ test("Connect wallet in the header runs both prompts and signs in as the selecte
   await expect(w.line).toHaveText(SIGN_LINE);
   await expect(w.request).toHaveText("OneTab asks you to sign this message:");
   await expect(w.panel).toContainText("Signing in can't move money.");
+  await expect(w.announcement).toHaveText(SIGN_ANNOUNCEMENT);
+  await expect(roomPrimary(page)).toHaveText("Signing in…");
+  await expect(roomPrimary(page)).toHaveAttribute("aria-disabled", "true");
+  await expect(roomPrimary(page).locator("svg")).toHaveCount(1);
+  await roomPrimary(page).click({ force: true });
+  await expect(w.request).toHaveAttribute("data-sample-prompt", "sign");
+  await expect(w.line).toHaveText(SIGN_LINE);
   await capture(page, "sign-prompt");
 
   await w.approve.click();
   await expect(w.signedInAs(OUTSIDER)).toBeVisible();
   await expect(w.line).toHaveText(`Signed in as ${OUTSIDER}.`);
   await expect(w.action).toHaveCount(0);
+  await expect(w.approve).toHaveCount(0);
+  await expect(w.announcement).toHaveText("");
   await expect(roomPrimary(page)).toHaveText("Join checkout");
   await expect(roomLine(page)).toHaveText("There's an open spot. Join to pay your share.");
   await capture(page, "signed-in");
@@ -126,7 +152,7 @@ test("refusing to sign in moves nothing, and Sign in again opens only the sign p
   await w.reject.click();
   await expect(w.line).toHaveText("You didn't sign in. Nothing was signed or sent.");
   await expect(w.action).toHaveText("Sign in again");
-  await expect(roomPrimary(page)).toHaveText("Connect wallet");
+  await expect(roomPrimary(page)).toHaveText("Sign in again");
   await capture(page, "sign-refused");
 
   await w.action.click();
@@ -147,7 +173,7 @@ test("an approval that arrives after Cancel is ignored", async ({ page }) => {
 
   await expect(w.request).toHaveAttribute("data-sample-prompt", "connect");
   await w.approve.click();
-  await expect(w.request).toHaveText("No requests.");
+  await expect(w.request).toHaveCount(0);
   await expect(w.connect).toBeVisible();
   await expect(w.line).toHaveText("");
   await expect(roomPrimary(page)).toHaveText("Connect wallet");
@@ -161,18 +187,22 @@ test("switching accounts drops the old payer's share, Ready and Approve before a
   await expect(page.getByRole("button", { name: "Not ready yet" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Your share" })).toBeVisible();
 
-  await w.account("Cam").check();
+  await chooseAccount(page, "Cam");
   await expect(w.line).toHaveText(switchedTo(CAM));
   await expect(w.action).toHaveText("Sign in again");
   await expect(w.control).toHaveAccessibleName(`Wallet ${CAM}`);
   await expect(page.getByRole("button", { name: "Not ready yet" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Your share" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Payers" }).getByText("You", { exact: true })).toHaveCount(0);
-  await expect(roomLine(page)).toHaveText("Waiting for 1 payer to get ready. Connect your wallet if you hold a spot.");
-  await expect(w.request).toHaveText("No requests.");
+  await expect(roomLine(page)).toHaveText("Waiting for 1 payer to get ready. Sign in with your wallet if you hold a spot.");
+  await expect(roomLine(page)).not.toContainText("Connect your wallet");
+  await expect(roomPrimary(page)).toHaveText("Sign in again");
+  await expect(w.request).toHaveCount(0);
+  await expect(w.approve).toHaveCount(0);
+  await expect(w.reject).toHaveCount(0);
   await capture(page, "account-switched");
 
-  await w.action.click();
+  await roomPrimary(page).click();
   await expect(w.request).toHaveAttribute("data-sample-prompt", "sign");
   await w.approve.click();
   await expect(w.signedInAs(CAM)).toBeVisible();
@@ -185,7 +215,7 @@ test("switching accounts while approvals are open removes Approve in wallet", as
   const w = wallet(page);
   await page.goto("/checkouts/sample-signing?as=spot-2");
   await expect(page.getByRole("button", { name: "Approve in wallet" })).toBeVisible();
-  await w.account("Organizer").check();
+  await chooseAccount(page, "Organizer");
   await expect(page.getByRole("button", { name: "Approve in wallet" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Your share" })).toHaveCount(0);
   await expect(w.line).toHaveText(switchedTo(ORGANIZER));
@@ -198,14 +228,14 @@ test("a switch during the sign prompt, then a late Approve, signs nobody in", as
   await w.approve.click();
   await expect(w.line).toHaveText(SIGN_LINE);
 
-  await w.account("Bea").check();
+  await chooseAccount(page, "Bea");
   await expect(w.line).toHaveText(switchedTo(BEA));
   await expect(w.request).toHaveAttribute("data-sample-prompt", "sign");
   await w.approve.click();
-  await expect(w.request).toHaveText("No requests.");
+  await expect(w.request).toHaveCount(0);
   await expect(w.line).toHaveText(switchedTo(BEA));
   await expect(w.control).toHaveAccessibleName(`Wallet ${BEA}`);
-  await expect(roomPrimary(page)).toHaveText("Connect wallet");
+  await expect(roomPrimary(page)).toHaveText("Sign in again");
 });
 
 test("Disconnect signs out at once and gives focus back to Connect wallet", async ({ page, context }) => {
@@ -253,7 +283,7 @@ test("on the create screen, the organizer follows the wallet's signed-in account
   await seller.blur();
   await expect(ownWallet).toBeVisible();
 
-  await w.account("Bea").check();
+  await chooseAccount(page, "Bea");
   await expect(ownWallet).toHaveCount(0);
   await w.action.click();
   await w.approve.click();
@@ -302,7 +332,8 @@ test("every wallet control works by keyboard alone and keeps focus somewhere sen
   await moveFocus(page, w.reject);
   await page.keyboard.press("Enter");
   await expect(w.line).toHaveText("You closed the connection request. Nothing was shared.");
-  await expect(w.reject).toBeFocused();
+  await expect(w.reject).toHaveCount(0);
+  await expect(w.switchAccount).toBeFocused();
 
   await moveFocus(page, w.action, "Shift+Tab");
   await page.keyboard.press("Enter");
@@ -311,10 +342,11 @@ test("every wallet control works by keyboard alone and keeps focus somewhere sen
   await moveFocus(page, w.approve);
   await page.keyboard.press("Enter");
   await expect(w.line).toHaveText(SIGN_LINE);
-  await expect(w.approve).toBeFocused();
+  await expect(w.switchAccount).toBeFocused();
+  await moveFocus(page, w.approve);
   await page.keyboard.press("Enter");
   await expect(w.signedInAs(OUTSIDER)).toBeVisible();
-  await expect(w.approve).toBeFocused();
+  await expect(w.switchAccount).toBeFocused();
 
   await moveFocus(page, w.control, "Shift+Tab");
   await page.keyboard.press("Enter");
@@ -330,4 +362,33 @@ test("every wallet control works by keyboard alone and keeps focus somewhere sen
   await page.keyboard.press("Enter");
   await expect(w.connect).toBeFocused();
   await expect(roomPrimary(page)).toHaveText("Connect wallet");
+});
+
+test("the idle sample wallet is one line, and Switch account reveals the accounts by keyboard", async ({ page }) => {
+  const w = wallet(page);
+  await page.goto("/checkouts/sample-full-not-ready?as=spot-2");
+  await expect(w.panel).toContainText(`Bea${BEA}`);
+  await expect(w.approve).toHaveCount(0);
+  await expect(w.reject).toHaveCount(0);
+  await expect(w.request).toHaveCount(0);
+  await expect(w.account("Cam")).toHaveCount(0);
+  expect((await w.panel.boundingBox())!.height).toBeLessThan(80);
+  await capture(page, "sample-wallet-idle");
+
+  await moveFocus(page, w.switchAccount);
+  await page.keyboard.press("Enter");
+  await expect(w.switchAccount).toHaveAttribute("aria-expanded", "true");
+  await expect(w.account("Bea")).toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(w.account("Bea")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(w.account("Cam")).toBeChecked();
+  await expect(w.line).toHaveText(switchedTo(CAM));
+  await expect(w.panel).toContainText(`Cam${CAM}`);
+  await capture(page, "sample-wallet-accounts");
+
+  await moveFocus(page, w.switchAccount, "Shift+Tab");
+  await page.keyboard.press("Space");
+  await expect(w.switchAccount).toHaveAttribute("aria-expanded", "false");
+  await expect(w.account("Cam")).toHaveCount(0);
 });

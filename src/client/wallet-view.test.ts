@@ -35,10 +35,21 @@ const connectedWith = (problem: Problem): SessionState =>
 describe("wallet view", () => {
   for (const [problem, expected] of Object.entries(BRIEF) as [Problem, (typeof BRIEF)[Problem]][]) {
     it(`${problem} shows the brief's message and its one action`, () => {
-      const { status } = deriveWalletView(connectedWith(problem));
+      const { status, connectAction } = deriveWalletView(connectedWith(problem));
       expect(status).toMatchObject({ kind: "problem", text: expected.message, fix: { label: expected.action } });
+      expect(connectAction, "the room's Connect wallet offers the status line's fix").toEqual(status?.kind === "problem" && status.fix);
     });
   }
+
+  it("a problem before connecting gives the room's Connect wallet the same fix, Get Phantom included", () => {
+    const signedOut = (problem: Problem) => ({ ...initialState({ account: null, session: null }), problem }) as SessionState;
+    expect(deriveWalletView(signedOut("no_wallet")).connectAction).toEqual({
+      kind: "get_phantom",
+      label: "Get Phantom",
+      href: "https://phantom.com/download",
+    });
+    expect(deriveWalletView(signedOut("connect_rejected")).connectAction).toEqual({ kind: "connect_wallet", label: "Connect wallet" });
+  });
 
   it("Get Phantom links to Phantom's download page", () => {
     const { status } = deriveWalletView(connectedWith("no_wallet"));
@@ -53,6 +64,7 @@ describe("wallet view", () => {
     expect(deriveWalletView(initialState({ account: null, session: null }))).toEqual({
       control: { kind: "connect", label: "Connect wallet" },
       status: null,
+      connectAction: { kind: "connect_wallet", label: "Connect wallet" },
     });
   });
 
@@ -61,6 +73,7 @@ describe("wallet view", () => {
     expect(deriveWalletView(connecting)).toEqual({
       control: { kind: "busy", label: "Connecting…" },
       status: { kind: "waiting", text: "Approve the connection in your wallet." },
+      connectAction: { kind: "busy", label: "Connecting…" },
     });
 
     const challenge = { id: "c", message: { text: "Sign in", bytes: new Uint8Array() } };
@@ -68,6 +81,7 @@ describe("wallet view", () => {
     expect(deriveWalletView(signing)).toEqual({
       control: { kind: "busy", label: "Signing in…" },
       status: { kind: "waiting", text: SIGN_PROMPT },
+      connectAction: { kind: "busy", label: "Signing in…" },
     });
 
     const verifying = { kind: "signing_in", account: BEA, step: { at: "verify", challengeId: "c" }, gen: 4 } as unknown as SessionState;
@@ -79,6 +93,7 @@ describe("wallet view", () => {
     expect(view).toEqual({
       control: { kind: "account", address: BEA, signedIn: true },
       status: { kind: "signed_in", text: "Signed in as SAMP…Bea2." },
+      connectAction: null,
     });
   });
 

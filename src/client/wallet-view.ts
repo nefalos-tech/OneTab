@@ -1,4 +1,5 @@
-// SessionState to what the header control and the status line show. Pure, with copy from catalog.ts.
+// SessionState to what the header control, the status line and the room's Connect wallet show. Pure,
+// with copy from catalog.ts.
 // Parallels checkout-view.ts: components render this view and never read machine state.
 
 import type { Problem, SessionState } from "@/lib/wallet/machine";
@@ -8,6 +9,12 @@ import { WALLET_FIXES, WALLET_PROBLEMS, WALLET_WAITING, WORDS, type WalletFixKin
 export type WalletFix =
   | { readonly kind: Exclude<WalletFixKind, "get_phantom">; readonly label: string }
   | { readonly kind: "get_phantom"; readonly label: string; readonly href: string };
+
+/**
+ * The room's inline Connect wallet. It mirrors the header: the status line's fix while a problem
+ * shows, the header's busy label while a wallet prompt or sign-in call is open.
+ */
+export type ConnectAction = WalletFix | { readonly kind: "busy"; readonly label: string };
 
 export type WalletView = {
   readonly control:
@@ -22,6 +29,8 @@ export type WalletView = {
     | { readonly kind: "problem"; readonly problem: Problem; readonly text: string; readonly fix: WalletFix }
     /** Announced to screen readers only. The header's short address is the visible confirmation. */
     | { readonly kind: "signed_in"; readonly text: string };
+  /** null when signed in, where no screen offers Connect wallet. */
+  readonly connectAction: ConnectAction | null;
 };
 
 /** The same short form AddressText renders, such as SAMP…Bea2. */
@@ -31,34 +40,40 @@ export function shortAddress(address: string): string {
 
 export function deriveWalletView(state: SessionState): WalletView {
   switch (state.kind) {
-    case "signed_out":
+    case "signed_out": {
+      const status = state.problem === null ? null : problemStatus(state.problem, null);
       return {
         control: { kind: "connect", label: WALLET_FIXES.connect_wallet.label },
-        status: state.problem === null ? null : problemStatus(state.problem, null),
+        status,
+        connectAction: status?.fix ?? fixOf("connect_wallet"),
       };
+    }
     case "connecting":
       return waiting("connect_prompt");
     case "signing_in":
       return waiting(state.step.at === "signature" ? "sign_prompt" : "server");
-    case "connected":
-      return {
-        control: { kind: "account", address: state.account, signedIn: false },
-        status: problemStatus(state.problem, state.account),
-      };
+    case "connected": {
+      const status = problemStatus(state.problem, state.account);
+      return { control: { kind: "account", address: state.account, signedIn: false }, status, connectAction: status.fix };
+    }
     case "signed_in":
       return {
         control: { kind: "account", address: state.account, signedIn: true },
         status: { kind: "signed_in", text: `${WORDS.signed_in_as} ${shortAddress(state.account)}.` },
+        connectAction: null,
       };
   }
 }
 
 function waiting(what: WalletWaiting): WalletView {
-  const meta = WALLET_WAITING[what];
-  return { control: { kind: "busy", label: meta.control }, status: { kind: "waiting", text: meta.line } };
+  const busy = { kind: "busy", label: WALLET_WAITING[what].control } as const;
+  return { control: busy, status: { kind: "waiting", text: WALLET_WAITING[what].line }, connectAction: busy };
 }
 
-function problemStatus(problem: Problem, account: Address | null): NonNullable<WalletView["status"]> {
+function problemStatus(
+  problem: Problem,
+  account: Address | null,
+): Extract<WalletView["status"], { readonly kind: "problem" }> {
   const { message, fix } = WALLET_PROBLEMS[problem];
   const text = account === null ? message : message.replace("{address}", shortAddress(account));
   return { kind: "problem", problem, text, fix: fixOf(fix) };
