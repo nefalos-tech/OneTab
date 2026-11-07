@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { SPOT_STATUSES, WORDS, type SpotStatus } from "@/client/catalog";
-import type { TabView } from "@/client/checkout-view";
+import { spotNumber, type TabView } from "@/client/checkout-view";
 import { Icon } from "./icon";
 import { AddressText, Amount } from "./values";
 
@@ -48,13 +48,13 @@ export function TabCard({
               {SEGMENT[spot.status].check && <Icon name="check" className="size-4" />}
               <span className="truncate">
                 <span className="sr-only">
-                  {WORDS.spot} {spot.slot + 1}:{" "}
+                  {WORDS.spot} {spotNumber(spot.slot)}:{" "}
                 </span>
                 {SPOT_STATUSES[spot.status].label}
               </span>
             </span>
             <span className={`text-center text-small ${spot.isViewer ? "font-bold text-accent" : "text-on-brand-muted"}`}>
-              {spot.isViewer ? WORDS.you : `${WORDS.spot} ${spot.slot + 1}`}
+              {spot.isViewer ? WORDS.you : `${WORDS.spot} ${spotNumber(spot.slot)}`}
             </span>
           </li>
         ))}
@@ -64,7 +64,7 @@ export function TabCard({
           {tab.spots.map((spot) => (
             <li key={spot.slot} className="flex flex-wrap items-baseline justify-between gap-x-4">
               <span className={spot.isViewer ? "font-bold text-accent" : "text-on-brand-muted"}>
-                {spot.isViewer ? WORDS.you : `${WORDS.spot} ${spot.slot + 1}`}
+                {spot.isViewer ? WORDS.you : `${WORDS.spot} ${spotNumber(spot.slot)}`}
               </span>
               <Amount value={spot.share} onBrand />
             </li>

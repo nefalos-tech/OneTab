@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { isAddress, type Address } from "./contracts";
+import { looksLikeAddress, type Address } from "./contracts";
 import { checkDraft, type DraftInput } from "./create-draft";
 import { SAMPLE_CONFIG } from "./fixture-data";
 
 const wallet = (s: string): Address => {
-  if (!isAddress(s)) throw new Error(`bad test wallet ${s}`);
+  if (!looksLikeAddress(s)) throw new Error(`bad test wallet ${s}`);
   return s;
 };
 const ORGANIZER = wallet("SAMPLEorganizer1111111111111111111111111org1");

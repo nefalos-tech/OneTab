@@ -1,6 +1,6 @@
 import { isCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
 import { SITUATIONS, type Screen, type Situation } from "./catalog";
-import { checkoutLinks, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
+import { checkoutLinks, spotNumber, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
 
 export type Persona =
@@ -128,7 +128,7 @@ export function parseCheckoutRef(input: {
 export function personaParam(persona: Persona): string {
   switch (persona.kind) {
     case "member":
-      return `spot-${persona.slot + 1}`;
+      return `spot-${spotNumber(persona.slot)}`;
     case "outsider":
       return "outsider";
     case "signed_out":
@@ -242,7 +242,7 @@ function sessionFor(persona: Persona, snapshot: RoomSnapshot): Session | null {
 function personaLabel(persona: Persona): string {
   switch (persona.kind) {
     case "member":
-      return persona.slot === 0 ? "Spot 1 (organizer)" : `Spot ${persona.slot + 1}`;
+      return persona.slot === 0 ? "Spot 1 (organizer)" : `Spot ${spotNumber(persona.slot)}`;
     case "outsider":
       return "Someone with the link";
     case "signed_out":

@@ -1,6 +1,7 @@
 import type {
   Address,
   AttemptSummary,
+  CheckoutId,
   PayerCount,
   PublicConfig,
   Receipt,
@@ -50,9 +51,11 @@ export type CreateState = {
 };
 
 export const SAMPLES_PATH = "/samples";
+
+export const spotNumber = (slot: number): number => slot + 1;
 export const SAMPLE_CREATE_PATH = "/?sample";
 
-export function checkoutLinks(segment: string, query = ""): ScreenLinks {
+export function checkoutLinks(segment: CheckoutId | `sample-${string}`, query = ""): ScreenLinks {
   return { room: `/checkouts/${segment}${query}`, result: `/checkouts/${segment}/result${query}` };
 }
 

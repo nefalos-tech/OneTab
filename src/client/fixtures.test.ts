@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SITUATIONS, type Situation } from "./catalog";
-import { isAddress, type Phase, type RoomSnapshot } from "./contracts";
+import { looksLikeAddress, type Phase, type RoomSnapshot } from "./contracts";
 import { deriveRoomView } from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, fixtureCases, parseCheckoutRef, parseFixtureFlag, personaParam, sampleIndex } from "./fixtures";
@@ -124,7 +124,7 @@ describe("sample addresses can't pass for real ones and tell payers apart", () =
   it("start with SAMPLE, are base58 and end in distinct readable characters", () => {
     for (const a of addresses) {
       expect(a.startsWith("SAMPLE")).toBe(true);
-      expect(isAddress(a)).toBe(true);
+      expect(looksLikeAddress(a)).toBe(true);
     }
     expect(addresses.map((a) => a.slice(-4))).toEqual(["org1", "Bea2", "Cam3", "Gst4", "Se11", "Usdc"]);
   });

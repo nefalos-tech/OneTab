@@ -6,6 +6,7 @@ import { ACTIONS, NETWORK_LABELS, SPOT_STATUSES, WORDS } from "@/client/catalog"
 import {
   deriveCreateView,
   deriveReviewActions,
+  spotNumber,
   type CreateState,
   type CreateView,
 } from "@/client/checkout-view";
@@ -192,7 +193,7 @@ function Review({
         <dt className="text-muted">{WORDS.seller}</dt>
         <dd className="flex flex-col items-start gap-2 wide:col-span-2">
           <AddressText value={request.sellerWallet} form="full" />
-          <CopyButton value={request.sellerWallet} name="seller wallet" />
+          <CopyButton value={request.sellerWallet} labelSuffix="seller wallet" />
         </dd>
         <dt className="text-muted">{WORDS.total}</dt>
         <dd className="wide:col-span-2">
@@ -209,7 +210,7 @@ function Review({
             <li key={spot.slot} className="flex items-center justify-between gap-4 py-3">
               <span className="flex items-center gap-2">
                 <span className="text-muted">
-                  {WORDS.spot} {spot.slot + 1}
+                  {WORDS.spot} {spotNumber(spot.slot)}
                 </span>
                 {spot.isViewer ? (
                   <span className="rounded-control bg-brand px-2 text-small font-semibold text-white">{WORDS.you}</span>

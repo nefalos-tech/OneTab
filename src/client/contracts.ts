@@ -13,7 +13,7 @@ export function isTokenUnits(s: string): s is TokenUnits {
   return /^(0|[1-9][0-9]*)$/.test(s) && BigInt(s) <= U64_MAX;
 }
 
-export function isAddress(s: string): s is Address {
+export function looksLikeAddress(s: string): s is Address {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }
 

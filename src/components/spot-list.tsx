@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { SPOT_STATUSES, WORDS, type SpotStatus } from "@/client/catalog";
-import type { SpotView } from "@/client/checkout-view";
+import { spotNumber, type SpotView } from "@/client/checkout-view";
 import { Icon } from "./icon";
 import { AddressText, Amount } from "./values";
 
@@ -23,7 +23,7 @@ export function SpotList({ spots }: { readonly spots: readonly SpotView[] }): Re
             <div className="flex min-w-0 flex-col gap-1">
               <p className="flex flex-wrap items-center gap-2 text-small">
                 <span className="text-muted">
-                  {WORDS.spot} {spot.slot + 1}
+                  {WORDS.spot} {spotNumber(spot.slot)}
                 </span>
                 {spot.isOrganizer && (
                   <span className="rounded-control border border-line-strong px-2 font-semibold">{WORDS.organizer}</span>

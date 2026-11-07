@@ -1,4 +1,4 @@
-import { isAddress, type Address, type PayerCount, type PublicConfig, type TokenUnits } from "./contracts";
+import { looksLikeAddress, type Address, type PayerCount, type PublicConfig, type TokenUnits } from "./contracts";
 import { WORDS } from "./catalog";
 import type { CreateRequest, TabView } from "./checkout-view";
 import { formatMoney, parseAmountInput, splitEqually, toTokenUnits, type AmountProblem, type Money } from "./units";
@@ -35,7 +35,7 @@ export function checkDraft(
   const seller = input.seller.trim();
   let sellerWallet: Address | null = null;
   if (seller === "") errors.seller = "Enter the seller's Solana wallet address.";
-  else if (!isAddress(seller)) errors.seller = "This isn't a Solana wallet address. Copy it again from the seller.";
+  else if (!looksLikeAddress(seller)) errors.seller = "This isn't a Solana wallet address. Copy it again from the seller.";
   else if (seller === ctx.organizer) errors.seller = "The seller can't be your own wallet. Enter the seller's wallet.";
   else sellerWallet = seller;
 
@@ -68,7 +68,7 @@ export function previewTab(
   return draftTab(
     input.title.trim() || PREVIEW_TITLE,
     amount.ok ? amount.units : toTokenUnits(0n),
-    isAddress(seller) ? seller : null,
+    looksLikeAddress(seller) ? seller : null,
     input.payerCount === "3" ? 3 : 2,
     ctx,
   );

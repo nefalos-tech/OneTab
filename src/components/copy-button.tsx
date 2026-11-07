@@ -5,7 +5,7 @@ import { WORDS } from "@/client/catalog";
 import { Icon } from "./icon";
 import { BUTTON } from "./button";
 
-export function CopyButton({ value, name }: { readonly value: string; readonly name: string }): ReactNode {
+export function CopyButton({ value, labelSuffix }: { readonly value: string; readonly labelSuffix: string }): ReactNode {
   const [note, setNote] = useState("");
   const copy = async () => {
     try {
@@ -20,7 +20,7 @@ export function CopyButton({ value, name }: { readonly value: string; readonly n
       <button type="button" onClick={copy} className={BUTTON.quiet}>
         <Icon name="copy" />
         {WORDS.copy}
-        <span className="sr-only"> {name}</span>
+        <span className="sr-only"> {labelSuffix}</span>
       </button>
       <span role="status" className="text-small text-muted">
         {note}

@@ -1,5 +1,5 @@
 import {
-  isAddress,
+  looksLikeAddress,
   isCheckoutId,
   isTokenUnits,
   type Address,
@@ -23,7 +23,7 @@ function sampleBase58(word: string, ending: string, length: number): string {
 
 function sampleAddress(word: string, ending: string): Address {
   const s = sampleBase58(word, ending, 44);
-  if (!isAddress(s)) throw new Error(`Sample address is not an address: ${s}`);
+  if (!looksLikeAddress(s)) throw new Error(`Sample address is not an address: ${s}`);
   return s;
 }
 

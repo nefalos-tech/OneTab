@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { WORDS } from "@/client/catalog";
-import { deriveResultView, type CheckoutState, type ReceiptView, type ResultBody } from "@/client/checkout-view";
+import { deriveResultView, spotNumber, type CheckoutState, type ReceiptView, type ResultBody } from "@/client/checkout-view";
 import { CopyButton } from "./copy-button";
 import { PageShell } from "./page-shell";
 import { StatusPanel } from "./status-panel";
@@ -47,7 +47,7 @@ function Reference({ value }: { readonly value: string | null }): ReactNode {
       <dt className="text-muted">{WORDS.transaction_reference}</dt>
       <dd className="flex flex-col items-start gap-2">
         <AddressText value={value} form="full" />
-        <CopyButton value={value} name={WORDS.transaction_reference.toLowerCase()} />
+        <CopyButton value={value} labelSuffix={WORDS.transaction_reference.toLowerCase()} />
       </dd>
     </dl>
   );
@@ -76,7 +76,7 @@ function Receipt({ receipt }: { readonly receipt: ReceiptView }): ReactNode {
           <li key={c.slot} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
             <span className="flex items-center gap-2">
               <span className="text-muted">
-                {WORDS.spot} {c.slot + 1}
+                {WORDS.spot} {spotNumber(c.slot)}
               </span>
               {c.isViewer && <span className="rounded-control bg-brand px-2 text-small font-semibold text-white">{WORDS.you}</span>}
               <AddressText value={c.wallet} form="short" />
