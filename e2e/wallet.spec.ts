@@ -195,7 +195,7 @@ test("switching accounts drops the old payer's share, Ready and Approve before a
   await expect(w.request).toHaveAttribute("data-sample-prompt", "sign");
   await w.approve.click();
   await expect(w.signedInAs(CAM)).toBeVisible();
-  await expect(roomLine(page)).toHaveText("Everyone has joined. Check your share, then tell the group you're ready.");
+  await expect(roomLine(page)).toHaveText("Everyone has joined. Check your share, then tell the group you're ready, which moves no money.");
   await expect(roomPrimary(page)).toHaveText("I'm ready");
   await expect(payerRow(page, 3).getByText("You", { exact: true })).toBeVisible();
 });

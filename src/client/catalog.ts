@@ -191,6 +191,11 @@ export const WORDS = {
   you: "You",
   organizer: "Organizer",
   your_share: "Your share",
+  network_fee: "Network fee",
+  fee_you_pay: "You pay the network fee in SOL, because you're the organizer.",
+  fee_organizer_pays: "The organizer pays the network fee, even if your wallet shows one.",
+  approval_covers:
+    "Your approval covers the whole payment, so your wallet may show every share, not just yours. Nothing moves until everyone approves.",
   payers: "Payers",
   seller: "Seller",
   seller_no_spot: "You're the seller, so you don't take a spot.",

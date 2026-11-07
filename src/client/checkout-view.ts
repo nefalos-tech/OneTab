@@ -116,6 +116,16 @@ export type TabView = {
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
 
+/** What a payer checks before approving: the payment their wallet will show, in OneTab's words. */
+export type ApprovalView = {
+  readonly share: Money;
+  /** In full, because the payer verifies it here. */
+  readonly seller: Address;
+  readonly total: Money;
+  readonly network: string;
+  readonly fee: string;
+};
+
 export type CreateRequest = {
   readonly title: string;
   readonly sellerWallet: Address;
@@ -226,6 +236,8 @@ export type RoomView = {
   readonly status: StatusView;
   readonly tab: TabView;
   readonly you: YouView | null;
+  /** Shown in place of `you` while the viewer has a payment to approve. */
+  readonly approval: ApprovalView | null;
   readonly actions: ActionsView;
 };
 
@@ -256,13 +268,14 @@ export function deriveRoomView(state: CheckoutState): RoomView {
   const role = roleOf(state.snapshot, state.session, c.situation);
   const tab = tabOf(state.snapshot, role);
   const me = tab.spots.find((s) => s.isViewer) ?? null;
+  const terms = termsOf(state.snapshot, state.session);
   const plan = isOwnedBy(c.situation, "room")
     ? ROOM_ACTIONS[c.situation]({
         checkoutId: state.snapshot.checkout.id,
         role,
         me: me?.status ?? null,
         links: state.source.links,
-        terms: termsOf(state.snapshot, state.session),
+        terms,
       })
     : {
         primary:
@@ -276,7 +289,18 @@ export function deriveRoomView(state: CheckoutState): RoomView {
     status: statusOf(c, role, tab),
     tab,
     you: me && { share: me.share, status: me.status, isOrganizer: me.isOrganizer },
+    approval: terms && me && approvalOf(terms, me.share),
     actions: { ...plan, sample: sampleActions(state) },
+  };
+}
+
+function approvalOf(terms: ApprovalTerms, share: Money): ApprovalView {
+  return {
+    share,
+    seller: terms.seller,
+    total: { units: terms.totalUnits, decimals: terms.tokenDecimals },
+    network: NETWORK_LABELS[terms.network],
+    fee: terms.payer === terms.feePayer ? WORDS.fee_you_pay : WORDS.fee_organizer_pays,
   };
 }
 
@@ -658,7 +682,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
   full_not_ready: (c) =>
     isMember(c.role) && c.me !== "ready"
-      ? "Everyone has joined. Check your share, then tell the group you're ready."
+      ? "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."
       : isMember(c.role)
         ? `You're ready. Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
@@ -666,7 +690,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,
   ready: (c) =>
     c.role.kind === "organizer"
-      ? "Everyone is ready. Start the payment to ask each payer to approve their share."
+      ? "Everyone is ready. Start the payment to ask each payer to approve it."
       : isMember(c.role)
         ? "Everyone is ready. Waiting for the organizer to start the payment."
         : c.role.kind === "signed_out"
@@ -676,7 +700,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
     `Preparing the payment, and approvals open in a moment.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
   signing: (c) =>
     isMember(c.role) && c.me !== "approved"
-      ? "Approve your share in your wallet. Nothing is sent until everyone approves."
+      ? "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."
       : isMember(c.role)
         ? `You approved. Waiting for ${count(c.approvals.total - c.approvals.done, "more approval")}.`
         : `${c.approvals.done} of ${c.approvals.total} payers approved.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,

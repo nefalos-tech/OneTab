@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ActionKind } from "./catalog";
+import { REQUEST_PROBLEMS, WALLET_WAITING, WORDS, type ActionKind } from "./catalog";
 import {
   checkoutLinks,
   deriveCreateView,
@@ -14,6 +14,7 @@ import {
   type ClientRequestId,
   type Notice,
 } from "./checkout-view";
+import type { Address } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
 
@@ -77,8 +78,8 @@ describe.each(CASES)("honesty rules hold for $id", (c) => {
     expect(result.chrome.flow.every((s) => s.state === "done")).toBe(c.situation === "paid");
   });
 
-  it("never calls approvals revoked or a payment canceled", () => {
-    for (const v of [room, result]) expect(v.status.line).not.toMatch(/revok|cancel/i);
+  it("never says an approval was withdrawn, revoked or canceled", () => {
+    for (const v of [room, result]) expect(v.status.line).not.toMatch(/revok|cancel|(?<!aren't )withdr/i);
   });
 
   it("offers Try again only to the organizer, only when the server says canRetry", () => {
@@ -121,7 +122,9 @@ describe.each(CASES)("honesty rules hold for $id", (c) => {
 describe("status lines speak to the viewer", () => {
   it.each([
     ["signing as spot-1", "You approved. Waiting for 2 more approvals."],
-    ["signing as spot-2", "Approve your share in your wallet. Nothing is sent until everyone approves."],
+    ["signing as spot-2", "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."],
+    ["full-not-ready as spot-3", "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."],
+    ["ready as spot-1", "Everyone is ready. Start the payment to ask each payer to approve it."],
     ["open-spots as spot-1", "Waiting for 1 more payer. Copy the link and send it to them."],
     ["full-not-ready as outsider", "This checkout is full. Waiting for 1 payer to get ready."],
     ["declined-on-hold as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
@@ -361,5 +364,100 @@ describe("the payment a payer approves", () => {
     const { state } = caseById("signing as spot-2");
     expect(termsOf(state.snapshot, { ...state.session!, wallet: SAMPLE_WALLETS.seller })).toBeNull();
     expect(termsOf({ ...state.snapshot, participants: state.snapshot.participants.slice(0, 2) }, state.session)).toBeNull();
+  });
+});
+
+describe("the approval summary", () => {
+  const roomFor = (id: string) => deriveRoomView(caseById(id).state);
+
+  it("shows a payer who hasn't approved their share, the full seller, the total, the network and who pays the fee", () => {
+    expect(roomFor("signing as spot-2").approval).toEqual({
+      share: { units: "3333333", decimals: 6 },
+      seller: SAMPLE_WALLETS.seller,
+      total: { units: "10000000", decimals: 6 },
+      network: "Test USDC on Solana Devnet",
+      fee: "The organizer pays the network fee, even if your wallet shows one.",
+    });
+  });
+
+  it("tells the organizer they pay the network fee, while the payment is prepared", () => {
+    expect(roomFor("preparing as spot-1").approval).toMatchObject({
+      share: { units: "3333334" },
+      fee: "You pay the network fee in SOL, because you're the organizer.",
+    });
+  });
+
+  it("is drawn from the same terms that Approve in wallet checks the payment against", () => {
+    const { state } = caseById("signing as spot-2");
+    const room = deriveRoomView(state);
+    const terms = termsOf(state.snapshot, state.session)!;
+    expect(room.actions.primary).toEqual({ kind: "approve", terms });
+    expect(room.approval).toMatchObject({ seller: terms.seller, total: { units: terms.totalUnits } });
+    expect(room.approval?.share.units).toBe(terms.contributions.find((c) => c.wallet === terms.payer)?.amountUnits);
+  });
+
+  it.each(["signing as spot-1", "signing as outsider", "signing as signed-out", "ready as spot-1", "full-not-ready as spot-3"])(
+    "doesn't show for %s, who keeps the plain view",
+    (id) => {
+      expect(roomFor(id).approval).toBeNull();
+    },
+  );
+
+  it("speaks of approving, never of signing", () => {
+    const words = [
+      ...Object.values(REQUEST_PROBLEMS),
+      WALLET_WAITING.payment_prompt.line,
+      WORDS.fee_you_pay,
+      WORDS.fee_organizer_pays,
+      WORDS.approval_covers,
+      ...CASES.flatMap((c) => (c.situation === "preparing" || c.situation === "signing" ? [deriveRoomView(c.state).status.line] : [])),
+    ];
+    for (const text of words) expect(text).not.toMatch(/\bsign(s|ed|ing)?\b(?! in\b)|authori[sz]e/i);
+  });
+});
+
+describe("every viewer sees the same room at every step", () => {
+  const base = FIXTURES.signing.snapshot;
+  const { organizer, bea, cam } = SAMPLE_WALLETS;
+  const attempt = (state: "preparing" | "signing" | "submitting", approved: readonly Address[]) => ({
+    ...base.attempt!,
+    state,
+    signedWallets: approved,
+  });
+  const STEPS = [
+    {
+      room: { ...base, phase: "open", attempt: null, participants: base.participants.map((p) => ({ ...p, ready: p.slot === 0 })) },
+      progress: "3 of 3 joined, 1 ready",
+      spots: ["ready", "joined", "joined"],
+    },
+    { room: { ...base, phase: "ready", attempt: null }, progress: "3 of 3 joined, 3 ready", spots: ["ready", "ready", "ready"] },
+    { room: { ...base, phase: "paying", attempt: attempt("preparing", []) }, progress: "0 of 3 approved", spots: ["ready", "ready", "ready"] },
+    { room: { ...base, attempt: attempt("signing", [organizer]) }, progress: "1 of 3 approved", spots: ["approved", "ready", "ready"] },
+    {
+      room: { ...base, attempt: attempt("signing", [organizer, bea]) },
+      progress: "2 of 3 approved",
+      spots: ["approved", "approved", "ready"],
+    },
+    {
+      room: { ...base, attempt: attempt("submitting", [organizer, bea, cam]) },
+      progress: "3 of 3 approved",
+      spots: ["approved", "approved", "approved"],
+    },
+  ] as const;
+  const VIEWERS = [organizer, bea, cam, SAMPLE_WALLETS.outsider, null] as const;
+
+  it.each(STEPS.map((step, index) => [index, step] as const))("step %i", (_, step) => {
+    const views = VIEWERS.map((wallet) =>
+      deriveRoomView({
+        snapshot: step.room as CheckoutState["snapshot"],
+        session: wallet === null ? null : { wallet, expiresAt: "2099-01-01T00:00:00.000Z" },
+        source: { kind: "live", links: checkoutLinks(base.checkout.id) },
+      }),
+    );
+    for (const view of views) {
+      expect(view.tab.progress).toBe(step.progress);
+      expect(view.tab.spots.map((s) => s.status)).toEqual(step.spots);
+      expect(view.status.label).toBe(views[0]!.status.label);
+    }
   });
 });

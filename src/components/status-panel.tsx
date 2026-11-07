@@ -1,9 +1,10 @@
 import { useRef, type ReactNode } from "react";
 import { WORDS, type Situation, type Tone } from "@/client/catalog";
-import type { ActionsView, StatusView, YouView } from "@/client/checkout-view";
+import type { ActionsView, ApprovalView, StatusView, YouView } from "@/client/checkout-view";
 import { ActionGroup } from "./actions";
+import { CopyButton } from "./copy-button";
 import { Icon, type IconName } from "./icon";
-import { Amount } from "./values";
+import { AddressText, Amount } from "./values";
 
 const TONE: { readonly [T in Tone]: string } = {
   neutral: "border border-line-strong text-ink",
@@ -31,6 +32,7 @@ const ICON: { readonly [S in Situation]: IconName } = {
 export function StatusPanel({
   status,
   you,
+  approval = null,
   actions,
   heading,
   reason = null,
@@ -38,6 +40,7 @@ export function StatusPanel({
 }: {
   readonly status: StatusView;
   readonly you: YouView | null;
+  readonly approval?: ApprovalView | null;
   readonly actions: ActionsView;
   readonly heading: "h1" | "h2";
   readonly reason?: string | null;
@@ -62,17 +65,59 @@ export function StatusPanel({
           {reason}
         </p>
       )}
-      {you && (
-        <div className="border-l-4 border-accent pl-4">
-          <h3 className="font-semibold text-muted">{WORDS.your_share}</h3>
-          <p>
-            <Amount value={you.share} size="hero" />
-          </p>
-        </div>
+      {approval ? (
+        <ApprovalSummary approval={approval} />
+      ) : (
+        you && (
+          <div className="border-l-4 border-accent pl-4">
+            <h3 className="font-semibold text-muted">{WORDS.your_share}</h3>
+            <p>
+              <Amount value={you.share} size="hero" />
+            </p>
+          </div>
+        )
       )}
       <ActionGroup actions={actions} fallbackFocus={line}>
         {children}
       </ActionGroup>
     </section>
+  );
+}
+
+/** Above the action group, so the payer reads what they approve before Approve in wallet. */
+function ApprovalSummary({ approval }: { readonly approval: ApprovalView }): ReactNode {
+  return (
+    <div className="flex flex-col gap-4 border-l-4 border-accent pl-4">
+      <div>
+        <h3 className="font-semibold text-muted">{WORDS.your_share}</h3>
+        <p>
+          <Amount value={approval.share} size="hero" />
+        </p>
+      </div>
+      <dl className="flex flex-col gap-3">
+        <div>
+          <dt className="text-small text-muted">{WORDS.seller}</dt>
+          <dd className="flex flex-col items-start gap-2">
+            <AddressText value={approval.seller} form="full" />
+            <CopyButton value={approval.seller} labelSuffix="seller wallet" />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-small text-muted">{WORDS.total}</dt>
+          <dd>
+            <Amount value={approval.total} />
+            <span className="block text-small text-muted">{approval.network}</span>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-small text-muted">{WORDS.network_fee}</dt>
+          <dd>{approval.fee}</dd>
+        </div>
+      </dl>
+      <p className="flex items-start gap-2 rounded-control bg-brand-soft px-4 py-3">
+        <Icon name="info" />
+        {WORDS.approval_covers}
+      </p>
+    </div>
   );
 }
