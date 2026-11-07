@@ -203,7 +203,7 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Component | Purpose | Variants and states |
 | --- | --- | --- |
 | Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet control. Layout is split (create, room) or single (result) |
-| Wallet control | Connect, sign in, and show who you are | A quiet **Connect wallet** button when signed out. A spinner and the current step while a wallet prompt is open, with **Cancel**. When signed in, a menu button with the wallet icon and the short address, holding **Copy address** and **Disconnect**. See [Wallet and sign-in states](#wallet-and-sign-in-states) |
+| Wallet control | Connect, sign in, and show who you are | A quiet **Connect wallet** button when signed out. A spinner and the current step while a wallet prompt is open, with **Cancel**, the payment prompt included. Cancel there stops the page waiting, and the wallet's own prompt still blocks a second one until it answers. When signed in, a menu button with the wallet icon and the short address, holding **Copy address** and **Disconnect**. See [Wallet and sign-in states](#wallet-and-sign-in-states) |
 | Sample wallet | Stands in for a real wallet in sample data | Styled like the sample banner and labeled "Sample wallet". When idle it is one line with the selected account, **End sign-in** when it applies, and a **Switch account** disclosure. A pending wallet prompt expands it with **Approve** and **Reject** and is announced politely. Focus never moves on its own. It never opens a real wallet or calls a real route |
 | Flow steps | Where the viewer is in the flow | Each step is done, current, or upcoming. Current uses `aria-current="step"` |
 | Sample banner | Marks sample data | Visible whenever sample data is shown, with links to the other viewers of the same sample and to every sample |
@@ -215,8 +215,8 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Amount | Money values | Number plus "test USDC", tabular figures |
 | Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
-| Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group |
-| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none |
+| Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group. While a payer has a payment to approve, the approval summary takes your share's place, above **Approve in wallet**: the share as the hero, the full seller with **Copy**, the total and the network, who pays the network fee, and a note that one approval covers every share |
+| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change. A notice can offer a follow-up, such as **Decline payment** after a refusal in the wallet. The follow-up shows its busy label in the notice and stays offered if it fails. While a payment prompt is open, on this page or another, **Approve in wallet** shows **Approving…**. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none |
 | Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. A sample receipt has no explorer link |
 | Notice | Inline message | Info, success, warning, danger. Icon plus text |
 
@@ -242,7 +242,7 @@ Ready and Approved always look different. Ready moves no money.
 
 ## States
 
-Every checkout is in exactly one state. Each state has an owner screen, where its primary action lives. The other screen still renders the checkout and links to the owner: the room shows **View payment status** or **View receipt**, and the result shows **Back to checkout**. Neither page redirects, so the **Back to checkout** exit door never bounces back. When live polling arrives, a page may move the viewer to the owner screen only when the state changes owner, never on first load.
+Every checkout is in exactly one state. Each state has an owner screen, where its primary action lives. The other screen still renders the checkout and links to the owner: the room shows **View payment status** or **View receipt**, and the result shows **Back to checkout**. Neither page redirects, so the **Back to checkout** exit door never bounces back. A live page polls its room, and moves the viewer to the owner screen only when a room it read changes owner, never on first load or after Back.
 
 <!-- design-system:states -->
 | State | Screen | Flow step | Tone | Label | Server data |
@@ -489,6 +489,9 @@ To see any state, run `npm run dev` and open http://localhost:3000/samples. Ever
 | A screen looks wrong for one state only | After `npm run test:e2e`, open its screenshot in `test-results/screens/` |
 | Connect wallet, sign-in or the header control behaves wrongly | Every wallet state and transition is in `src/lib/wallet/machine.ts`. `src/client/wallet-view.ts` turns a state into what the header, the status line and the room's inline action show |
 | A wallet message or fix is wrong | The wallet tables in `src/client/catalog.ts`. Run `npm run design:write` after the change |
+| Approve in wallet opens no wallet, or says the payment doesn't match | `src/client/payment-check.ts` compares the signing payload with the screen's `ApprovalTerms`. Its byte check answers `unsupported` until Payments' validator is wired |
+| A second payment prompt opens, or a late approval is uploaded | `signPayment` in `src/lib/wallet/store.ts` holds the one payment prompt and drops answers from an earlier sign-in. `npm test` runs every order of a switch, disconnect, expiry or second call against it |
+| A room doesn't update, or a page moves to the wrong screen | `watch` and `pollPlan` in `src/client/live-actions.ts`, and `LiveCheckout` in `src/components/viewer.tsx` |
 | An account switch or a late wallet answer misbehaves | `npm test` runs the exhaustive test in `src/lib/wallet/machine.test.ts`, which drives every short sequence of wallet events |
 | Sign-in calls reach the server in the wrong order | `src/lib/wallet/store.ts` runs every effect and sends sign-in calls one at a time |
 | The sample wallet misbehaves | `src/lib/wallet/sample.ts` holds the sample wallet and sign-in service. `src/components/wallet/sample-wallet-panel.tsx` draws it |
@@ -499,7 +502,8 @@ These files own the decisions behind every screen:
 | --- | --- |
 | `src/client/checkout-source.ts` | Which data a page gets, including the server's read of a live checkout. The only reader of `ONETAB_FIXTURES` |
 | `src/client/api.ts` | Every request to a contract route, and which error code means which problem |
-| `src/client/live-actions.ts` | What each live action sends and does next, and which room answer a live checkout shows |
+| `src/client/live-actions.ts` | What each live action sends and does next, which room answer a live checkout shows, and what each poll sends |
+| `src/client/payment-check.ts` | Whether a signing payload is the payment the screen shows, before any wallet prompt |
 | `src/client/fixtures.ts` | Sample addresses, viewers, and the registry that the tests enumerate |
 | `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |
 | `src/components/` | Rendering only. No state rules |
@@ -515,6 +519,7 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
+| 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, the payment prompt's status line with **Cancel**, notices for a payment that doesn't match, can't start or can't be checked yet, new status lines for getting ready and approving, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
 | 2026-11-07 | Add the busy labels **Creating…** and **Joining…**, the request problem notices, the seller's status line, Connect wallet at the create review, outage words for creation unavailable, a title for the error page, and focus moves when an answer removes the focused control | F3 creates checkouts and joins rooms against the real routes. Each request outcome needs words and a next step, and creating needs a signed-in organizer | [F3](cards/F3.md), [#9](https://github.com/nefalos-tech/OneTab/issues/9) |
 | 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
 | 2026-11-07 | First version: palette, type, layout, components, states, copy and accessibility rules, with generated token, contrast, state and word tables | F2 to F6 need one design language before they build on the screens | [F1](cards/F1.md), [#7](https://github.com/nefalos-tech/OneTab/issues/7) |

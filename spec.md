@@ -69,10 +69,10 @@ The names below define behavior. [contracts.md](docs/contracts.md) defines their
 | State | Meaning and allowed progress |
 | --- | --- |
 | Preparing | An attempt is reserved while validation and message construction run. It advances to Signing after the fixed message is stored. A construction failure with no usable authorization can close the attempt. |
-| Signing | The fixed message is available and verified signatures are collected. Complete signatures permit submission. A rejection stops collection. Expiration requires reconciliation. |
+| Signing | The fixed message is available and verified signatures are collected. Complete signatures permit submission. Rejecting in the wallet sends nothing. A payer who declines stops collection. Expiration requires reconciliation. |
 | Submitting | The submission claim and signed bytes are persisted. The server sends or checks that exact transaction. |
 | Unresolved | The network outcome is unknown. Reconciliation continues for the same transaction. A replacement is blocked. |
-| Declined | A payer rejected approval and collection stopped. This does not revoke signatures or prove the message can no longer settle. The attempt remains blocking until safely resolved. |
+| Declined | A payer declined and collection stopped. This does not revoke signatures or prove the message can no longer settle. The attempt remains blocking until safely resolved. |
 | Confirmed | The transaction reached the required confirmation level without an execution error. This checkout is paid and cannot create another payment attempt. |
 | Failed | A definitive failure is established. A local validation or preflight error alone cannot release a still-usable signed message. |
 | Expired | The block-height limit was exceeded and chain-status reconciliation established that the attempt did not settle. A fresh attempt needs fresh signatures. |
