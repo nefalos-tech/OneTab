@@ -66,7 +66,7 @@ export function checkDraft(
   };
 }
 
-export function requestIds(mint: () => ClientRequestId = randomUuid): (request: CreateRequest) => ClientRequestId {
+export function requestIdPerDetails(mint: () => ClientRequestId = randomUuid): (request: CreateRequest) => ClientRequestId {
   const ids = new Map<string, ClientRequestId>();
   return (request) => {
     const key = JSON.stringify([request.title, request.sellerWallet, request.totalUnits, request.payerCount]);

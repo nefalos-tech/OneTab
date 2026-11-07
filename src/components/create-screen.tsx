@@ -14,7 +14,7 @@ import {
 import {
   checkDraft,
   previewTab,
-  requestIds,
+  requestIdPerDetails,
   type DraftErrors,
   type DraftField,
   type DraftInput,
@@ -66,7 +66,7 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const [input, setInput] = useState<DraftInput>(EMPTY);
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
   const [step, setStep] = useState<Step>({ kind: "form", focus: null });
-  const [requestIdFor] = useState(() => requestIds());
+  const [requestIdFor] = useState(() => requestIdPerDetails());
   const formHeading = useRef<HTMLHeadingElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
 
@@ -74,9 +74,8 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const check = checkDraft(input, ctx);
   const errors = check.ok ? {} : check.errors;
   const errorOf = (field: DraftField) => (touched.has(field) ? errors[field] : undefined);
-  if (step.kind === "review" && !check.ok) {
-    setStep({ kind: "form", focus: firstError(errors) ?? "heading" });
-  }
+  const sellerSignedInAtReview = step.kind === "review" && !check.ok;
+  if (sellerSignedInAtReview) setStep({ kind: "form", focus: firstError(errors) ?? "heading" });
   const reviewing = step.kind === "review" && check.ok ? { review: check.review, requestId: step.requestId } : null;
 
   useEffect(() => {

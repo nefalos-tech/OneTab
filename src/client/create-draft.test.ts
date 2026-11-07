@@ -1,6 +1,6 @@
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { looksLikeAddress, type Address, type ClientRequestId } from "./contracts";
-import { checkDraft, requestIds, type DraftInput } from "./create-draft";
+import { checkDraft, requestIdPerDetails, type DraftInput } from "./create-draft";
 import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
 
 const wallet = (s: string): Address => {
@@ -56,7 +56,7 @@ describe("checkDraft explains each problem in plain words", () => {
   });
 });
 
-describe("requestIds gives each set of details one ID for the life of the form", () => {
+describe("requestIdPerDetails gives each set of details one ID for the life of the form", () => {
   const counter = () => {
     let n = 0;
     return () => `id-${(n += 1)}` as ClientRequestId;
@@ -68,7 +68,7 @@ describe("requestIds gives each set of details one ID for the life of the form",
   };
 
   it("keeps the ID for the same details, so a retry can't create a second checkout", () => {
-    const idFor = requestIds(counter());
+    const idFor = requestIdPerDetails(counter());
     expect(idFor(request())).toBe(idFor(request({ title: "Cabin weekend groceries" })));
   });
 
@@ -78,12 +78,12 @@ describe("requestIds gives each set of details one ID for the life of the form",
     ["total", { total: "12" }],
     ["payer count", { payerCount: "2" }],
   ])("makes a new ID when the %s changes", (_, patch) => {
-    const idFor = requestIds(counter());
+    const idFor = requestIdPerDetails(counter());
     expect(idFor(request())).not.toBe(idFor(request(patch)));
   });
 
   it("returns A's ID for details A, then B, then A again", () => {
-    const idFor = requestIds(counter());
+    const idFor = requestIdPerDetails(counter());
     const a = idFor(request());
     const b = idFor(request({ total: "12" }));
     expect(idFor(request())).toBe(a);
@@ -91,7 +91,7 @@ describe("requestIds gives each set of details one ID for the life of the form",
   });
 
   it("mints UUIDs by default", () => {
-    expect(requestIds()(request())).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(requestIdPerDetails()(request())).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 
   const cryptoWithoutRandomUuid = (getRandomValues: (bytes: Uint8Array) => Uint8Array) => {
@@ -106,11 +106,11 @@ describe("requestIds gives each set of details one ID for the life of the form",
     [0xff, "ffffffff-ffff-4fff-bfff-ffffffffffff"],
   ])("mints a version 4 UUID from random bytes of %i where crypto has no randomUUID, as on a plain-http LAN address", (byte, uuid) => {
     cryptoWithoutRandomUuid((bytes) => bytes.fill(byte));
-    expect(requestIds()(request())).toBe(uuid);
+    expect(requestIdPerDetails()(request())).toBe(uuid);
   });
 
   it("writes the random bytes in order", () => {
     cryptoWithoutRandomUuid((bytes) => bytes.map((_, i) => i));
-    expect(requestIds()(request())).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
+    expect(requestIdPerDetails()(request())).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
   });
 });
