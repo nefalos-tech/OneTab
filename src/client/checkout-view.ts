@@ -9,6 +9,8 @@ import type {
   Session,
   TokenUnits,
 } from "./contracts";
+
+export type { Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
@@ -55,6 +57,8 @@ export type CreateState = {
 export const SAMPLES_PATH = "/samples";
 
 export const spotNumber = (slot: number): number => slot + 1;
+
+export const shortAddress = (address: string): string => `${address.slice(0, 4)}…${address.slice(-4)}`;
 export const SAMPLE_CREATE_PATH = "/?sample";
 
 export function checkoutLinks(segment: CheckoutId | `sample-${string}`, query = ""): ScreenLinks {

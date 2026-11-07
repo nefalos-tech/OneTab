@@ -18,7 +18,7 @@ const SERVICE_THREW: ServiceResult<never> = { ok: false, failure: "unavailable" 
 export function createSessionStore(env: WalletEnvironment, initial: SessionState): SessionStore {
   let state = initial;
   const listeners = new Set<() => void>();
-  let server: Promise<unknown> = Promise.resolve();
+  let signInCallsInOrder: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
 
   function dispatch(event: SessionEvent): void {
@@ -30,8 +30,8 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
   }
 
   function serial<T>(call: () => Promise<T>): Promise<T> {
-    const result = server.then(call);
-    server = result.catch(() => undefined);
+    const result = signInCallsInOrder.then(call);
+    signInCallsInOrder = result.catch(() => undefined);
     return result;
   }
 

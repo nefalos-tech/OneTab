@@ -68,7 +68,7 @@ function moves(s: SessionState, w: World): readonly Move[] {
   ];
 }
 
-function key(s: SessionState, w: World): string {
+function memoKeyIgnoringGen(s: SessionState, w: World): string {
   return JSON.stringify([{ ...s, gen: undefined }, w.wallet]);
 }
 
@@ -81,13 +81,13 @@ describe("session machine, every sequence up to DEPTH events", () => {
     let steps = 0;
 
     const explore = (s: SessionState, w: World, remaining: number): void => {
-      const k = `${key(s, w)}|${remaining}`;
+      const k = `${memoKeyIgnoringGen(s, w)}|${remaining}`;
       if (remaining === 0 || seen.has(k)) return;
       seen.add(k);
       for (const { event, world } of moves(s, w)) {
         const { state: next, effects } = step(s, event);
         steps++;
-        const trail = `${JSON.stringify(event)} from ${key(s, w)}`;
+        const trail = `${JSON.stringify(event)} from ${memoKeyIgnoringGen(s, w)}`;
 
         const identity = sessionOf(next);
         expect(identity === null || identity.wallet === world.wallet, `identity rule: ${trail}`).toBe(true);

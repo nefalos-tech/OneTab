@@ -1,5 +1,6 @@
 import type { Problem, SessionState } from "@/lib/wallet/machine";
 import type { Address } from "./contracts";
+import { shortAddress } from "./checkout-view";
 import { WALLET_FIXES, WALLET_PROBLEMS, WALLET_WAITING, WORDS, type WalletFixKind, type WalletWaiting } from "./catalog";
 
 export type WalletFix =
@@ -20,10 +21,6 @@ export type WalletView = {
     | { readonly kind: "signed_in"; readonly text: string };
   readonly connectAction: ConnectAction | null;
 };
-
-export function shortAddress(address: string): string {
-  return `${address.slice(0, 4)}…${address.slice(-4)}`;
-}
 
 export function deriveWalletView(state: SessionState): WalletView {
   switch (state.kind) {

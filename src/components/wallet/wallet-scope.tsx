@@ -1,14 +1,13 @@
 "use client";
 
 import { createContext, use, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { CheckoutState } from "@/client/checkout-view";
+import type { Session } from "@/client/checkout-view";
 import { deriveWalletView, type WalletView } from "@/client/wallet-view";
 import { liveEnvironment } from "@/lib/wallet/live";
 import { initialState, sessionOf } from "@/lib/wallet/machine";
 import { sampleEnvironment, type SampleWallet, type SampleWalletSeed } from "@/lib/wallet/sample";
 import { createSessionStore, type SessionStore } from "@/lib/wallet/store";
 
-type Session = NonNullable<CheckoutState["session"]>;
 
 export type WalletSessionApi = {
   readonly view: WalletView;
