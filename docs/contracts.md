@@ -49,7 +49,7 @@ WalletBridge exposes these behaviors through B1's shared interface:
 | connect | Returns the selected wallet address and supported capabilities |
 | disconnect | Clears the local connection and ends the server session |
 | signAuthentication | Signs the exact challenge bytes and returns signatureBase64 |
-| signPayment | Validates the SigningPayload, requests sign-only approval, and returns signerWallet, messageHash and signatureBase64 |
+| signPayment | Takes a payment the browser already checked against the screen and Payments' validator, requests sign-only approval as that payment's account, and returns only that account's signatureBase64. The caller uploads it with the payment's messageHash. It never sends or broadcasts |
 
 If the wallet returns a serialized signed transaction, the bridge extracts only that wallet's signature and rejects changed message bytes. It never uploads an entire wallet-returned transaction as the server's authority. Rejecting or changing accounts clears the pending prompt and does not silently resubmit it.
 

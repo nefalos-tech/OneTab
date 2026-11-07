@@ -1,8 +1,9 @@
 "use client";
 
 import { createContext, use, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Session } from "@/client/checkout-view";
+import type { AttemptId, Session } from "@/client/checkout-view";
 import { deriveWalletView, type WalletView } from "@/client/wallet-view";
+import type { PaymentSigner } from "@/lib/wallet/environment";
 import { liveEnvironment } from "@/lib/wallet/live";
 import { initialState, sessionOf } from "@/lib/wallet/machine";
 import { sampleEnvironment, type SampleWallet, type SampleWalletSeed } from "@/lib/wallet/sample";
@@ -12,6 +13,8 @@ import { createSessionStore, type SessionStore } from "@/lib/wallet/store";
 export type WalletSessionApi = {
   readonly view: WalletView;
   readonly session: Session | null;
+  readonly signer: PaymentSigner;
+  readonly waitingOnPrompt: AttemptId | null;
   connect(): void;
   cancel(): void;
   disconnect(): void;
@@ -57,16 +60,26 @@ export function useWalletSession(): WalletSessionApi {
   const store = use(StoreContext);
   if (store === null) throw new Error("useWalletSession needs LiveWalletProvider in the root layout");
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
+  const waitingOnPrompt = useSyncExternalStore(store.subscribe, store.waitingOnPrompt, store.waitingOnPrompt);
   return useMemo(
     () => ({
-      view: deriveWalletView(state),
+      view: deriveWalletView(state, waitingOnPrompt !== null),
       session: sessionOf(state),
+      signer: {
+        keptOrNewApproval: (payment) => store.keptOrNewApproval(state.gen, payment),
+        forget: (approval) => store.forgetApproval(state.gen, approval),
+        isCurrent: (payment) => store.isCurrent(state.gen, payment.account),
+      },
+      waitingOnPrompt,
       connect: () => store.send({ type: "connect" }),
-      cancel: () => store.send({ type: "cancel" }),
+      cancel: () => {
+        store.cancelPayment();
+        store.send({ type: "cancel" });
+      },
       disconnect: () => store.send({ type: "disconnect" }),
       expired: (session: Session) => store.send({ type: "expired", session }),
     }),
-    [store, state],
+    [store, state, waitingOnPrompt],
   );
 }
 

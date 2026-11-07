@@ -1,4 +1,14 @@
-import type { BridgeResult, ServiceResult, WalletEnvironment } from "./environment";
+import type { Address, AttemptId } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
+import type {
+  BridgeResult,
+  PaymentApproval,
+  Result,
+  ServiceResult,
+  SignatureBase64,
+  SignFailure,
+  WalletEnvironment,
+} from "./environment";
 import { step, type Answer, type Effect, type Gen, type Intent, type SessionEvent, type SessionState } from "./machine";
 
 export type SessionStore = {
@@ -7,6 +17,11 @@ export type SessionStore = {
   subscribe(listener: () => void): () => void;
   send(intent: Intent): void;
   start(): () => void;
+  keptOrNewApproval(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+  forgetApproval(gen: Gen, approval: PaymentApproval): void;
+  isCurrent(gen: Gen, account: Address): boolean;
+  waitingOnPrompt(): AttemptId | null;
+  cancelPayment(): void;
 };
 
 /** setTimeout's ceiling. A later expiry schedules nothing. */
@@ -14,19 +29,75 @@ const MAX_TIMER_MS = 2 ** 31 - 1;
 
 const BRIDGE_THREW: BridgeResult<never> = { ok: false, failure: "failed" };
 const SERVICE_THREW: ServiceResult<never> = { ok: false, failure: "unavailable" };
+const STALE = { ok: false, failure: "stale" } as const;
+const BUSY = { ok: false, failure: "busy" } as const;
+
+type Ended = { readonly ok: false; readonly failure: "rejected" | "stale" };
 
 export function createSessionStore(env: WalletEnvironment, initial: SessionState): SessionStore {
   let state = initial;
   const listeners = new Set<() => void>();
   let signInCallsInOrder: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+  let paymentPromptOpen = false;
+  let promptWait: { readonly gen: Gen; readonly attemptId: AttemptId; readonly end: (answer: Ended) => void } | null = null;
+  let approved: { readonly gen: Gen; readonly approval: PaymentApproval } | null = null;
+
+  function notify(): void {
+    for (const listener of listeners) listener();
+  }
 
   function dispatch(event: SessionEvent): void {
     const result = step(state, event);
     if (result.state === state) return;
     state = result.state;
-    for (const listener of listeners) listener();
+    if (promptWait !== null && promptWait.gen !== state.gen) promptWait.end(STALE);
+    notify();
     for (const effect of result.effects) run(effect, state.gen);
+  }
+
+  function isCurrent(gen: Gen, account: Address): boolean {
+    return state.kind === "signed_in" && state.gen === gen && state.account === account;
+  }
+
+  async function keptOrNewApproval(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>> {
+    const current = () => isCurrent(gen, payment.account);
+    if (!current()) return STALE;
+    if (approved?.gen === gen && approved.approval.messageHash === payment.messageHash) return { ok: true, value: approved.approval };
+    if (paymentPromptOpen) return BUSY;
+
+    paymentPromptOpen = true;
+    let walletAnswer: Promise<BridgeResult<SignatureBase64>>;
+    try {
+      walletAnswer = env.bridge.signPayment(payment).catch(() => BRIDGE_THREW);
+    } catch {
+      walletAnswer = Promise.resolve(BRIDGE_THREW);
+    }
+    void walletAnswer.finally(() => {
+      paymentPromptOpen = false;
+    });
+    const ended = new Promise<Ended>((resolve) => {
+      promptWait = {
+        gen,
+        attemptId: payment.attemptId,
+        end: (answer) => {
+          promptWait = null;
+          resolve(answer);
+        },
+      };
+    });
+    notify();
+
+    const first = await Promise.race([walletAnswer.then((answer) => ({ answer })), ended]);
+    if (!("answer" in first)) return first;
+    promptWait = null;
+    notify();
+    const { answer } = first;
+    if (!current()) return STALE;
+    if (!answer.ok) return { ok: false, failure: answer.failure === "rejected" ? "rejected" : "failed" };
+    const approval: PaymentApproval = { messageHash: payment.messageHash, signature: answer.value };
+    approved = { gen, approval };
+    return { ok: true, value: approval };
   }
 
   function serial<T>(call: () => Promise<T>): Promise<T> {
@@ -93,6 +164,19 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     send: (intent) => dispatch(intent),
     start() {
       return env.bridge.onAccountChange((account) => dispatch({ type: "account_changed", account }));
+    },
+    keptOrNewApproval,
+    forgetApproval(gen, approval) {
+      if (approved?.gen === gen && approved.approval.messageHash === approval.messageHash && approved.approval.signature === approval.signature) {
+        approved = null;
+      }
+    },
+    isCurrent,
+    waitingOnPrompt: () => promptWait?.attemptId ?? null,
+    cancelPayment() {
+      if (promptWait === null) return;
+      promptWait.end({ ok: false, failure: "rejected" });
+      notify();
     },
   };
 }

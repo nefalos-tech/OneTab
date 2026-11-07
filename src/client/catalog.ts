@@ -1,6 +1,8 @@
+import type { SignFailure } from "@/lib/wallet/environment";
 import type { Problem } from "@/lib/wallet/machine";
 import type { RequestProblem } from "./api";
 import type { Network } from "./contracts";
+import type { CheckFailure, ReturnFailure } from "./payment-check";
 
 export type Screen = "room" | "result";
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
@@ -138,10 +140,11 @@ export const ACTIONS = {
   copy_link: { label: "Copy link", needs: "nothing", element: "button" },
   connect_wallet: { label: "Connect wallet", needs: "wallet", element: "button" },
   join: { label: "Join checkout", needs: "backend", element: "button", busy: "Joining…" },
-  mark_ready: { label: "I'm ready", needs: "backend", element: "button" },
-  mark_not_ready: { label: "Not ready yet", needs: "backend", element: "button" },
-  start_payment: { label: "Start payment", needs: "backend", element: "button" },
-  approve: { label: "Approve in wallet", needs: "wallet", element: "button" },
+  mark_ready: { label: "I'm ready", needs: "backend", element: "button", busy: "Saving…" },
+  mark_not_ready: { label: "Not ready yet", needs: "backend", element: "button", busy: "Saving…" },
+  start_payment: { label: "Start payment", needs: "backend", element: "button", busy: "Starting…" },
+  approve: { label: "Approve in wallet", needs: "wallet", element: "button", busy: "Approving…" },
+  decline: { label: "Decline payment", needs: "backend", element: "button", busy: "Declining…" },
   retry: { label: "Try again", needs: "backend", element: "button" },
   view_status: { label: "View payment status", needs: "nothing", element: "link" },
   view_receipt: { label: "View receipt", needs: "nothing", element: "link" },
@@ -153,12 +156,28 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
+export type ProblemWithWords =
+  | Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">
+  | "approval_refused"
+  | "room_changed_unread";
+
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
+  room_changed: "The checkout moved on before this went through. It shows the latest now.",
+  room_changed_unread: "The checkout moved on before this went through. OneTab couldn't load the latest yet.",
+  not_funded:
+    "The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent.",
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
   refused: "OneTab couldn't accept this, so nothing changed. Reload the page and try again.",
   unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",
-} as const satisfies Record<Exclude<RequestProblem, "signed_out">, string>;
+  mismatch: "The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved.",
+  unsupported: "Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved.",
+  rejected: "You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone.",
+  busy: "Your wallet already has an approval request open. Finish it there first.",
+  failed: "Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again.",
+  unchecked: "OneTab couldn't check the approval your wallet returned, so nothing was sent.",
+  approval_refused: "OneTab couldn't accept this approval, so nothing was sent. You can approve again.",
+} as const satisfies Record<ProblemWithWords, string>;
 
 export const NETWORK_LABELS = { devnet: "Test USDC on Solana Devnet" } as const satisfies Record<Network, string>;
 
@@ -177,6 +196,11 @@ export const WORDS = {
   you: "You",
   organizer: "Organizer",
   your_share: "Your share",
+  network_fee: "Network fee",
+  fee_you_pay: "You pay the network fee in SOL, because you're the organizer.",
+  fee_organizer_pays: "The organizer pays the network fee, even if your wallet shows one.",
+  approval_covers:
+    "Your approval covers the whole payment, so your wallet may show every share, not just yours. Nothing moves until everyone approves.",
   payers: "Payers",
   seller: "Seller",
   seller_no_spot: "You're the seller, so you don't take a spot.",
@@ -209,6 +233,9 @@ export const WORDS = {
   sign_request_announcement: "Sample wallet: OneTab asks you to sign the sign-in message.",
   approve: "Approve",
   reject: "Reject",
+  declined: "You declined this payment.",
+  seller_wallet: "seller wallet",
+  you_are_ready: "You're ready.",
   end_sign_in: "End sign-in",
 } as const;
 
@@ -232,6 +259,11 @@ export const WALLET_WAITING = {
     line: "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.",
   },
   server: { state: "Checking sign-in", control: "Signing in…", line: "Signing in…" },
+  payment_prompt: {
+    state: "Approving",
+    control: "Approving…",
+    line: "Approve the payment in your wallet. It covers every share in one payment.",
+  },
 } as const satisfies Record<string, { readonly state: string; readonly control: string; readonly line: string }>;
 export type WalletWaiting = keyof typeof WALLET_WAITING;
 

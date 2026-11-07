@@ -35,6 +35,7 @@ export function SpotList({ spots }: { readonly spots: readonly SpotView[] }): Re
             <div className="flex items-center gap-4">
               <Amount value={spot.share} />
               <span
+                data-status={spot.status}
                 className={`inline-flex min-w-28 items-center justify-center gap-1 rounded-control px-2 py-1 text-small font-semibold ${CHIP[spot.status].className}`}
               >
                 {CHIP[spot.status].check && <Icon name="check" className="size-4" />}

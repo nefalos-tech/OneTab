@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { parseCheckoutId, parsePublicConfig, parseRoomSnapshot } from "./contracts";
+import {
+  parseAttemptId,
+  parseAttemptSummary,
+  parseCheckoutId,
+  parsePublicConfig,
+  parseRoomSnapshot,
+  parseSigningPayload,
+} from "./contracts";
 import { SAMPLE_CONFIG } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
+import { wirePayloadFor } from "./payment-fixture";
 
 const overTheWire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 const LOWER = "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c01";
@@ -27,6 +35,8 @@ describe("parseRoomSnapshot", () => {
     ["another network", { ...open, checkout: { ...open.checkout, network: "mainnet-beta" } }],
     ["a receipt that can't be dated", withAttempt({ receipt: { ...paid.attempt!.receipt!, observedAt: "soon" } })],
     ["an attempt error with an unknown code", withAttempt({ error: { code: "OOPS", message: "x" } })],
+    ["an attempt ID that isn't a UUID", withAttempt({ id: "attempt-1" })],
+    ["an expiry height that isn't a whole number", withAttempt({ lastValidBlockHeight: "312345678.5" })],
     ["no participants list", { ...open, participants: undefined }],
     ["an HTML page", "<html>Not found</html>"],
   ])("rejects %s", (_, data) => {
@@ -53,6 +63,75 @@ describe("parseCheckoutId", () => {
 
   it.each(["", "sample-open-spots", `{${LOWER}}`, LOWER.replaceAll("-", ""), `${LOWER.slice(0, -1)}g`, ` ${LOWER}`])("refuses %j", (text) => {
     expect(parseCheckoutId(text)).toBeNull();
+  });
+});
+
+describe("parseAttemptId", () => {
+  it("reads a UUID in any case as its lowercase form", () => {
+    expect(parseAttemptId(UPPER)).toBe(LOWER);
+  });
+
+  it.each(["", "attempt-1", LOWER.replaceAll("-", ""), `../${LOWER}`])("refuses %j", (text) => {
+    expect(parseAttemptId(text)).toBeNull();
+  });
+});
+
+describe("parseAttemptSummary", () => {
+  const attempt = FIXTURES.signing.snapshot.attempt!;
+
+  it("reads an attempt route's answer exactly as it was sent", () => {
+    expect(parseAttemptSummary(overTheWire(attempt))).toEqual(attempt);
+  });
+
+  it("refuses an answer that isn't an attempt", () => {
+    expect(parseAttemptSummary(overTheWire({ ...attempt, id: "attempt-1" }))).toBeNull();
+    expect(parseAttemptSummary(overTheWire(FIXTURES.signing.snapshot))).toBeNull();
+  });
+});
+
+describe("parseSigningPayload", () => {
+  const signing = FIXTURES.signing.snapshot;
+  const wire = wirePayloadFor(signing);
+  const payment = wire.payment as Record<string, unknown> & { readonly contributions: readonly Record<string, unknown>[] };
+  const withPayment = (patch: object) => ({ ...wire, payment: { ...payment, ...patch } });
+
+  it("decodes the bytes and the expiry height, and keeps every contribution in slot order", () => {
+    const parsed = parseSigningPayload(overTheWire(wire));
+    const message = new TextEncoder().encode(`OneTab payment for ${signing.attempt!.id}`);
+    expect(parsed?.message).toEqual(message);
+    expect(parsed?.transaction).toEqual(new Uint8Array([1, ...new Uint8Array(64), ...message]));
+    expect(parsed?.lastValidBlockHeight).toBe("312345678");
+    expect(parsed?.attemptId).toBe(signing.attempt!.id);
+    expect(parsed?.payment.contributions.map((c) => [c.slot, c.wallet, c.amountUnits])).toEqual(
+      signing.participants.map((p) => [p.slot, p.wallet, p.shareUnits]),
+    );
+  });
+
+  it("reads uppercase IDs as their lowercase form", () => {
+    const shouted = { ...wire, attemptId: String(wire.attemptId).toUpperCase(), checkoutId: String(wire.checkoutId).toUpperCase() };
+    expect(parseSigningPayload(shouted)).toMatchObject({ attemptId: wire.attemptId, checkoutId: wire.checkoutId });
+  });
+
+  it.each<[string, unknown]>([
+    ["an attempt ID that isn't a UUID", { ...wire, attemptId: "attempt-1" }],
+    ["transaction bytes that aren't base64", { ...wire, transactionBase64: "not base64!" }],
+    ["base64 without its padding", { ...wire, messageBase64: String(wire.messageBase64).replace(/=+$/, "") }],
+    ["empty message bytes", { ...wire, messageBase64: "" }],
+    ["a hash in uppercase", { ...wire, messageHash: "5A".repeat(32) }],
+    ["a hash that is too short", { ...wire, messageHash: "5a".repeat(31) }],
+    ["a blockhash that isn't base58", { ...wire, blockhash: "0".repeat(44) }],
+    ["a negative expiry height", { ...wire, lastValidBlockHeight: "-1" }],
+    ["an expiry height sent as a number", { ...wire, lastValidBlockHeight: 312345678 }],
+    ["another network", withPayment({ network: "mainnet-beta" })],
+    ["a seller token account that isn't an address", withPayment({ sellerTokenAccount: "seller usdc" })],
+    ["a fee payer that isn't an address", withPayment({ feePayerWallet: null })],
+    ["contributions out of slot order", withPayment({ contributions: [...payment.contributions].reverse() })],
+    ["a single contribution", withPayment({ contributions: payment.contributions.slice(0, 1) })],
+    ["a share that isn't integer units", withPayment({ contributions: [{ ...payment.contributions[0], amountUnits: "1.5" }, ...payment.contributions.slice(1)] })],
+    ["no payment", { ...wire, payment: undefined }],
+    ["an HTML page", "<html>Not found</html>"],
+  ])("rejects %s", (_, data) => {
+    expect(parseSigningPayload(overTheWire(data))).toBeNull();
   });
 });
 

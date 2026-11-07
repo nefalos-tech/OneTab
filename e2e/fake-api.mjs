@@ -60,33 +60,74 @@ export const ROOMS = {
   },
 };
 
+const SCRIPTED_PREFIX = "5c5c5c5c-";
+
+export const scriptedRoom = () => `${SCRIPTED_PREFIX}${randomUUID().slice(SCRIPTED_PREFIX.length)}`;
+export const nextStep = (id) => `${FAKE_API.rooms}/__script/${id}/step`;
+
+const PARTY = [WALLETS.ava, WALLETS.ben, WALLETS.cleo];
+
+const party = (id) => ({
+  checkout: checkout(id, { title: "Weekend cabin", organizerWallet: WALLETS.ava, totalUnits: "90000000", payerCount: 3 }),
+  participants: PARTY.map((wallet, slot) => ({ slot, wallet, shareUnits: "30000000", ready: true })),
+});
+
+const attempt = (id, state, signedWallets) => ({
+  id: `a7${id.slice(2)}`,
+  state,
+  signedWallets,
+  transactionReference: null,
+  lastValidBlockHeight: state === "preparing" ? null : "312345678",
+  error: null,
+  canRetry: false,
+  receipt: null,
+});
+
+export const SCRIPT = [
+  (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
+  (id) => ({ ...party(id), phase: "ready", attempt: null }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo]) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo, WALLETS.ava]) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
+];
+
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
 const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
-function respond(dataset, reads, method, path) {
+export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
+
+function respond(dataset, { reads, steps }, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
+  const advance = /^\/__script\/(5c5c5c5c-[0-9a-f-]{27})\/step$/.exec(path);
+  if (method === "POST" && advance) {
+    const step = Math.min((steps.get(advance[1]) ?? 0) + 1, SCRIPT.length - 1);
+    steps.set(advance[1], step);
+    return json(200, { step });
+  }
   if (method === "GET" && path === "/api/config") {
     return dataset === "rooms" ? json(200, { data: CONFIG }) : error(503, "CONFIGURATION_UNAVAILABLE");
   }
-  const room = /^\/api\/checkouts\/([0-9a-fA-F-]{36})$/.exec(path);
+  const room = /^\/(api\/checkouts|__rooms)\/([0-9a-fA-F-]{36})$/.exec(path);
   if (method !== "GET" || !room) return html404;
   // Like Backend's uuid column, any case finds the room, and the answer carries the lowercase ID.
-  const id = room[1].toLowerCase();
-  reads.set(id, (reads.get(id) ?? 0) + 1);
+  const id = room[2].toLowerCase();
+  if (room[1] === "api/checkouts") reads.set(id, (reads.get(id) ?? 0) + 1);
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
+  if (dataset === "rooms" && id.startsWith(SCRIPTED_PREFIX)) return json(200, { data: SCRIPT[steps.get(id) ?? 0](id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }
 
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const reads = new Map();
+    const state = { reads: new Map(), steps: new Map() };
     createServer((req, res) => {
-      const { status, type, body } = respond(dataset, reads, req.method, new URL(req.url ?? "/", origin).pathname);
+      const { status, type, body } = respond(dataset, state, req.method, new URL(req.url ?? "/", origin).pathname);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
     }).listen(Number(new URL(origin).port));
   }
