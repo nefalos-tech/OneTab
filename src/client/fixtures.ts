@@ -59,41 +59,29 @@ export const FIXTURES = {
     snapshot: SNAPSHOTS.unresolved,
     defaultPersona: ORGANIZER,
   },
-  "declined-on-hold": {
+  declined: {
     label: "Declined, on hold",
     situation: "declined",
-    snapshot: SNAPSHOTS["declined-on-hold"],
+    snapshot: SNAPSHOTS.declined,
     defaultPersona: ORGANIZER,
   },
-  "declined-retry": {
-    label: "Declined, organizer can try again",
-    situation: "declined",
-    snapshot: SNAPSHOTS["declined-retry"],
-    defaultPersona: ORGANIZER,
-  },
-  "failed-on-hold": {
-    label: "Failed, on hold",
+  "failed-not-sent": {
+    label: "Failed before sending, organizer can try again",
     situation: "failed",
-    snapshot: SNAPSHOTS["failed-on-hold"],
+    snapshot: SNAPSHOTS["failed-not-sent"],
     defaultPersona: ORGANIZER,
   },
-  "failed-retry": {
-    label: "Failed, organizer can try again",
+  "failed-on-chain": {
+    label: "Rejected by the network, organizer can try again",
     situation: "failed",
-    snapshot: SNAPSHOTS["failed-retry"],
+    snapshot: SNAPSHOTS["failed-on-chain"],
     defaultPersona: ORGANIZER,
   },
-  "expired-on-hold": {
-    label: "Approval window ended, on hold",
+  expired: {
+    label: "Expired after sending, organizer can try again",
     situation: "expired",
-    snapshot: SNAPSHOTS["expired-on-hold"],
+    snapshot: SNAPSHOTS.expired,
     defaultPersona: SPOT_2,
-  },
-  "expired-retry": {
-    label: "Approval window ended, organizer can try again",
-    situation: "expired",
-    snapshot: SNAPSHOTS["expired-retry"],
-    defaultPersona: ORGANIZER,
   },
   paid: { label: "Paid with receipt", situation: "paid", snapshot: SNAPSHOTS.paid, defaultPersona: SPOT_2 },
 } as const satisfies Record<SampleName, FixtureEntry>;

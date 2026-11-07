@@ -64,9 +64,33 @@ describe("the registry covers the state matrix", () => {
     expect([...covered].sort()).toEqual(Object.keys(SITUATIONS).sort());
   });
 
-  it.each(["declined", "failed", "expired"] as const)("has %s with canRetry false and true", (situation) => {
-    const values = ENTRIES.filter(([, e]) => e.situation === situation).map(([, e]) => e.snapshot.attempt?.canRetry);
-    expect(new Set(values)).toEqual(new Set([false, true]));
+});
+
+/** b3_rooms.sql sends this for every observed error, whatever the server recorded. */
+const ROOM_ERROR = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
+
+describe("samples are rooms the server can produce", () => {
+  const attempts = ENTRIES.flatMap(([name, e]) => (e.snapshot.attempt === null ? [] : [[name, e.snapshot.attempt] as const]));
+
+  it.each(attempts)("%s is safe to replace exactly when it failed or expired, which only safely resolved attempts do", (_, attempt) => {
+    expect(attempt.canRetry).toBe(attempt.state === "failed" || attempt.state === "expired");
+  });
+
+  it.each(attempts)("%s carries the room's masked error or none", (_, attempt) => {
+    if (attempt.error !== null) expect(attempt.error).toEqual(ROOM_ERROR);
+  });
+
+  it.each(attempts.filter(([, a]) => a.state === "failed" && a.transactionReference === null))(
+    "%s failed while preparing, so nobody approved and it has no expiry height",
+    (_, attempt) => {
+      expect(attempt.signedWallets).toEqual([]);
+      expect(attempt.lastValidBlockHeight).toBeNull();
+    },
+  );
+
+  it("include a failure before sending and one after, so both reasons have a sample", () => {
+    const failed = attempts.filter(([, a]) => a.state === "failed").map(([, a]) => a.transactionReference !== null);
+    expect(new Set(failed)).toEqual(new Set([false, true]));
   });
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { REQUEST_PROBLEMS, WALLET_WAITING, WORDS, type ActionKind } from "./catalog";
+import { roomFixtures } from "@/fixtures";
+import { REQUEST_PROBLEMS, WALLET_WAITING, WORDS, type ActionKind, type Situation } from "./catalog";
 import {
   checkoutLinks,
   deriveCreateView,
@@ -15,7 +16,7 @@ import {
   type ClientRequestId,
   type Notice,
 } from "./checkout-view";
-import type { Address } from "./contracts";
+import { parseRoomSnapshot, type Address, type RoomSnapshot, type Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
 
@@ -45,15 +46,14 @@ const PRIMARY: readonly (readonly [caseId: string, room: ActionKind | null, resu
   ["submitting as spot-2", "view_status", null],
   ["confirming as spot-1", "view_status", null],
   ["unresolved as spot-1", "view_status", null],
-  ["declined-on-hold as spot-1", "view_status", null],
-  ["declined-retry as spot-1", "view_status", "retry"],
-  ["declined-retry as spot-2", "view_status", null],
-  ["failed-on-hold as spot-1", "view_status", null],
-  ["failed-retry as spot-1", "view_status", "retry"],
-  ["failed-retry as signed-out", "view_status", null],
-  ["expired-on-hold as spot-1", "view_status", null],
-  ["expired-retry as spot-1", "view_status", "retry"],
-  ["expired-retry as outsider", "view_status", null],
+  ["declined as spot-1", "view_status", null],
+  ["declined as spot-2", "view_status", null],
+  ["failed-not-sent as spot-1", "view_status", "retry"],
+  ["failed-not-sent as spot-2", "view_status", null],
+  ["failed-not-sent as signed-out", "view_status", null],
+  ["failed-on-chain as spot-1", "view_status", "retry"],
+  ["expired as spot-1", "view_status", "retry"],
+  ["expired as outsider", "view_status", null],
   ["paid as spot-2", "view_receipt", null],
 ];
 
@@ -129,7 +129,7 @@ describe("status lines speak to the viewer", () => {
     ["open-spots as spot-1", "You're ready. Waiting for 1 more payer. Copy the link and send it to them."],
     ["open-spots as spot-2", "You joined. Waiting for 1 more payer."],
     ["full-not-ready as outsider", "This checkout is full. Waiting for 1 payer to get ready."],
-    ["declined-on-hold as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
+    ["declined as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
     ["unresolved as spot-1", "We can't confirm the result yet. We keep checking the same transaction, and no new payment will start."],
   ])("%s", (id, line) => {
     expect(deriveRoomView(caseById(id).state).status.line).toBe(line);
@@ -176,7 +176,7 @@ describe("the screen that owns the room", () => {
     ["preparing", "room"],
     ["signing", "room"],
     ["submitting", "result"],
-    ["declined-on-hold", "result"],
+    ["declined", "result"],
     ["unresolved", "result"],
     ["paid", "result"],
   ] as const)("is the %s room's %s", (name, screen) => {
@@ -330,7 +330,7 @@ describe("a notice applies while its wallet is signed in and its action is offer
   describe("about an attempt", () => {
     const bea = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
     const first = FIXTURES.signing.snapshot;
-    const next = { ...first, attempt: { ...first.attempt!, id: FIXTURES["declined-on-hold"].snapshot.attempt!.id } };
+    const next = { ...first, attempt: { ...first.attempt!, id: FIXTURES.declined.snapshot.attempt!.id } };
     const approve = (room: typeof first) => offering({ kind: "approve", terms: termsOf(room, bea)! });
     const rejected: Notice = {
       text: REQUEST_PROBLEMS.rejected,
@@ -408,7 +408,7 @@ describe("Approve shows as busy", () => {
   const bea = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
   const room = FIXTURES.signing.snapshot;
   const actions: ActionsView = { primary: { kind: "approve", terms: termsOf(room, bea)! }, secondary: [], sample: null };
-  const other = FIXTURES["declined-on-hold"].snapshot.attempt!.id;
+  const other = FIXTURES.declined.snapshot.attempt!.id;
 
   it("while this page waits on the wallet's prompt for the attempt Approve is for", () => {
     expect(busyShown(null, room.attempt!.id, actions)).toBe("approve");
@@ -468,7 +468,7 @@ describe("the payment a payer approves", () => {
     "signing as signed-out",
     "ready as spot-1",
     "submitting as spot-2",
-    "declined-retry as spot-2",
+    "declined as spot-2",
   ])("doesn't exist for %s", (id) => {
     expect(termsFor(id)).toBeNull();
   });
@@ -571,6 +571,44 @@ describe("every viewer sees the same room at every step", () => {
       expect(view.tab.progress).toBe(step.progress);
       expect(view.tab.spots.map((s) => s.status)).toEqual(step.spots);
       expect(view.status.label).toBe(views[0]!.status.label);
+    }
+  });
+});
+
+describe("B1's room fixtures, read with the parser the server uses for rooms", () => {
+  const SITUATION_OF: { readonly [K in keyof typeof roomFixtures.data]: Situation } = {
+    open: "open_spots",
+    fullNotReady: "full_not_ready",
+    ready: "ready",
+    preparing: "preparing",
+    signing: "signing",
+    submitting: "submitting",
+    unresolved: "unresolved",
+    declined: "declined",
+    confirmed: "paid",
+    failedBlocked: "failed",
+    failedRetry: "failed",
+    expired: "expired",
+  };
+  const viewers = (room: RoomSnapshot): readonly (Session | null)[] => [
+    ...[...room.participants.map((p) => p.wallet), room.checkout.sellerWallet, SAMPLE_WALLETS.outsider].map((wallet) => ({
+      wallet,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    })),
+    null,
+  ];
+
+  it.each(Object.entries(SITUATION_OF))("%s parses and every viewer sees %s", (name, situation) => {
+    const room = parseRoomSnapshot(roomFixtures.data[name as keyof typeof SITUATION_OF]);
+    if (room === null) throw new Error(`B1's ${name} fixture doesn't parse, so the server would fail every read of such a room`);
+    for (const session of viewers(room)) {
+      const state: CheckoutState = { snapshot: room, session, source: { kind: "live", links: checkoutLinks(room.checkout.id) } };
+      const [roomView, result] = [deriveRoomView(state), deriveResultView(state)];
+      expect(roomView.status.situation).toBe(situation);
+      expect(result.status.situation).toBe(situation);
+      const organizer = session?.wallet === room.checkout.organizerWallet;
+      const replaceable = room.attempt !== null && room.attempt.canRetry && (situation === "failed" || situation === "expired");
+      expect(result.actions.primary?.kind === "retry", session?.wallet ?? "signed out").toBe(organizer && replaceable);
     }
   });
 });

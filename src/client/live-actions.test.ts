@@ -92,12 +92,12 @@ const WIRE = wirePayloadFor(SIGNING);
 const APPROVED: RoomSnapshot = { ...SIGNING, attempt: { ...SIGNING.attempt!, signedWallets: [SAMPLE_WALLETS.organizer, PAYER.wallet] } };
 const PREPARING: RoomSnapshot = { ...FIXTURES.preparing.snapshot, checkout: SIGNING.checkout };
 const DECLINED: RoomSnapshot = {
-  ...FIXTURES["declined-on-hold"].snapshot,
+  ...FIXTURES.declined.snapshot,
   checkout: SIGNING.checkout,
-  attempt: { ...FIXTURES["declined-on-hold"].snapshot.attempt!, id: ATTEMPT },
+  attempt: { ...FIXTURES.declined.snapshot.attempt!, id: ATTEMPT },
 };
 const READY = FIXTURES.ready.snapshot;
-const DECLINED_ELSEWHERE = FIXTURES["declined-on-hold"].snapshot.attempt!.id;
+const DECLINED_ELSEWHERE = FIXTURES.declined.snapshot.attempt!.id;
 const SIGNATURE = "c2lnbmVkIGJ5IGJlYQ==" as SignatureBase64;
 const APPROVE: Extract<LiveAction, { kind: "approve" }> = { kind: "approve", terms: TERMS };
 const DECLINE: Extract<LiveAction, { kind: "decline" }> = { kind: "decline", checkoutId: ROOM, attemptId: ATTEMPT };
@@ -544,10 +544,10 @@ describe("what each poll sends", () => {
     ["a payment being prepared, to a payer", FIXTURES.preparing.snapshot, PAYER, { stop: false, refresh: attemptOf("preparing") }],
     ["a payment being sent, to a payer", FIXTURES.submitting.snapshot, PAYER, { stop: false, refresh: attemptOf("submitting") }],
     ["an unresolved payment, to a payer", FIXTURES.unresolved.snapshot, PAYER, { stop: false, refresh: attemptOf("unresolved") }],
-    ["a decline on hold, to a payer", FIXTURES["declined-on-hold"].snapshot, PAYER, { stop: false, refresh: attemptOf("declined-on-hold") }],
-    ["a decline that is safe to retry, to a payer", FIXTURES["declined-retry"].snapshot, PAYER, { stop: false, refresh: null }],
-    ["an expiry that is safe to retry, to a payer", FIXTURES["expired-retry"].snapshot, PAYER, { stop: false, refresh: null }],
-    ["a failure on hold, to a payer", FIXTURES["failed-on-hold"].snapshot, PAYER, { stop: false, refresh: attemptOf("failed-on-hold") }],
+    ["a decline on hold, to a payer", FIXTURES.declined.snapshot, PAYER, { stop: false, refresh: attemptOf("declined") }],
+    ["an expiry that is safe to retry, to a payer", FIXTURES.expired.snapshot, PAYER, { stop: false, refresh: null }],
+    ["a failure before sending that is safe to retry, to a payer", FIXTURES["failed-not-sent"].snapshot, PAYER, { stop: false, refresh: null }],
+    ["a failure on the network that is safe to retry, to a payer", FIXTURES["failed-on-chain"].snapshot, PAYER, { stop: false, refresh: null }],
     ["a confirmed payment awaiting its receipt, to a payer", FIXTURES.confirming.snapshot, PAYER, { stop: false, refresh: null }],
     ["a paid checkout, to a payer", FIXTURES.paid.snapshot, as(SAMPLE_WALLETS.organizer), { stop: true, refresh: null }],
   ])("%s", (_, room, session, plan) => {

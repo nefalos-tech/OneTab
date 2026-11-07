@@ -264,7 +264,7 @@ describe("checkoutApi readiness and attempts", () => {
   });
 
   it("refuses an answer about another room or attempt, or one that doesn't parse", async () => {
-    const other = FIXTURES["declined-on-hold"].snapshot;
+    const other = FIXTURES.declined.snapshot;
     const otherAttempt = { ...attempt, id: other.attempt!.id };
     expect(await api(() => json(200, { data: other })).setReady(checkoutId, true)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: otherAttempt })).uploadApproval(attemptId, approval)).toEqual({ ok: false, failure: "unavailable" });
@@ -273,7 +273,7 @@ describe("checkoutApi readiness and attempts", () => {
   });
 
   it.each<[string, unknown]>([
-    ["another attempt", wirePayloadFor(FIXTURES["declined-on-hold"].snapshot)],
+    ["another attempt", wirePayloadFor(FIXTURES.declined.snapshot)],
     ["a hash that isn't one", { ...wire, messageHash: "nope" }],
     ["another network", { ...wire, payment: { ...(wire.payment as object), network: "mainnet-beta" } }],
   ])("reads a signing payload for %s as a payment that doesn't match, never as an outage", async (_, data) => {

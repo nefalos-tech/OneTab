@@ -99,10 +99,8 @@ type Spec = {
   };
 };
 
-const NOT_ENOUGH_USDC: AttemptError = {
-  code: "INSUFFICIENT_USDC",
-  message: "The wallet in spot 3 didn't hold enough test USDC for its share.",
-};
+/** What the room says for every stop code today: B3's snapshot masks the code and its message. */
+const MASKED: AttemptError = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
 
 const SPECS = {
   "open-spots": { purchase: "cabin", joined: 2, ready: [0] },
@@ -112,19 +110,14 @@ const SPECS = {
   signing: { purchase: "cabin", attempt: { state: "signing", approved: [0] } },
   submitting: { purchase: "cabin", attempt: { state: "submitting", approved: "all", sent: true } },
   confirming: { purchase: "cabin", attempt: { state: "confirmed", approved: "all", sent: true } },
-  unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true } },
-  "declined-on-hold": { purchase: "cabin", attempt: { state: "declined", approved: [0], canRetry: false } },
-  "declined-retry": { purchase: "cabin", attempt: { state: "declined", approved: [0], canRetry: true } },
-  "failed-on-hold": {
+  unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true, error: MASKED } },
+  declined: { purchase: "cabin", attempt: { state: "declined", approved: [0] } },
+  "failed-not-sent": { purchase: "cabin", attempt: { state: "failed", approved: [], canRetry: true, error: MASKED } },
+  "failed-on-chain": {
     purchase: "cabin",
-    attempt: { state: "failed", approved: "all", sent: true, canRetry: false, error: NOT_ENOUGH_USDC },
+    attempt: { state: "failed", approved: "all", sent: true, canRetry: true, error: MASKED },
   },
-  "failed-retry": {
-    purchase: "cabin",
-    attempt: { state: "failed", approved: "all", sent: true, canRetry: true, error: NOT_ENOUGH_USDC },
-  },
-  "expired-on-hold": { purchase: "cabin", attempt: { state: "expired", approved: [0, 1], canRetry: false } },
-  "expired-retry": { purchase: "cabin", attempt: { state: "expired", approved: [0, 1], canRetry: true } },
+  expired: { purchase: "cabin", attempt: { state: "expired", approved: "all", sent: true, canRetry: true } },
   paid: { purchase: "concert", attempt: { state: "confirmed", approved: "all", sent: true, receipt: true } },
 } as const satisfies Record<string, Spec>;
 
@@ -149,6 +142,10 @@ function phaseOf(snapshot: Omit<RoomSnapshot, "phase">): Phase {
   const full = snapshot.participants.length === snapshot.checkout.payerCount;
   return full && snapshot.participants.every((p) => p.ready) ? "ready" : "open";
 }
+
+/** The expiry height arrives with the frozen message, which a payment that failed while preparing never reached. */
+const frozen = (attempt: NonNullable<Spec["attempt"]>): boolean =>
+  attempt.state !== "preparing" && !(attempt.state === "failed" && !attempt.sent);
 
 function build(index: number, spec: Spec): RoomSnapshot {
   const purchase = PURCHASES[spec.purchase];
@@ -180,7 +177,7 @@ function build(index: number, spec: Spec): RoomSnapshot {
         state: attempt.state,
         signedWallets: participants.filter((p) => includes(attempt.approved, p.slot)).map((p) => p.wallet),
         transactionReference: attempt.sent ? TRANSACTION_REFERENCE : null,
-        lastValidBlockHeight: attempt.state === "preparing" ? null : LAST_VALID_BLOCK_HEIGHT,
+        lastValidBlockHeight: frozen(attempt) ? LAST_VALID_BLOCK_HEIGHT : null,
         error: attempt.error ?? null,
         canRetry: attempt.canRetry ?? false,
         receipt: attempt.receipt
