@@ -202,7 +202,9 @@ The reason always comes before the action, so the viewer reads why a payment sto
 
 | Component | Purpose | Variants and states |
 | --- | --- | --- |
-| Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet slot. Until F2 adds the wallet control, the slot is plain text with a wallet icon, never a button shape. Layout is split (create, room) or single (result) |
+| Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet control. Layout is split (create, room) or single (result) |
+| Wallet control | Connect, sign in, and show who you are | A quiet **Connect wallet** button when signed out. A spinner and the current step while a wallet prompt is open, with **Cancel**. When signed in, a menu button with the wallet icon and the short address, holding **Copy address** and **Disconnect**. See [Wallet and sign-in states](#wallet-and-sign-in-states) |
+| Sample wallet | Stands in for a real wallet in sample data | An in-page panel styled like the sample banner and labeled "Sample wallet". It shows each wallet prompt with **Approve** and **Reject** and can switch between sample accounts. It never opens a real wallet or calls a real route |
 | Flow steps | Where the viewer is in the flow | Each step is done, current, or upcoming. Current uses `aria-current="step"` |
 | Sample banner | Marks sample data | Visible whenever sample data is shown, with links to the other viewers of the same sample and to every sample |
 | Tab card | The checkout at a glance | Title, total, seller, split bar, counts. Tide fill, white text |
@@ -286,6 +288,36 @@ Page states that every screen handles:
 | Sample data | The sample banner on every screen |
 | Signed out | The room is readable. Actions ask the viewer to **Connect wallet** |
 | Spectator | A full room is readable. The status says the checkout is full |
+
+### Wallet and sign-in states
+
+**Connect wallet** is the only way in. It runs two wallet prompts in order and the status names the open one: first the connection, then the sign-in message. Signing in proves the wallet is yours and never moves money, and the sign-in status says so.
+
+<!-- design-system:wallet -->
+| State | Status line | Action |
+| --- | --- | --- |
+| Signed out | None | **Connect wallet** |
+| Connecting | "Approve the connection in your wallet." | **Cancel** |
+| Signing in | "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money." | **Cancel** |
+| Signed in | None. The header shows the short address | Menu: **Copy address**, **Disconnect** |
+| No wallet found | "No Solana wallet found. Install Phantom, then reload this page." | **Get Phantom** |
+| Wrong network | "Your wallet isn't on Solana Devnet. Switch it to Devnet, then connect again." | **Connect wallet** |
+| Connection refused | "You closed the connection request. Nothing was shared." | **Connect wallet** |
+| Sign-in refused | "You didn't sign in. Nothing was signed or sent." | **Sign in again** |
+| Wallet can't sign in | "This wallet can't sign in to OneTab. Use Phantom." | **Get Phantom** |
+| Sign-in message expired | "That sign-in message expired. Sign in again for a new one." | **Sign in again** |
+| Sign-in unavailable | "Sign-in isn't available right now. Try again in a moment." | **Try again** |
+| Account switched | "Your wallet switched to SAMP…Bea2. Sign in again to continue as that wallet." | **Sign in again** |
+| Sign-in expired | "Your sign-in expired. Sign in again with the same wallet to continue." | **Sign in again** |
+<!-- /design-system:wallet -->
+
+Rules for every wallet state:
+
+1. The signed-in wallet is always the wallet's current account, or nobody is signed in. A switched account clears your share, Ready, Approve and any open prompt before anything else happens.
+2. A wallet answer that arrives after **Cancel**, a switch or a disconnect changes nothing.
+3. Signing in never asks the wallet to sign a payment.
+4. **Disconnect** signs you out in the browser at once, even when the server can't be reached.
+5. The table above is generated from the wallet tables in `src/client/catalog.ts`. Change the words there, then run `npm run design:write`.
 
 ## Copy
 
@@ -371,6 +403,9 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | paid | The payment is final and the receipt exists | done, complete, success |
 | test USDC on Solana Devnet | The asset | money, funds, dollars, USDC alone |
 | sample data | Fixture data shown for development and demos | fake, mock, test data |
+| connect | Let OneTab see your wallet address | link, attach, log in |
+| sign in, signed in | Prove the wallet is yours by signing a message. Never moves money | authenticate, verify, log in |
+| sample wallet | The in-page stand-in for a wallet in sample data | fake wallet, mock wallet |
 
 ### Formatting
 
@@ -429,4 +464,5 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
+| 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
 | 2026-11-07 | First version: palette, type, layout, components, states, copy and accessibility rules, with generated token, contrast, state and word tables | F2 to F6 need one design language before they build on the screens | [F1](cards/F1.md), [#7](https://github.com/nefalos-tech/OneTab/issues/7) |
