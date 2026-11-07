@@ -47,8 +47,22 @@ The complete isolated check passes lint, type checking, the Vite build, and all 
 
 The task directory contains `p4-worker-baseline-check.log`, `p4-worker-red-regressions.log`, `p4-worker-red-conflicting.log`, `p4-worker-check.log`, and `p4-worker-browser.log`. The baseline check passed all 65 existing tests before changes. The red logs preserve the pre-fix failures. These logs are local run artifacts outside the repository.
 
+## Combined cores and public chain verification
+
+After combining P2, P3, and P4, the coordinator ran the same isolated checks on `b75c2ae7f7747bde2504b402c710a3014c66253b`. All 92 Node tests and 36 Chromium cases passed. The browser cases include eight invitation cases, eight P2 cases, and 20 P3 cases. The independent reviewer also passed 30 focused P4 tests with no unresolved findings.
+
+The read-only verifier exercises all three cores against P1's original finalized Devnet payment.
+
+```sh
+node --import tsx evidence/verify-payment-cores.mjs
+```
+
+The coordinator ran it on clean revision `6863914fc2ed21ea386ce3aed6ceb97ac5db307b` with Node 25.9.0 at 2026-11-07 10:56:43 UTC. It rebuilt the pinned message with P2, verified both historical Ed25519 signatures and assembled the identical transaction with P3, and confirmed the finalized receipt with P4. Public transaction retrieval matched the recorded plan, message and signed-byte hashes, slot 519612865, both 2-USDC payer decreases, the 4-USDC seller increase, and the organizer's 10,000-lamport fee. The full output is in the task-local `p4-6863914-public-verification.json`.
+
+This command uses only Devnet genesis, signature-status and transaction reads. It does not connect to a wallet or broadcast a transaction. The evidence is historical two-payer chain revalidation. Three-payer coverage remains synthetic.
+
 ## Integration limits
 
-This evidence covers local synthetic signatures, codecs, metadata inspection, and the existing P1 adapter. B1 integration, authenticated routes, atomic application persistence, submission leases, retry decisions, real browser-wallet approval, and hosted three-payer Devnet execution remain pending. P4's full card acceptance still requires those integration checks.
+This evidence covers local synthetic signatures, codecs, metadata inspection, the existing P1 adapter, and read-only revalidation of P1's real two-payer payment. B1 integration, authenticated routes, atomic application persistence, submission leases, retry decisions, new browser-wallet approval, and hosted three-payer Devnet execution remain pending. P4's full card acceptance still requires those integration checks.
 
 The inspector supplies no expiration, safe-retry, or replacement-payment decision. Existing P1 public chain evidence remains the source for its recorded Devnet experiment.
