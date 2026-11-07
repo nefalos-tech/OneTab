@@ -164,6 +164,7 @@ export type ApprovalTerms = {
   readonly mint: Address;
   readonly tokenDecimals: number;
   readonly totalUnits: TokenUnits;
+  readonly payerCount: PayerCount;
   readonly seller: Address;
   readonly feePayer: Address;
   readonly contributions: readonly { readonly slot: number; readonly wallet: Address; readonly amountUnits: TokenUnits }[];
@@ -369,6 +370,7 @@ export function termsOf(snapshot: RoomSnapshot, session: Session | null): Approv
     mint: checkout.mint,
     tokenDecimals: checkout.tokenDecimals,
     totalUnits: checkout.totalUnits,
+    payerCount: checkout.payerCount,
     seller: checkout.sellerWallet,
     feePayer: checkout.organizerWallet,
     contributions: [...participants]

@@ -267,11 +267,17 @@ describe("checkoutApi readiness and attempts", () => {
     const other = FIXTURES["declined-on-hold"].snapshot;
     const otherAttempt = { ...attempt, id: other.attempt!.id };
     expect(await api(() => json(200, { data: other })).setReady(checkoutId, true)).toEqual({ ok: false, failure: "unavailable" });
-    expect(await api(() => json(200, { data: wirePayloadFor(other) })).signingPayload(attemptId)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: otherAttempt })).uploadApproval(attemptId, approval)).toEqual({ ok: false, failure: "unavailable" });
-    expect(await api(() => json(200, { data: { ...wire, messageHash: "nope" } })).signingPayload(attemptId)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: room })).refreshAttempt(attemptId)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId)).toEqual({ ok: true, value: otherAttempt });
+  });
+
+  it.each<[string, unknown]>([
+    ["another attempt", wirePayloadFor(FIXTURES["declined-on-hold"].snapshot)],
+    ["a hash that isn't one", { ...wire, messageHash: "nope" }],
+    ["another network", { ...wire, payment: { ...(wire.payment as object), network: "mainnet-beta" } }],
+  ])("reads a signing payload for %s as a payment that doesn't match, never as an outage", async (_, data) => {
+    expect(await api(() => json(200, { data })).signingPayload(attemptId)).toEqual({ ok: false, failure: "mismatch" });
   });
 
   it.each<[string, () => Response | Promise<Response>, string]>([

@@ -252,7 +252,7 @@ describe("the payment prompt", () => {
   async function payment(messageHash = "5a".repeat(32)): Promise<CheckedPayment> {
     const terms = termsOf(room, SESSION)!;
     const payload = parseSigningPayload({ ...wirePayloadFor(room), messageHash })!;
-    const checked = await paymentCheck(async () => "match")(payload, terms);
+    const checked = await paymentCheck(async () => "match", async () => "match").payload(payload, terms);
     if (!checked.ok) throw new Error("The sample payment didn't pass the check");
     return checked.value;
   }

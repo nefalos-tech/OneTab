@@ -74,7 +74,8 @@ export type CheckoutApi = {
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
   setReady(id: CheckoutId, ready: boolean): Promise<Result<RoomSnapshot, RequestProblem>>;
   startAttempt(id: CheckoutId): Promise<Result<AttemptSummary, RequestProblem>>;
-  signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem>>;
+  /** A payload that arrives but doesn't parse, or names another attempt, is a `mismatch`, never an outage. */
+  signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem | "mismatch">>;
   uploadApproval(id: AttemptId, approval: PaymentApproval): Promise<Result<AttemptSummary, RequestProblem>>;
   refreshAttempt(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
   decline(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
@@ -145,7 +146,7 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
       const reply = await send(fetchImpl, "GET", `/api/attempts/${id}/signing-payload`);
       if (reply.kind !== "data") return failureOf(reply);
       const payload = parseSigningPayload(reply.data);
-      return payload !== null && payload.attemptId === id ? { ok: true, value: payload } : UNAVAILABLE;
+      return payload !== null && payload.attemptId === id ? { ok: true, value: payload } : { ok: false, failure: "mismatch" };
     },
     async uploadApproval(id, approval) {
       const body: ApprovalUpload = { messageHash: approval.messageHash, signatureBase64: approval.signature };

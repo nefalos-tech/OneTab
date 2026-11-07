@@ -2,7 +2,7 @@ import type { SignFailure } from "@/lib/wallet/environment";
 import type { Problem } from "@/lib/wallet/machine";
 import type { RequestProblem } from "./api";
 import type { Network } from "./contracts";
-import type { CheckFailure } from "./payment-check";
+import type { CheckFailure, ReturnFailure } from "./payment-check";
 
 export type Screen = "room" | "result";
 export type Tone = "neutral" | "info" | "success" | "warning" | "danger";
@@ -156,7 +156,7 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
-export type ProblemWithWords = Exclude<RequestProblem | CheckFailure | SignFailure, "signed_out" | "stale">;
+export type ProblemWithWords = Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">;
 
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
@@ -171,6 +171,7 @@ export const REQUEST_PROBLEMS = {
   rejected: "You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone.",
   busy: "Your wallet already has an approval request open. Finish it there first.",
   failed: "Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again.",
+  unchecked: "OneTab couldn't check the approval your wallet returned, so nothing was sent.",
 } as const satisfies Record<ProblemWithWords, string>;
 
 export const NETWORK_LABELS = { devnet: "Test USDC on Solana Devnet" } as const satisfies Record<Network, string>;

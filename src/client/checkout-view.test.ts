@@ -370,6 +370,7 @@ describe("the payment a payer approves", () => {
       mint: snapshot.checkout.mint,
       tokenDecimals: 6,
       totalUnits: "10000000",
+      payerCount: 3,
       seller: SAMPLE_WALLETS.seller,
       feePayer: SAMPLE_WALLETS.organizer,
       contributions: [

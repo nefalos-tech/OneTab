@@ -74,15 +74,19 @@ const RUN: { readonly [K in LiveKind]: Run<K> } = {
 
 async function approve(terms: ApprovalTerms, c: Context): Promise<Outcome> {
   const payload = await c.api.signingPayload(terms.attemptId);
-  if (!payload.ok) return settle(c, terms.checkoutId, payload.failure);
-  const checked = await c.check(payload.value, terms);
+  if (!payload.ok) return payload.failure === "mismatch" ? notice("mismatch") : settle(c, terms.checkoutId, payload.failure);
+  const checked = await c.check.payload(payload.value, terms);
   if (!checked.ok) return notice(checked.failure);
   const approval = await c.signer.sign(checked.value);
-  if (approval.ok) return attemptWrite(c, terms.checkoutId, () => c.api.uploadApproval(terms.attemptId, approval.value));
-  if (approval.failure === "stale") return DONE;
-  return approval.failure === "rejected"
-    ? notice("rejected", { kind: "decline", checkoutId: terms.checkoutId, attemptId: terms.attemptId })
-    : notice(approval.failure);
+  if (!approval.ok) {
+    if (approval.failure === "stale") return DONE;
+    return approval.failure === "rejected"
+      ? notice("rejected", { kind: "decline", checkoutId: terms.checkoutId, attemptId: terms.attemptId })
+      : notice(approval.failure);
+  }
+  const returned = await c.check.returned(checked.value, approval.value);
+  if (!returned.ok) return notice(returned.failure);
+  return attemptWrite(c, terms.checkoutId, () => c.api.uploadApproval(terms.attemptId, returned.value));
 }
 
 async function roomWrite(c: Context, id: CheckoutId, write: () => Promise<Result<RoomSnapshot, RequestProblem>>): Promise<Outcome> {
