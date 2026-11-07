@@ -24,7 +24,7 @@ Use the current profile sequentially with two distinct payer accounts, or open e
 
 The coordinator verified this order in the current Chrome profile with Phantom `26.38.1` and Chrome `155.0.8059.41`. After **Disconnect wallet**, switching the selected Phantom account, and **Connect wallet**, the page displayed the intended distinct account.
 
-Wallet Standard disconnect does not revoke previously granted permissions or guarantee a different account on the next connect. No connection operation automatically disconnects a wallet. Disconnecting invalidates pending local approvals immediately, even if provider cleanup later fails. It does not revoke an approval already issued for the frozen payment.
+Wallet Standard disconnect does not promise permission revocation or a different account on the next connect. No connection operation automatically disconnects a wallet. Disconnecting invalidates pending local approvals immediately, even if provider cleanup later fails. It does not revoke an approval already issued for the frozen payment.
 
 ## Prepare the fixed payment
 
