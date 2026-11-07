@@ -1,0 +1,26 @@
+import { isRecord } from "@/client/contracts";
+import { expectedOrigin, issueChallenge } from "@/server/auth/service";
+
+export const runtime = "nodejs";
+
+export async function POST(request: Request): Promise<Response> {
+  const origin = expectedOrigin(request);
+  if (!origin) return reply(403, "ORIGIN_MISMATCH", "Request origin is not allowed.");
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return reply(400, "INVALID_INPUT", "Request body must be JSON.");
+  }
+  if (!isRecord(body)) return reply(400, "INVALID_INPUT", "Request body is invalid.");
+  const result = await issueChallenge(body.wallet);
+  if (!result.ok) {
+    const status = result.code === "RATE_LIMITED" ? 429 : result.code === "INVALID_INPUT" ? 400 : 503;
+    return reply(status, result.code, "Could not issue a sign-in challenge.");
+  }
+  return Response.json({ data: result.value }, { headers: { "cache-control": "no-store" } });
+}
+
+function reply(status: number, code: string, message: string): Response {
+  return Response.json({ error: { code, message } }, { status, headers: { "cache-control": "no-store" } });
+}

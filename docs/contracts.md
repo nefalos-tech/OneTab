@@ -75,6 +75,8 @@ Paths use :checkoutId and :attemptId as placeholders. The Next.js checkout direc
 | POST /api/attempts/:attemptId/submit | Member of that frozen attempt | None | AttemptSummary |
 | POST /api/attempts/:attemptId/refresh | Member of that frozen attempt | None | AttemptSummary |
 
+Authentication challenges expire after five minutes and bind the configured origin, wallet, purpose, challenge ID, and expiry in the signed message. The server permits five new challenges per wallet and origin per minute, and five signature checks per challenge. A valid signature consumes the challenge atomically with creation of a 12-hour session. The browser receives a random token in an HttpOnly, SameSite=Lax cookie. The database stores only its SHA-256 hash. The cookie is Secure on HTTPS origins. POST and DELETE authentication requests must send the configured Origin.
+
 The server derives the acting wallet from the session. Clients never authorize a mutation by passing another wallet address. Seller wallets cannot claim payer slots. Checkout creation rejects a seller equal to the organizer.
 
 Creating a checkout uses a client-generated UUID clientRequestId scoped to the authenticated organizer. An identical retry returns the same checkout. Reusing that key with different input returns a conflict. Creation and the organizer's slot commit together.

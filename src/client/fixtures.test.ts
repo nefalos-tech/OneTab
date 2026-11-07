@@ -77,6 +77,11 @@ describe("URL selection", () => {
     expect(parseCheckoutRef({ id: realId, as: "spot-1", fixturesOn: true })).toEqual({ kind: "live", checkoutId: realId });
   });
 
+  it.each(ENTRIES)("routes the UUID of %s in uppercase to the live path as its lowercase form", (_, entry) => {
+    const id = entry.snapshot.checkout.id;
+    expect(parseCheckoutRef({ id: id.toUpperCase(), as: "spot-1", fixturesOn: true })).toEqual({ kind: "live", checkoutId: id });
+  });
+
   it.each([
     ["sample-signing", undefined, false],
     ["sample-nope", undefined, true],
