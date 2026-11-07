@@ -33,7 +33,7 @@ The coordinator's preparation record reports three existing Chrome profiles. The
 | --- | --- | --- |
 | Organizer and first payer | `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU`, recorded in P1 | Profile binding and hosted approval remain unverified. The public balance read is below. |
 | Second payer | `7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB`, recorded in P1 | The remaining profile still needs to select and verify this payer account instead of the organizer account. |
-| Third payer | `FWbFcw1P4sAGa7BQP9nenzXPmcySA5WRFrSSjaPYuNdp`, supplied by the user | Distinct from the other three listed addresses. The public read found no token account for the configured mint. Account preparation and funding remain incomplete. |
+| Third payer | `FWbFcw1P4sAGa7BQP9nenzXPmcySA5WRFrSSjaPYuNdp`, supplied by the user | Distinct from the other three listed addresses. The later finalized read below verifies 20 test USDC in its canonical token account. Profile binding and hosted approval remain unverified. |
 | Separate seller | `3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1`, recorded in P1 | Reverify its receiving account and separation from all three selected payers. |
 
 The coordinator's read-only Devnet snapshot is `onetab-run-20261107/wallet-balance-20261108.json`. Its actual UTC observation time is `2026-11-07T17:02:23.430640Z`. It records the Devnet genesis and the P1 mint. Both `getBalance` and `getTokenAccountsByOwner` used `finalized` commitment. Token amounts below use six-decimal integer units.
@@ -45,7 +45,11 @@ The coordinator's read-only Devnet snapshot is `onetab-run-20261107/wallet-balan
 | Third payer | No token account returned for the configured mint | `0` | `519728664` |
 | Seller | `24000000` in `FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv` | `0` | `519728669` |
 
-The third payer needs a prepared account with at least `2000000` units for the planned share. These reads establish a preparation shortage. They do not establish profile ownership or the complete token-account checks required before signing. This finalized preparation snapshot is not a payment baseline. Take a fresh baseline after account preparation and funding.
+The third payer had a preparation shortage at this snapshot. A later Circle faucet request funded its token account. At `2026-11-07T17:14:23.551763Z`, a public Devnet read confirmed that [the faucet transaction](https://explorer.solana.com/tx/3NnGCqUbA2HEPcLNwMWEPCEXiNbc89qLEiz3BYBZoN3EpZUCm4zyS78QeigEZY4xVBNcz49WjEpm4Ae6z5iEMn3k?cluster=devnet) finalized at slot `519731423` without an execution error.
+
+The finalized account read at slot `519731669` returned `20000000` units with six decimals in `GdA4riRhtvuD3xvpTPpXLJGrLMS3ifY8q7U9KR9rJB52`. The account has the intended payer owner, configured mint, classic Token Program owner, initialized state, no delegate, and no explicit close authority. Local derivation verified that this is the payer's canonical associated token account. The task-local `onetab-run-20261107/payer3-faucet-evidence.json` retains the public observations. Its 20 test USDC covers the planned 2 test USDC share.
+
+These preparation reads do not establish profile ownership or replace the complete checks required before signing. They are not a payment baseline. Take fresh balances and account checks immediately before the hosted run.
 
 P1's four-USDC transaction and its later read-only revalidation remain historical two-payer evidence. They do not satisfy the six-USDC hosted run below.
 
