@@ -40,8 +40,40 @@ Tailwind's default colors, type scale, weights, radii, shadows, breakpoints and 
 | --- | --- | --- |
 | `--color-ink` | `#013D5A` | Deep Tide. Body text, headings, pressed primary buttons. |
 | `--color-brand` | `#065379` | Tide. Primary buttons, links, focus ring on light surfaces, tab card fill. |
+| `--color-brand-soft` | `#E8F2F7` | Info notices, selected and hover rows, joined and ready spots. |
 | `--color-white` | `#FFFFFF` | Page and surfaces. Text on Tide. |
 | `--color-accent` | `#FFC845` | Marigold. Approved spots, your-share highlight, primary button and focus ring on Tide. Never text on white, never a status. |
+| `--color-muted` | `#4A6575` | Secondary text and hints. |
+| `--color-line` | `#D5E2E9` | Dividers. Decoration only, never a control border. |
+| `--color-line-strong` | `#7590A0` | Input, choice and quiet-button borders. |
+| `--color-on-brand-muted` | `#C5DDE8` | Secondary text on the tab card. |
+| `--color-success` | `#17703F` | Paid status text and icon. Nowhere else. |
+| `--color-success-soft` | `#E5F4EB` | Paid status background. |
+| `--color-warning` | `#8F4A00` | Needs-attention status text and icon: unresolved, declined, expired. |
+| `--color-warning-soft` | `#FFF1DD` | Needs-attention status background. |
+| `--color-danger` | `#B3261E` | Failed status and field errors. |
+| `--color-danger-soft` | `#FCE9E7` | Failed status background. |
+| `--font-sans` | `var(--font-atkinson-next), ui-sans-serif, system-ui, sans-serif` | Atkinson Hyperlegible Next. All text. |
+| `--font-mono` | `var(--font-atkinson-mono), ui-monospace, monospace` | Atkinson Hyperlegible Mono. Wallet addresses and transaction references only. |
+| `--font-weight-normal` | `400` | Body text. |
+| `--font-weight-semibold` | `600` | Labels, buttons, emphasis. |
+| `--font-weight-bold` | `700` | Headings and amounts. |
+| `--text-small` | `0.875rem` | 14px. Hints, badges, table labels. |
+| `--text-small--line-height` | `1.25rem` | Line height of small text. |
+| `--text-body` | `1rem` | 16px. Body text, buttons, inputs. |
+| `--text-body--line-height` | `1.5rem` | Line height of body text. |
+| `--text-section` | `1.25rem` | 20px. Section headings and status labels. |
+| `--text-section--line-height` | `1.75rem` | Line height of section headings. |
+| `--text-title` | `1.75rem` | 28px. Page titles. |
+| `--text-title--line-height` | `2.25rem` | Line height of page titles. |
+| `--text-hero` | `2.5rem` | 40px. The one hero amount per screen. |
+| `--text-hero--line-height` | `3rem` | Line height of the hero amount. |
+| `--radius-control` | `0.5rem` | Buttons, inputs, badges, notices. Pills and segments use rounded-full. |
+| `--radius-card` | `1.25rem` | The tab card and the result panel. |
+| `--shadow-tab` | `0 16px 40px -20px rgb(1 61 90 / 0.55)` | The tab card only. Tinted with Deep Tide, never grey. |
+| `--breakpoint-wide` | `56.25rem` | 900px. Create and room use two columns at and above this width. |
+| `--container-content` | `67.5rem` | 1080px. Content max width. |
+| `--container-result` | `40rem` | 640px. Result column max width. |
 <!-- /design-system:tokens -->
 
 ### Color rules
@@ -206,6 +238,24 @@ Every checkout is in exactly one state. Each state has an owner screen, where it
 | State | Screen | Flow step | Tone | Label | Server data |
 | --- | --- | --- | --- | --- | --- |
 | `open_spots` | room | get_ready | neutral | Waiting for payers | phase open, no attempt, fewer payers than spots |
+| `full_not_ready` | room | get_ready | neutral | Getting ready | phase open, no attempt, every spot taken |
+| `ready` | room | get_ready | info | Everyone is ready | phase ready, no attempt |
+| `preparing` | room | approve | info | Preparing payment | attempt preparing |
+| `signing` | room | approve | info | Collecting approvals | attempt signing |
+| `submitting` | result | paid | info | Sending payment | attempt submitting |
+| `confirming` | result | paid | info | Finalizing | attempt confirmed, but no receipt or phase not paid |
+| `unresolved` | result | paid | warning | Checking the network | attempt unresolved |
+| `declined` | result | approve | warning | Approval declined | attempt declined |
+| `failed` | result | approve | danger | Payment failed | attempt failed |
+| `expired` | result | approve | warning | Approval window ended | attempt expired |
+| `paid` | result | complete | success | Paid | phase paid and attempt confirmed with a receipt |
+
+| Spot status | Label | Meaning |
+| --- | --- | --- |
+| `open` | Open spot | No payer has taken this spot yet. |
+| `joined` | Joined | A payer took this spot and is checking their share. |
+| `ready` | Ready | The payer is ready to approve. Ready never moves money. |
+| `approved` | Approved | The payer approved this payment in their wallet. Nothing moves until everyone approves. |
 <!-- /design-system:states -->
 
 Honesty rules that apply to every state:
@@ -244,6 +294,47 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | Action | Label | Needs | Element |
 | --- | --- | --- | --- |
 | `review_checkout` | Review checkout | nothing | button |
+| `edit_details` | Edit details | nothing | button |
+| `create_checkout` | Create checkout | backend | button |
+| `copy_link` | Copy link | nothing | button |
+| `connect_wallet` | Connect wallet | wallet | button |
+| `join` | Join checkout | backend | button |
+| `mark_ready` | I'm ready | backend | button |
+| `mark_not_ready` | Not ready yet | backend | button |
+| `start_payment` | Start payment | backend | button |
+| `approve` | Approve in wallet | wallet | button |
+| `retry` | Try again | backend | button |
+| `view_status` | View payment status | nothing | link |
+| `view_receipt` | View receipt | nothing | link |
+| `back_to_checkout` | Back to checkout | nothing | link |
+| `view_on_explorer` | View on Solana Explorer | chain | external_link |
+| `open_sample_room` | Open the sample checkout | nothing | link |
+| `create_a_checkout` | Create a checkout | nothing | link |
+| `reload_page` | Try again | nothing | button |
+
+| Word | Text |
+| --- | --- |
+| `product` | OneTab |
+| `asset` | test USDC |
+| `sample` | Sample data |
+| `sample_notice` | Nothing here is a real checkout or payment, and no button sends anything. |
+| `not_connected_in_sample` | isn't connected in sample data. |
+| `nothing_sent` | Nothing was sent. |
+| `nothing_created` | Nothing was created. |
+| `view_as` | View as |
+| `all_samples` | All samples |
+| `you` | You |
+| `organizer` | Organizer |
+| `your_share` | Your share |
+| `payers` | Payers |
+| `seller` | Seller |
+| `spot` | Spot |
+| `total` | Total |
+| `wallet_not_connected` | No wallet connected |
+| `link_copied` | Link copied. |
+| `steps` | Checkout steps |
+| `network devnet` | Test USDC on Solana Devnet |
+| `flow steps` | Create, Get ready, Approve, Paid |
 <!-- /design-system:words -->
 
 ### Glossary
