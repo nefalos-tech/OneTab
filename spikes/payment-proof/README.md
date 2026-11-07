@@ -1,6 +1,10 @@
 # Run the P1 wallet experiment
 
-This isolated page tests two distinct payer accounts approving one immutable Devnet USDC payment. P1 remains incomplete until two real prompts and a finalized seller payment are recorded in [the evidence file](../../docs/evidence/payment-proof.md).
+This isolated page tests two distinct payer accounts approving one immutable Devnet USDC payment. On 2026-11-07, two distinct Phantom accounts completed separate sign-only approvals and paid one seller four test USDC in a finalized Devnet transaction. The [evidence file](../../docs/evidence/payment-proof.md) records the tested versions, matching message hash, first-signature refusal, balance changes, and receipt after restart.
+
+The tested combination is Phantom `26.38.1`, Chrome `155.0.8059.41`, and the dependencies pinned here. Both payer accounts used the same user-selected Chrome profile. The [public evidence](evidence/devnet-20261107.json) and [receipt screenshot](evidence/receipt-20261107.png) document that run. P1 is review-ready, with board Done still dependent on merge. Hosted application acceptance and B1's shared interface remain outside this spike.
+
+F2 and B1 can use the [WalletBridge and signing-byte handoff](../../docs/evidence/payment-proof.md#f2-and-b1-handoff) to integrate the proven sign-only behavior. The spike has no production authentication implementation.
 
 ## Inspect a wallet before preparing a payment
 
@@ -89,6 +93,16 @@ npm run proof -- report --out .private/public-report.json
 Inspect that public report before sharing it. Its explicit projection excludes raw signatures, signable and signed transaction bytes, role tokens, and RPC credentials. It includes only public payment details, hashes, approval timestamps, diagnostics, status, and any verified receipt. Record browser and extension versions separately. `walletStandardVersion` describes the interface, not the installed extension version.
 
 Local tests use clearly synthetic ephemeral keys. They establish transaction, persistence, and boundary behavior. They do not establish real browser-wallet acceptance, live balance changes, or Postgres recovery.
+
+## Recheck the recorded Devnet transaction
+
+Run the read-only verifier from this directory.
+
+```sh
+node evidence/verify-devnet.mjs
+```
+
+It checks Devnet genesis, finalized status, the exact signed-wire SHA-256, historical payer and seller token balances, organizer SOL balances, and the 10,000-lamport fee against [the public evidence](evidence/devnet-20261107.json). It does not request wallet access or submit a transaction. The public RPC must still serve the historical transaction. RPC unavailability or pruning prevents a fresh verification.
 
 ## Check invitation navigation in a disposable browser
 

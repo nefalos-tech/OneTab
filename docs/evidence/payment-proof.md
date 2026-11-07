@@ -1,35 +1,121 @@
 # P1 payment proof evidence
 
-P1 aims to prove that two distinct real browser-wallet approvals produce one finalized Devnet USDC payment to a separate seller. The isolated implementation is locally verified. Real wallet approval was attempted and failed the immutable-message check. Two-payer payment acceptance remains **incomplete**. P1 is incomplete.
+Two distinct Phantom payer accounts approved the same frozen message in separate real sign-only prompts on 2026-11-07. One Devnet transaction paid four test USDC to a separate seller and finalized at slot `519612865`. The [public evidence](../../spikes/payment-proof/evidence/devnet-20261107.json) and [receipt screenshot](../../spikes/payment-proof/evidence/receipt-20261107.png) record the result.
 
-## Source and scope
+[P1](../cards/P1.md) has its real-wallet compatibility proof and is review-ready. The board's Done status still requires merge. This local spike does not establish hosted application acceptance, three-payer behavior, or acceptance of P2 through P6.
 
-The experiment starts from `a8c1d5cb524589bc13350af09dd7c07e8b66fa8e` on `feat/P1-wallet-proof`. Implementation is confined to `spikes/payment-proof/` and this evidence file. No root application, shared B1 contract, production wallet bridge, authentication module, or remote database changed.
+## Tested source and environment
 
-The [spike guide](../../spikes/payment-proof/README.md) contains reproducible setup and signing steps. The coordinator uses a plain loopback page and one private SQLite experiment. The current Chrome profile was selected for sequential distinct-payer prompts. Separate-profile invitations remain available. The current profile produced one actual sign-only prompt, whose changed return bytes were rejected. No two-payer acceptance is claimed.
+The tested P1 revision is `9fb3cbaf17e9b0d07a5d33d1dc63c4b213747f72`. The combined verification revision is `b74d3ed3ff2e245122883518dd065f34efa3d48f`. All 31 files in the P1 publication manifest matched between those revisions before this evidence update. That set includes the isolated spike and the owner-approved shared configuration patch.
 
-## Local verification on 2026-11-07
+The [spike guide](../../spikes/payment-proof/README.md) records the setup and signing procedure. The coordinator served a loopback page and persisted each experiment in private SQLite. The tested arrangement used two distinct payer accounts in the same user-selected Chrome profile, with a separate seller account. Separate-profile execution remains untested by this run.
 
-From `spikes/payment-proof`, `npm run check` passed ESLint, strict TypeScript, the Vite browser build, and 43 native Node behavior tests after the disconnect and frozen-fee fixes. Test keys are synthetic, ephemeral, and test-only. No test signs with a real payer wallet.
+| Component | Tested value |
+| --- | --- |
+| Running browser | Chrome `155.0.8059.41` |
+| Wallet extension | Phantom `26.38.1` |
+| Wallet Standard and sign-only feature versions | `1.0.0`, with legacy transaction support |
+| Network | Solana Devnet, with Phantom Testnet Mode enabled |
+| Mint | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
+| Token program | `TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA` |
+| Token decimals | `6` |
+| Spike runtime | Node `25.9.0`, macOS `27.0`, arm64 |
+| Root application runtime | Node `24.22.1` |
 
-The passing tests cover the following behaviors.
+Automatic wallet confirmation remained off. The user created the accounts inside Phantom. No private keys or recovery phrases entered the experiment. Preparation checked the complete Devnet genesis, live mint layout, token-account owners and states, balances, and the message fee estimate.
 
-- Literal checked-transfer amounts and signer permissions match the expected two-payer plan. Integer values include the unsigned 64-bit maximum and deterministic remainder allocation.
-- Self-consistent malicious wire messages fail full semantic comparison. Changes cover payment accounts, program, fee payer, permissions, instruction order and count, amounts, decimals, authorities, and blockhash.
-- Missing, invalid, unexpected, wrong-payer, and stale signatures cannot complete payment. The first signature cannot trigger a send.
-- Wallet rejection, neutral provider failure, and account-switch events remain distinct. Switching away and back invalidates an in-flight result.
-- Duplicate and concurrent approvals preserve both signatures on separate actual SQLite connections. Concurrent HTTP submits invoke one application send.
-- File-backed SQLite close and reopen preserves the frozen message, approvals, and transaction identity. Reopening refuses corrupted private message, signature, or submission data before sending.
-- Actual child processes receive `SIGKILL` before submission commit, after commit, after dispatch claim, and after mocked broadcast acceptance. Reopening preserves the permitted state and never creates another identity.
-- A child process killed after experiment commit and before invitation export can re-export the same private role tokens and message from SQLite.
-- A dropped send response reconciles the original reference. Only finalized matching transaction metadata, payer and seller token deltas, and fee evidence produces a receipt. Unknown or expired observations remain unresolved.
-- Loopback HTTP role and origin checks reject unauthorized mutations. Public responses and the browser bundle exclude known private authorization markers.
+## Finalized payment
 
-The browser build completed with 158 transformed modules. Its JavaScript bundle contains neither `node:sqlite` nor `SOLANA_RPC_URL`, as checked by the HTTP test. The inspected source contains no private wallet keys.
+Experiment six is `ab3b0755-53f7-4a32-b714-2f7f6ac9ec5c`. Its transaction is [finalized on Solana Devnet](https://explorer.solana.com/tx/55uWRbS4rUHdxLTr87h3S9JJdMoHDRAjj8gxh8b6FFQCo8idbTU8ypFt23jJhR9dmVjtvupY68ytso5AJFJDn2Ve?cluster=devnet).
 
-## Exact local dependencies
+| Role | Public wallet | Test-USDC account |
+| --- | --- | --- |
+| Organizer and payer zero | `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU` | `BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ` |
+| Payer one | `7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB` | `436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW` |
+| Seller | `3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1` | `FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv` |
 
-`npm ls --depth=0` reported the following pinned direct packages. The isolated `package-lock.json` records transitive resolution.
+Both wallet returns passed exact-message and Ed25519 signature verification against message hash `e3acd08148f63fe3889c454b996a65d6084ae7cafb2d66efebf8f8daaf429c83`. The last valid block height was `506762398`.
+
+| Observation | UTC time on 2026-11-07 | Result |
+| --- | --- | --- |
+| First real Phantom prompt | `09:20:27.114` | Account 1 displayed a two-token decrease and a `0.00001 SOL` network fee. |
+| Payer zero signature accepted | `09:20:27.749` | One approval stored. Submit remained disabled. |
+| First-signature diagnostic | `09:20:28.412` | RPC simulation explicitly refused the incomplete transaction's signature set. No broadcast occurred. |
+| Second real Phantom prompt | `09:20:32.370` | The distinct payer 2 account displayed a two-token decrease and a `0.00001 SOL` network fee. |
+| Payer one signature accepted | `09:20:33.044` | Both approvals matched the same frozen message. |
+| Finalized receipt observed | `09:20:58.212` | Slot `519612865`, with no execution error. |
+| Receipt after server restart and browser reload | `09:21:33.686` | The same finalized receipt returned and submit remained disabled. |
+| Independent public RPC check | `09:22:19.245` | Finalized status, exact signed wire identity, token deltas, and organizer fee matched. |
+
+Phantom labeled the token `Unknown` in both prompts. Mint identity comes from the validated payment and chain data, not the prompt's asset label. The two separate confirmation prompts and approval states are preserved in the public evidence.
+
+| Balance | Before | After | Change |
+| --- | --- | --- | --- |
+| Payer zero test USDC | `20` | `18` | `-2` |
+| Payer one test USDC | `20` | `18` | `-2` |
+| Seller test USDC | `20` | `24` | `+4` |
+| Organizer lamports | `500000000` | `499990000` | `-10000` |
+
+The durable record contained two approvals, one submission, and one claimed dispatch before restart. The independently fetched signed wire matched its stored SHA-256 hash, `e50344171cc051df1470fc37278f3f8deaca04f03bbe0377e7988a2d1aea9ad4`. This signed-transaction hash differs from the message hash because it covers the serialized transaction with both signatures.
+
+The persisted-signature audit at `09:26:37.614 UTC` independently verified both 64-byte Ed25519 signatures and the full frozen message. Reassembly matched the durable submission byte for byte, with the same signed hash and transaction reference as the finalized chain record. The public evidence includes the audit result without publishing raw signatures.
+
+The read-only [Devnet verification script](../../spikes/payment-proof/evidence/verify-devnet.mjs) repeats the genesis, finalized-status, signed-wire hash, historical balance, and fee comparisons against the published evidence. It requires the public RPC to retain this historical transaction. Later pruning or RPC unavailability prevents a fresh verification and does not change the recorded result. The repository-root command is:
+
+```sh
+node spikes/payment-proof/evidence/verify-devnet.mjs
+```
+
+## Earlier experiments
+
+Each experiment retains its own database and identity. No approval was reused across experiments.
+
+| Experiment | Observed outcome |
+| --- | --- |
+| 1 | The unsigned message expired before a prompt. Zero approvals and zero submissions. |
+| 2 | An actual Phantom sign-only return changed the message and failed validation. Zero accepted approvals and zero submissions. This preceded the frozen compute-budget fix. |
+| 3 | The wallet was locked and the message expired. Zero approvals and zero submissions. |
+| 4 | The first signature passed validation, but the message expired before completion. Zero submissions. |
+| 5 | The first signature passed validation, but the message expired before completion. Zero submissions. |
+| 6 | Both signatures passed validation and one seller payment finalized. |
+
+The second experiment exposed the need to freeze the compute-budget instructions before approval. The successful message includes `SetComputeUnitLimit(400000)` and `SetComputeUnitPrice(0)` before the two checked transfers. This policy preserves a known message for both payers and adds no priority fee. It is the tested Devnet policy, not a production fee recommendation. Changed return bytes still fail validation.
+
+## F2 and B1 handoff
+
+The implementation in [wallet.ts](../../spikes/payment-proof/src/wallet.ts) and [payment.ts](../../spikes/payment-proof/src/payment.ts) proves the following signing behavior for the tested Phantom and Chrome versions. B1's executable shared `WalletBridge` interface remains missing. F2 still owns the application bridge, and authentication remains outside this spike.
+
+The mapping to the agreed [SigningPayload and WalletBridge contract](../contracts.md#signingpayload-and-walletbridge) is explicit.
+
+| Shared contract | Proven spike behavior or mapping |
+| --- | --- |
+| `WalletBridge.connect` | `WalletSession.connect` validates the selected account's public key and subscribes to account-change events. `inventory` reports the selected address and sign-only capabilities. |
+| `WalletBridge.disconnect` | `WalletSession.disconnect` clears local state and requests optional `standard:disconnect`. Ending the server session remains application work. |
+| `WalletBridge.signPayment` | `WalletSession.sign` validates the frozen payment, requests `solana:signTransaction`, verifies the returned transaction, and returns one approval. F2 maps the validated acting slot to `signerWallet` and returns it with `messageHash` and `signatureBase64`. |
+| `WalletBridge.signAuthentication` | No implementation or authentication-signature proof in P1. B1 and F2 retain this work. |
+| `SigningPayload.attemptId` | Corresponds to the spike's frozen experiment `id`. The spike has no `checkoutId`. |
+| `SigningPayload.payment` | Corresponds to `plan`. Rename `decimals` to `tokenDecimals`, `feePayer` to `feePayerWallet`, and contribution `units` to `amountUnits`. Preserve the ordered slots, wallets, and token accounts. |
+| `transactionBase64` | Canonical base64 of the serialized signable legacy transaction, including the fixed message and empty required signer slots. Each payer receives this original unsigned transaction. |
+| `messageBase64` | Canonical base64 of the exact compiled transaction message bytes. These are the bytes each Ed25519 signature covers. |
+| `messageHash` | Lowercase hexadecimal SHA-256 of those exact message bytes, not of JSON, base64 text, or the complete serialized transaction. |
+| `blockhash`, `lastValidBlockHeight` | The fixed message lifetime. The block height is a decimal string. Neither field changes after the first approval. |
+| `signatureBase64` | Canonical base64 of only the acting payer's nonzero, 64-byte Ed25519 signature. |
+
+The spike's `planHash`, fixed `tokenProgram`, and `total` support its own validation. They are not additions to B1's agreed payload. Application integration must validate the payment against the immutable room, including the total and every contribution.
+
+The agreed application signature endpoint accepts `messageHash` and `signatureBase64`. Under that contract, the server derives the acting wallet from the authenticated session. The bridge's returned `signerWallet` is not server authorization.
+
+The signing call passes the decoded `transactionBase64` bytes, the expected wallet account, `chain: 'solana:devnet'`, and `preflightCommitment: 'confirmed'`. It requires Wallet Standard connect, account-change events, and legacy sign-only support. It never calls `signAndSendTransaction` or another sign-and-send API.
+
+Before the prompt, the validator compares the complete message with deterministic construction of the expected plan. That comparison covers the known compute-budget policy, blockhash, fee payer, signer set, programs, accounts, amounts, decimals, and instruction order. A matching hash alone cannot authorize a payment.
+
+After the prompt, the bridge decodes the returned signed transaction and requires unchanged message bytes and canonical transaction encoding. It rejects any nonzero signature in another payer's slot. It extracts only the acting payer's signature and verifies it against that payer's public key and the exact message bytes. The server merges independently verified signatures into its original transaction. The wallet-returned transaction never becomes the server's authority.
+
+An account change or disconnect invalidates an in-flight result, including a switch away and back. Wallet error code `4001` is a reported rejection. Other provider errors remain failures without an asserted user decline. Neither outcome silently retries or uploads an approval.
+
+## Exact spike dependencies
+
+The tested [package manifest](../../spikes/payment-proof/package.json) pins these direct dependencies. The isolated lockfile records transitive resolution. Frontend owns integration into the root manifest and lockfile.
 
 | Package | Version |
 | --- | --- |
@@ -47,63 +133,23 @@ The browser build completed with 158 transformed modules. Its JavaScript bundle 
 | `typescript-eslint` | `8.72.1` |
 | `vite` | `8.3.6` |
 
-The host runtime is Node `25.9.0` on macOS `27.0`, arm64. TypeScript `7.0.2` was rejected by npm because `typescript-eslint@8.72.1` requires TypeScript below `6.1.0`. The selected `6.0.3` satisfies that peer range. No peer check was bypassed. A fresh comment and suppression review found an unnecessary `skipLibCheck` setting. The coordinator removed it and reran lint, typecheck including dependency declarations, build, and all 34 tests successfully.
+TypeScript `6.0.3` satisfies the TypeScript-ESLint peer range. No peer check was bypassed. The recorded production-dependency audit reported zero vulnerabilities. The full audit reported nine moderate entries in local ESLint and TypeScript-ESLint tooling through `minimatch`. No forced dependency upgrade was applied.
 
-`npm audit --omit=dev --json` reported zero vulnerabilities. The full audit reported nine moderate entries caused by the `minimatch` advisory [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) in local ESLint and TypeScript-ESLint tooling. No forced dependency upgrade was applied.
+## Local and CI verification
 
-## Read-only Devnet observations
+The following checks passed for the tested source. The [CI job for P1 revision `9fb3cba`](https://github.com/nefalos-tech/OneTab/actions/runs/42358408041/job/128361412130) also passed. The documentation and public artifacts added after that revision do not change the tested runtime code.
 
-The corrected network guard queried the public Devnet RPC and returned height `506721240`. A later read-only probe returned height `506724220`. Both checked the complete Devnet genesis `EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG`.
-
-The later probe built an incomplete transaction with synthetic ephemeral test-only keys, fetched a fresh confirmed blockhash, and called simulation with `sigVerify=true` and `replaceRecentBlockhash=false`. The initial classifier returned `inconclusive`. A sanitized direct probe then observed `result.value.err="SignatureFailure"`, rather than top-level RPC code `-32003`.
-
-A failing regression reproduced that missing classification. After accepting exactly `SignatureFailure` as explicit signature refusal, a new live read-only probe returned `signature_refused` at height `506724953`. This establishes synthetic incomplete-signature simulation refusal. It establishes no real wallet prompt or payment. No application send operation ran.
-
-The mint is fixed to `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, listed for Solana Devnet in [Circle's USDC address reference](https://developers.circle.com/stablecoins/usdc-contract-addresses). Preparation independently checks the live mint's Token Program owner, initialized layout, and six decimals.
-
-## Real wallet verification in progress
-
-The current user-selected profile runs Chrome `155.0.8059.41`, read from the browser's full version list. Installed Chrome application metadata reports the available update `156.0.8078.80`; that is not the running-profile version. The installed Phantom extension is `26.38.1`. Testnet Mode uses Solana Devnet, and automatic confirmation remains off. Wallet Standard and sign-only feature versions are `1.0.0`; the extension advertises legacy transaction support.
-
-The user created all three accounts inside Phantom. No keys or recovery phrases entered the experiment. At finalized slot `519586900`, observed at `2026-11-07T07:36:59.751Z`, each ordinary fixed-mint Token Program account held `20000000` units. The organizer held `500000000` lamports. These are faucet-funded setup balances, not OneTab payment evidence.
-
-| Role | Public wallet | Test-USDC account |
+| Scope | Command | Observed result |
 | --- | --- | --- |
-| Organizer and payer zero | `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU` | `BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ` |
-| Payer one | `7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB` | `436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW` |
-| Seller | `3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1` | `FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv` |
+| Root application, Node `24.22.1` | `npm run check` | Lint, typecheck, design check, and 676 tests passed. |
+| Root application, Node `24.22.1` | `npm run test:e2e` | Production build and 113 browser cases passed. |
+| Isolated spike, Node `25.9.0` | `npm run check` | Lint, full typecheck, Vite build, and 43 native Node tests passed. |
+| Isolated spike | The [invitation-navigation command](../../spikes/payment-proof/README.md#check-invitation-navigation-in-a-disposable-browser) | Eight synthetic browser cases passed. |
 
-The explicit disconnect control was tested against Phantom. Disconnecting, switching the selected extension account, and reconnecting displayed each expected distinct payer. Seven regressions cover disconnection, optional-feature absence/failure, and invalidation of pending connect/sign results. An independent reviewer found no blocking correctness issue.
+Spike tests cover full-message tampering, missing and invalid signatures, account changes, duplicate and concurrent approvals, concurrent submit requests, and private-data exclusion. Real SQLite connections and killed child processes verify persistence around commit and dispatch boundaries. Lost-response tests reconcile the same stored transaction identity. These automated tests use synthetic ephemeral keys and mocked network outcomes where needed. They are separate from the real-wallet and chain observations above.
 
-The first immutable experiment `4aa59854-1def-472c-88ef-92f27d9260ff` expired before a wallet prompt. Its message hash is `5871ec13d39b80b093979492db6f49ae280c25c093ca9e1e81ee5f18968af539`, with last valid block height `506740846`. It remains unresolved with zero approvals, zero submissions, and no transaction reference. Its database was preserved.
+## Remaining scope boundaries
 
-A separate experiment `24ccd9ae-952a-43a4-8b51-18828edb2046` reached an actual organizer sign-only prompt. Phantom displayed a two-token contribution and estimated fee `0.00009 SOL`. After confirmation, the exact-message validator reported `Wallet changed transaction`. Zero approvals and zero submissions were stored. Its message hash is `807515aed317be1d1730fe40c6a254220f5b5d4b4f0856cefa761773c8e09088`. No second-payer prompt or application broadcast followed.
+The spike uses private local invitation capabilities rather than production wallet authentication. SQLite uses DELETE journaling and FULL synchronous mode. It allows one application send invocation. A crash after dispatch claim but before send can leave an unsent experiment unresolved. P4's lease and rebroadcast behavior is outside this proof.
 
-[Phantom documents automatic priority-fee insertion](https://docs.phantom.com/developer-powertools/solana-priority-fees) for unsigned messages without compute-budget instructions, including sign-only requests. The observed mutation is consistent with that behavior. Returned signed bytes were not logged. The fix now freezes `SetComputeUnitLimit(400000)` and `SetComputeUnitPrice(0)` before the two checked transfers. This retains the previous default compute allowance and adds no priority fee for the bounded Devnet proof. The actual message fee is still quoted during preflight. Exact-message and signature validation remain unchanged.
-
-Literal-decoding regressions assert the fixed policy, two transfers, exact amounts and signer privileges. Self-consistent modified, removed, added and reordered budget instructions fail validation. Independent review also checked deterministic regeneration and the 476-byte wire size. No package was added. Actual Phantom compatibility with this fix remains pending.
-
-A same-document invitation navigation defect was also reproduced in real Chrome. The fix scrubs the fragment, invalidates old wallet results and requests, and reloads with one invitation per document. A disposable Chromium `156.0.8078.4` run covers eight synthetic browser cases, including invalid invitations and pending old signatures or rejections. This is separate from real-wallet evidence. See the explicit browser-regression command in the spike guide.
-
-Combined spike revision `0596997b52fa9c95628b676a2aa3b4ec566447ce` passed lint, full typecheck, build and all 43 Node tests. It includes the newly merged frontend scaffold at `7295b96415377461196cd69ffdd2bef475a42955`. Root-application checks use that scaffold's own runtime and commands; their results are not implied by the spike checks. CI and deployed acceptance are not claimed here.
-
-| Acceptance check | Current evidence |
-| --- | --- |
-| Two distinct funded payers and separate seller | Verified setup balances and exact addresses above. |
-| Two separate real sign-only prompts with identical message hashes | First attempted prompt returned changed bytes and was rejected. Corrected-policy proof pending. |
-| First actual signature cannot complete payment | Synthetic checks passed. Real-wallet diagnostic pending. |
-| One finalized seller transaction and explorer link | Pending. No OneTab broadcast recorded. |
-| Seller increase, payer decreases and organizer fee | Pending. |
-| Real receipt after process restart and browser reload | Pending. Synthetic persistence checks passed. |
-
-No WalletBridge or package combination is described as proven for application integration yet. The experiment never falls back to sign-and-send. Each experiment has its own preserved database and identity. No approval is reused across experiments.
-
-## Bounded design decisions
-
-Model the Domain produced one frozen experiment, approvals keyed by payer slot, and one durable submission identity. Boundary Discipline placed full byte validation, wallet account continuity, and RPC parsing at their respective boundaries. Make Operations Idempotent made repeated uploads, submits, and invitation export preserve the same identity. Test Behavior, Not Implementation produced the concurrent HTTP and real SQLite process tests. Prove It Works kept real wallet acceptance separate from synthetic checks.
-
-Disposable local invitation tokens are stored privately in the same SQLite transaction as the experiment. Authorization lookup uses their hashes. This spike-only adjustment allows interrupted private invitation export to recover without another canonical setup file. Public projections never include tokens.
-
-SQLite uses DELETE journaling and FULL synchronous mode. The experiment deliberately allows one application send invocation. A crash after dispatch claim and before the send can leave an unsent experiment unresolved. P4's lease and rebroadcast design remains outside this spike.
-
-API decisions were checked against the installed package declarations, [Kit 8.6.0 transaction documentation](https://github.com/anza-xyz/kit/blob/v8.6.0/docs/content/docs/advanced-guides/transactions.mdx), [Solana partial-signing guidance](https://solana.com/docs/core/transactions/partial-signing), [simulation documentation](https://solana.com/docs/rpc/http/simulatetransaction), [Node SQLite documentation](https://nodejs.org/docs/latest-v25.x/api/sqlite.html), and [Phantom's documented error codes](https://docs.phantom.com/solana/errors). A wallet-reported rejection code is not separate evidence of a human's action.
+This evidence establishes the two-payer P1 payment with the recorded package, browser, and wallet versions. The root checks establish local scaffold and fixture behavior. Neither establishes B1's shared implementation, Postgres recovery, hosted checkout behavior, or the remaining cards' acceptance criteria. No merge or deployment is part of this evidence update.
