@@ -2,8 +2,10 @@
 // The screen is chosen by a string prop because a server page can't pass a component function
 // across the client boundary.
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { CheckoutState, CreateState } from "@/client/checkout-view";
+import { roomTracker } from "@/client/live-actions";
+import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
 import { ResultScreen } from "./result-screen";
 import { RoomScreen } from "./room-screen";
@@ -23,7 +25,23 @@ export function Viewer(props: ViewerProps): ReactNode {
       </SampleWalletProvider>
     );
   }
-  return <Screen {...props} />;
+  if (props.screen === "create") return <Screen {...props} />;
+  return <LiveCheckout key={props.state.snapshot.checkout.id} screen={props.screen} state={props.state} />;
+}
+
+/**
+ * One live checkout. It shows the newest room a browser request returned, else the server's load, and
+ * the tracker decides which reply is newest. Keyed by checkout ID, so no reply crosses to another
+ * checkout. F4's poll joins here through live.refresh with this tracker.
+ */
+function LiveCheckout({ screen, state }: { readonly screen: "room" | "result"; readonly state: CheckoutState }): ReactNode {
+  const [received, setReceived] = useState<CheckoutState["snapshot"] | null>(null);
+  const [track] = useState(() => roomTracker(setReceived));
+  return (
+    <RoomTrack value={track}>
+      <Screen screen={screen} state={received === null ? state : { ...state, snapshot: received }} />
+    </RoomTrack>
+  );
 }
 
 function Screen(props: ViewerProps): ReactNode {

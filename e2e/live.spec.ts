@@ -122,3 +122,27 @@ for (const [name, id] of [
     if (id === LIVE.outage) await capture(page, "outage");
   });
 }
+
+test("live create uses the server's configuration and asks to connect a wallet before creating", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Split a purchase");
+  await page.getByLabel("Checkout name").fill("Cabin groceries");
+  await page.getByLabel("Seller wallet").fill(WALLETS.shop);
+  await page.getByLabel("Total in test USDC").fill("10");
+  await page.getByLabel("3 payers").check();
+  await page.getByRole("button", { name: "Review checkout" }).click();
+
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Check the details");
+  await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+  const shares = page.getByRole("region", { name: "Each payer's share" });
+  await expect(shares.getByText("3.333334 test USDC")).toHaveCount(1);
+  await expect(shares.getByText("3.333333 test USDC")).toHaveCount(2);
+  await expect(page.locator("[data-action='primary']")).toHaveText("Connect wallet");
+  await expect(page.getByRole("button", { name: "Create checkout" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit details" })).toBeVisible();
+  await capture(page, "create-review-signed-out");
+
+  await page.locator("[data-action='primary']").click();
+  await expect(page.locator("[data-wallet-line]")).toHaveText("Sign-in isn't available right now. Try again in a moment.");
+  await expect(page.getByRole("button", { name: "Create checkout" })).toHaveCount(0);
+});

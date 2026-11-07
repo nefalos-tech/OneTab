@@ -1,10 +1,13 @@
 import type { Result } from "@/lib/wallet/environment";
+import type { CreateRequest } from "./checkout-view";
 import {
   isErrorCode,
   isRecord,
   parsePublicConfig,
   parseRoomSnapshot,
   type CheckoutId,
+  type ClientRequestId,
+  type CreateCheckoutBody,
   type ErrorCode,
   type PublicConfig,
   type RoomSnapshot,
@@ -58,11 +61,35 @@ export async function send(
 /** Why a room read produced no snapshot. Only the contract's CHECKOUT_NOT_FOUND is `not_found`. */
 export type RoomReadProblem = "not_found" | "unavailable";
 
+/** Why a create or join produced no snapshot. */
+export type RequestProblem = "signed_out" | "room_full" | "rate_limited" | "refused" | "unavailable";
+
 export type CheckoutApi = {
   /** GET /api/config. */
   readConfig(): Promise<Result<PublicConfig, "unavailable">>;
   /** GET /api/checkouts/:checkoutId. A snapshot of another checkout is `unavailable`. */
   readRoom(id: CheckoutId): Promise<Result<RoomSnapshot, RoomReadProblem>>;
+  /** POST /api/checkouts. The same ID with the same details returns the same checkout. */
+  create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
+  /** POST /api/checkouts/:checkoutId/join. Rejoining returns the wallet's existing spot. */
+  join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
+};
+
+/**
+ * `refused` codes are ones the screens already prevent, such as a seller who is the organizer or a
+ * changed request under one ID, so they mean a stale page or a bug. Any other code, a bare status and
+ * no answer are `unavailable`: the outcome is unknown, and create and join are both safe to repeat.
+ */
+const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, RequestProblem>> = {
+  UNAUTHENTICATED: "signed_out",
+  ROOM_FULL: "room_full",
+  RATE_LIMITED: "rate_limited",
+  INVALID_INPUT: "refused",
+  FORBIDDEN: "refused",
+  ORIGIN_MISMATCH: "refused",
+  IDEMPOTENCY_CONFLICT: "refused",
+  CHECKOUT_NOT_FOUND: "refused",
+  CHECKOUT_PAID: "refused",
 };
 
 const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
@@ -79,12 +106,34 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
       if (reply.kind === "data") return roomOf(reply.data, id);
       return reply.kind === "error" && reply.code === "CHECKOUT_NOT_FOUND" ? { ok: false, failure: "not_found" } : UNAVAILABLE;
     },
+    async create(request, clientRequestId) {
+      const body: CreateCheckoutBody = {
+        title: request.title,
+        sellerWallet: request.sellerWallet,
+        totalUnits: request.totalUnits,
+        payerCount: request.payerCount,
+        clientRequestId,
+      };
+      return mutationResult(await send(fetchImpl, "POST", "/api/checkouts", body), null);
+    },
+    async join(id) {
+      return mutationResult(await send(fetchImpl, "POST", `/api/checkouts/${id}/join`), id);
+    },
   };
 }
 
-function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailable"> {
+/** `expectedId` null accepts any checkout, for a create. */
+function roomOf(data: unknown, expectedId: CheckoutId | null): Result<RoomSnapshot, "unavailable"> {
   const snapshot = parseRoomSnapshot(data);
-  return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
+  return snapshot !== null && (expectedId === null || snapshot.checkout.id === expectedId)
+    ? { ok: true, value: snapshot }
+    : UNAVAILABLE;
+}
+
+function mutationResult(reply: Reply, expectedId: CheckoutId | null): Result<RoomSnapshot, RequestProblem> {
+  if (reply.kind === "data") return roomOf(reply.data, expectedId);
+  const problem = reply.kind === "error" && reply.code !== null ? REQUEST_PROBLEM_BY_CODE[reply.code] : undefined;
+  return { ok: false, failure: problem ?? "unavailable" };
 }
 
 /** The server's configuration for page loads. Never read from the incoming request. */

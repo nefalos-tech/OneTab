@@ -7,10 +7,19 @@ import {
   deriveCreateView,
   deriveReviewActions,
   spotNumber,
+  type ClientRequestId,
   type CreateState,
   type CreateView,
 } from "@/client/checkout-view";
-import { checkDraft, previewTab, type DraftField, type DraftInput, type DraftReview } from "@/client/create-draft";
+import {
+  checkDraft,
+  previewTab,
+  requestIds,
+  type DraftErrors,
+  type DraftField,
+  type DraftInput,
+  type DraftReview,
+} from "@/client/create-draft";
 import { ActionGroup } from "./actions";
 import { BUTTON } from "./button";
 import { CopyButton } from "./copy-button";
@@ -23,6 +32,16 @@ type FormView = Extract<CreateView, { readonly kind: "form" }>;
 
 const EMPTY: DraftInput = { title: "", seller: "", total: "", payerCount: "2" };
 const FIELDS: readonly DraftField[] = ["title", "seller", "total", "payerCount"];
+
+/**
+ * Where the form is. The review holds the request ID for exactly the details under review. The form
+ * names where focus goes when the viewer arrives, and null on first load leaves focus alone.
+ */
+type Step =
+  | { readonly kind: "form"; readonly focus: "heading" | DraftField | null }
+  | { readonly kind: "review"; readonly requestId: ClientRequestId };
+
+const firstError = (errors: DraftErrors): DraftField | undefined => FIELDS.find((f) => errors[f]);
 
 export function CreateScreen({ state }: { readonly state: CreateState }): ReactNode {
   const view = deriveCreateView(state);
@@ -50,22 +69,28 @@ export function CreateScreen({ state }: { readonly state: CreateState }): ReactN
 function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const [input, setInput] = useState<DraftInput>(EMPTY);
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
-  const [reviewing, setReviewing] = useState(false);
+  const [step, setStep] = useState<Step>({ kind: "form", focus: null });
+  const [requestIdFor] = useState(() => requestIds());
   const formHeading = useRef<HTMLHeadingElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
-  const moved = useRef(false);
 
   const ctx = { config: view.config, organizer: view.organizer };
   const check = checkDraft(input, ctx);
   const errors = check.ok ? {} : check.errors;
   const errorOf = (field: DraftField) => (touched.has(field) ? errors[field] : undefined);
-  const review = reviewing && check.ok ? check.review : null;
-  const showingReview = review !== null;
+  if (step.kind === "review" && !check.ok) {
+    // Under a review only the organizer can change, so the viewer signed in with the seller's wallet.
+    setStep({ kind: "form", focus: firstError(errors) ?? "heading" });
+  }
+  const reviewing = step.kind === "review" && check.ok ? { review: check.review, requestId: step.requestId } : null;
 
   useEffect(() => {
-    if (!moved.current) return;
-    (showingReview ? reviewHeading : formHeading).current?.focus();
-  }, [showingReview]);
+    if (step.kind === "review") reviewHeading.current?.focus();
+    else if (step.focus === "heading") formHeading.current?.focus();
+    else if (step.focus !== null) {
+      document.getElementById(step.focus === "payerCount" ? "payerCount-2" : step.focus)?.focus();
+    }
+  }, [step]);
 
   const set = (field: DraftField) => (value: string) => setInput((prev) => ({ ...prev, [field]: value }));
   const touch = (field: DraftField) => () => setTouched((prev) => new Set(prev).add(field));
@@ -73,13 +98,11 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTouched(new Set(FIELDS));
-    if (check.ok) {
-      moved.current = true;
-      setReviewing(true);
-      return;
-    }
-    const first = FIELDS.find((f) => errors[f]);
-    if (first) document.getElementById(first === "payerCount" ? "payerCount-2" : first)?.focus();
+    setStep(
+      check.ok
+        ? { kind: "review", requestId: requestIdFor(check.review.request) }
+        : { kind: "form", focus: firstError(errors) ?? null },
+    );
   };
 
   return (
@@ -87,15 +110,13 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
       chrome={view.chrome}
       layout="split"
       main={
-        review ? (
+        reviewing ? (
           <Review
             view={view}
-            review={review}
+            review={reviewing.review}
+            clientRequestId={reviewing.requestId}
             headingRef={reviewHeading}
-            onEdit={() => {
-              moved.current = true;
-              setReviewing(false);
-            }}
+            onEdit={() => setStep({ kind: "form", focus: "heading" })}
           />
         ) : (
           <form noValidate onSubmit={submit} className="flex flex-col gap-6">
@@ -167,7 +188,7 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
           </form>
         )
       }
-      side={<TabCard tab={review ? review.tab : previewTab(input, ctx)} heading="h2" hero showShares />}
+      side={<TabCard tab={reviewing ? reviewing.review.tab : previewTab(input, ctx)} heading="h2" hero showShares />}
     />
   );
 }
@@ -175,11 +196,13 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
 function Review({
   view,
   review,
+  clientRequestId,
   headingRef,
   onEdit,
 }: {
   readonly view: FormView;
   readonly review: DraftReview;
+  readonly clientRequestId: ClientRequestId;
   readonly headingRef: RefObject<HTMLHeadingElement | null>;
   readonly onEdit: () => void;
 }): ReactNode {
@@ -229,7 +252,7 @@ function Review({
         <Icon name="info" />
         These details can&apos;t change after you create the checkout.
       </p>
-      <ActionGroup actions={deriveReviewActions(view, request)} onEditDetails={onEdit} />
+      <ActionGroup actions={deriveReviewActions(view, request, clientRequestId)} onEditDetails={onEdit} />
     </section>
   );
 }

@@ -2,6 +2,7 @@ import type {
   Address,
   AttemptSummary,
   CheckoutId,
+  ClientRequestId,
   PayerCount,
   PublicConfig,
   Receipt,
@@ -10,7 +11,7 @@ import type {
   TokenUnits,
 } from "./contracts";
 
-export type { Session } from "./contracts";
+export type { ClientRequestId, Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
@@ -123,7 +124,7 @@ type Href = { readonly href: string };
 type ActionPayload = {
   readonly review_checkout: NoPayload;
   readonly edit_details: NoPayload;
-  readonly create_checkout: { readonly request: CreateRequest };
+  readonly create_checkout: { readonly request: CreateRequest; readonly clientRequestId: ClientRequestId };
   readonly copy_link: Href;
   readonly connect_wallet: NoPayload;
   readonly join: { readonly checkoutId: CheckoutId };
@@ -269,12 +270,14 @@ export function deriveCreateView(state: CreateState): CreateView {
   };
 }
 
+/** Creating needs a signed-in organizer, so a signed-out review offers Connect wallet in its place. */
 export function deriveReviewActions(
   view: Extract<CreateView, { readonly kind: "form" }>,
   request: CreateRequest,
+  clientRequestId: ClientRequestId,
 ): ActionsView {
   return {
-    primary: { kind: "create_checkout", request },
+    primary: view.organizer === null ? { kind: "connect_wallet" } : { kind: "create_checkout", request, clientRequestId },
     secondary: [{ kind: "edit_details" }],
     sample: view.sampleRoomHref === null ? null : { followUp: { kind: "open_sample_room", href: view.sampleRoomHref } },
   };

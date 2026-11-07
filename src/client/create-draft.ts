@@ -1,4 +1,11 @@
-import { looksLikeAddress, type Address, type PayerCount, type PublicConfig, type TokenUnits } from "./contracts";
+import {
+  looksLikeAddress,
+  type Address,
+  type ClientRequestId,
+  type PayerCount,
+  type PublicConfig,
+  type TokenUnits,
+} from "./contracts";
 import { WORDS } from "./catalog";
 import type { CreateRequest, TabView } from "./checkout-view";
 import { formatMoney, parseAmountInput, splitEqually, toTokenUnits, type AmountProblem, type Money } from "./units";
@@ -56,6 +63,24 @@ export function checkDraft(
       request: { title, sellerWallet, totalUnits: amount.units, payerCount },
       tab: draftTab(title, amount.units, sellerWallet, payerCount, ctx),
     },
+  };
+}
+
+/**
+ * One clientRequestId per distinct set of details, for the life of one create form. A retry after an
+ * unknown outcome, or Edit details with nothing changed, sends the same ID, so the server returns the
+ * checkout the first try may have created. Each set keeps its own ID, so details A, then B, then A again
+ * reuse A's, and the server never sees one ID with two sets of details.
+ */
+export function requestIds(
+  mint: () => ClientRequestId = () => crypto.randomUUID() as ClientRequestId,
+): (request: CreateRequest) => ClientRequestId {
+  const ids = new Map<string, ClientRequestId>();
+  return (request) => {
+    const key = JSON.stringify([request.title, request.sellerWallet, request.totalUnits, request.payerCount]);
+    const id = ids.get(key) ?? mint();
+    ids.set(key, id);
+    return id;
   };
 }
 

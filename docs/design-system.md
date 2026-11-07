@@ -332,26 +332,33 @@ Rules for every wallet state:
 Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 
 <!-- design-system:words -->
-| Action | Label | Needs | Element |
-| --- | --- | --- | --- |
-| `review_checkout` | Review checkout | nothing | button |
-| `edit_details` | Edit details | nothing | button |
-| `create_checkout` | Create checkout | backend | button |
-| `copy_link` | Copy link | nothing | button |
-| `connect_wallet` | Connect wallet | wallet | button |
-| `join` | Join checkout | backend | button |
-| `mark_ready` | I'm ready | backend | button |
-| `mark_not_ready` | Not ready yet | backend | button |
-| `start_payment` | Start payment | backend | button |
-| `approve` | Approve in wallet | wallet | button |
-| `retry` | Try again | backend | button |
-| `view_status` | View payment status | nothing | link |
-| `view_receipt` | View receipt | nothing | link |
-| `back_to_checkout` | Back to checkout | nothing | link |
-| `view_on_explorer` | View on Solana Explorer | chain | external_link |
-| `open_sample_room` | Open the sample checkout | nothing | link |
-| `create_a_checkout` | Create a checkout | nothing | link |
-| `reload_page` | Try again | nothing | button |
+| Action | Label | Needs | Element | Busy label |
+| --- | --- | --- | --- | --- |
+| `review_checkout` | Review checkout | nothing | button |  |
+| `edit_details` | Edit details | nothing | button |  |
+| `create_checkout` | Create checkout | backend | button | Creating… |
+| `copy_link` | Copy link | nothing | button |  |
+| `connect_wallet` | Connect wallet | wallet | button |  |
+| `join` | Join checkout | backend | button | Joining… |
+| `mark_ready` | I'm ready | backend | button |  |
+| `mark_not_ready` | Not ready yet | backend | button |  |
+| `start_payment` | Start payment | backend | button |  |
+| `approve` | Approve in wallet | wallet | button |  |
+| `retry` | Try again | backend | button |  |
+| `view_status` | View payment status | nothing | link |  |
+| `view_receipt` | View receipt | nothing | link |  |
+| `back_to_checkout` | Back to checkout | nothing | link |  |
+| `view_on_explorer` | View on Solana Explorer | chain | external_link |  |
+| `open_sample_room` | Open the sample checkout | nothing | link |  |
+| `create_a_checkout` | Create a checkout | nothing | link |  |
+| `reload_page` | Try again | nothing | button |  |
+
+| Request problem | Notice |
+| --- | --- |
+| `room_full` | Someone took the last spot first. This checkout is full. |
+| `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
+| `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
+| `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
 
 | Word | Text |
 | --- | --- |

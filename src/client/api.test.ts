@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { apiOrigin, checkoutApi, originFetch, send, type FetchLike } from "./api";
+import type { ClientRequestId } from "./contracts";
 import { SAMPLE_CONFIG } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
 
@@ -157,5 +158,55 @@ describe("the server's API origin", () => {
     }) as typeof fetch;
     expect(await checkoutApi(originFetch({}, fetchImpl)).readRoom(ID)).toEqual({ ok: false, failure: "unavailable" });
     expect(sent).toBe(0);
+  });
+});
+
+const REQUEST = {
+  title: "Cabin weekend groceries",
+  sellerWallet: ROOM.checkout.sellerWallet,
+  totalUnits: ROOM.checkout.totalUnits,
+  payerCount: ROOM.checkout.payerCount,
+};
+const REQUEST_ID = "6f1c2b9e-3d4a-4e5f-8a7b-9c0d1e2f3a4b" as ClientRequestId;
+
+describe("checkoutApi create and join", () => {
+  it("posts exactly the contract's create body, and reads 201 as the new room", async () => {
+    const { fetch, calls } = stubFetch(() => json(201, { data: ROOM }));
+    expect(await checkoutApi(fetch).create({ ...REQUEST, extra: "never sent" } as typeof REQUEST, REQUEST_ID)).toEqual({
+      ok: true,
+      value: ROOM,
+    });
+    expect(calls.map((c) => [c.init.method, c.path, JSON.parse(String(c.init.body))])).toEqual([
+      ["POST", "/api/checkouts", { ...REQUEST, clientRequestId: REQUEST_ID }],
+    ]);
+  });
+
+  it("posts a join with no body to the checkout's join path", async () => {
+    const { fetch, calls } = stubFetch(() => json(200, { data: ROOM }));
+    expect(await checkoutApi(fetch).join(ID)).toEqual({ ok: true, value: ROOM });
+    expect(calls.map((c) => [c.init.method, c.path, c.init.body ?? null])).toEqual([["POST", `/api/checkouts/${ID}/join`, null]]);
+  });
+
+  it("refuses a join that answers with another checkout", async () => {
+    expect(await api(() => json(200, { data: FIXTURES.paid.snapshot })).join(ID)).toEqual({ ok: false, failure: "unavailable" });
+  });
+
+  it.each<[string, () => Response | Promise<Response>, string]>([
+    ["UNAUTHENTICATED", () => json(401, errorBody("UNAUTHENTICATED")), "signed_out"],
+    ["ROOM_FULL", () => json(409, errorBody("ROOM_FULL")), "room_full"],
+    ["RATE_LIMITED", () => json(429, errorBody("RATE_LIMITED")), "rate_limited"],
+    ["INVALID_INPUT", () => json(400, errorBody("INVALID_INPUT")), "refused"],
+    ["FORBIDDEN", () => json(403, errorBody("FORBIDDEN")), "refused"],
+    ["ORIGIN_MISMATCH", () => json(403, errorBody("ORIGIN_MISMATCH")), "refused"],
+    ["IDEMPOTENCY_CONFLICT", () => json(409, errorBody("IDEMPOTENCY_CONFLICT")), "refused"],
+    ["CHECKOUT_NOT_FOUND", () => json(404, errorBody("CHECKOUT_NOT_FOUND")), "refused"],
+    ["CHECKOUT_PAID", () => json(409, errorBody("CHECKOUT_PAID")), "refused"],
+    ["CONFIGURATION_UNAVAILABLE", () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")), "unavailable"],
+    ["an unexpected code", () => json(422, errorBody("INSUFFICIENT_SOL")), "unavailable"],
+    ["a bare 404", html404, "unavailable"],
+    ["no answer", () => Promise.reject(new TypeError("fetch failed")), "unavailable"],
+  ])("reads %s on create and join as %s", async (_, respond, failure) => {
+    expect(await api(respond).create(REQUEST, REQUEST_ID)).toEqual({ ok: false, failure });
+    expect(await api(respond).join(ID)).toEqual({ ok: false, failure });
   });
 });

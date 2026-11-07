@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ActionKind } from "./catalog";
-import { checkoutLinks, deriveCreateView, deriveResultView, deriveRoomView, type CheckoutState } from "./checkout-view";
-import { fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
+import {
+  checkoutLinks,
+  deriveCreateView,
+  deriveResultView,
+  deriveReviewActions,
+  deriveRoomView,
+  type CheckoutState,
+  type ClientRequestId,
+} from "./checkout-view";
+import { SAMPLE_WALLETS } from "./fixture-data";
+import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
 
 const CASES = fixtureCases();
 const caseById = (id: string): FixtureCase => {
@@ -192,6 +201,34 @@ describe("the create screen", () => {
     expect(off.chrome.sample).toBeNull();
     const on = deriveCreateView({ config: null, session: null, source: { kind: "live", samplesOn: true } });
     expect(on).toMatchObject({ kind: "unavailable", samples: { indexHref: "/samples", createHref: "/?sample" } });
+  });
+
+  const form = (session: CheckoutState["session"]) => {
+    const view = deriveCreateView({ ...sampleCreateState(), session });
+    if (view.kind !== "form") throw new Error("The sample create screen isn't a form");
+    return view;
+  };
+  const request = {
+    title: "Cabin weekend groceries",
+    sellerWallet: SAMPLE_WALLETS.seller,
+    totalUnits: FIXTURES["open-spots"].snapshot.checkout.totalUnits,
+    payerCount: 3,
+  } as const;
+  const requestId = "6f1c2b9e-3d4a-4e5f-8a7b-9c0d1e2f3a4b" as ClientRequestId;
+
+  it("asks a signed-out organizer to connect a wallet in Create checkout's place", () => {
+    const actions = deriveReviewActions(form(null), request, requestId);
+    expect(actions.primary).toEqual({ kind: "connect_wallet" });
+    expect(actions.secondary).toEqual([{ kind: "edit_details" }]);
+  });
+
+  it("offers Create checkout with the reviewed request and its ID once signed in", () => {
+    const session = { wallet: SAMPLE_WALLETS.organizer, expiresAt: "2099-01-01T00:00:00.000Z" };
+    expect(deriveReviewActions(form(session), request, requestId).primary).toEqual({
+      kind: "create_checkout",
+      request,
+      clientRequestId: requestId,
+    });
   });
 
   it("with sample data, is a labeled form that leads to the open sample room", () => {

@@ -150,6 +150,18 @@ export type RoomSnapshot = {
   readonly attempt: AttemptSummary | null;
 };
 
+/** A client-generated UUID that makes POST /api/checkouts idempotent for one organizer. */
+export type ClientRequestId = string & { readonly __brand: "ClientRequestId" };
+
+/** PROVISIONAL(B1): POST /api/checkouts body. */
+export type CreateCheckoutBody = {
+  readonly title: string;
+  readonly sellerWallet: Address;
+  readonly totalUnits: TokenUnits;
+  readonly payerCount: PayerCount;
+  readonly clientRequestId: ClientRequestId;
+};
+
 /** PROVISIONAL(B1): POST /api/auth/challenge data. */
 export type AuthChallenge = { readonly challengeId: string; readonly messageBase64: string; readonly expiresAt: string };
 

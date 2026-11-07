@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { looksLikeAddress, type Address } from "./contracts";
-import { checkDraft, type DraftInput } from "./create-draft";
-import { SAMPLE_CONFIG } from "./fixture-data";
+import { looksLikeAddress, type Address, type ClientRequestId } from "./contracts";
+import { checkDraft, requestIds, type DraftInput } from "./create-draft";
+import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
 
 const wallet = (s: string): Address => {
   if (!looksLikeAddress(s)) throw new Error(`bad test wallet ${s}`);
@@ -53,5 +53,44 @@ describe("checkDraft explains each problem in plain words", () => {
     if (check.ok) return;
     expect(check.errors[field]).toMatch(message);
     expect(Object.keys(check.errors)).toEqual([field]);
+  });
+});
+
+describe("requestIds gives each set of details one ID for the life of the form", () => {
+  const counter = () => {
+    let n = 0;
+    return () => `id-${(n += 1)}` as ClientRequestId;
+  };
+  const request = (patch: Partial<DraftInput> = {}) => {
+    const check = checkDraft({ ...valid, ...patch }, ctx);
+    if (!check.ok) throw new Error(JSON.stringify(check.errors));
+    return check.review.request;
+  };
+
+  it("keeps the ID for the same details, so a retry can't create a second checkout", () => {
+    const idFor = requestIds(counter());
+    expect(idFor(request())).toBe(idFor(request({ title: "Cabin weekend groceries" })));
+  });
+
+  it.each<[string, Partial<DraftInput>]>([
+    ["title", { title: "Concert tickets" }],
+    ["seller", { seller: SAMPLE_WALLETS.cam }],
+    ["total", { total: "12" }],
+    ["payer count", { payerCount: "2" }],
+  ])("makes a new ID when the %s changes", (_, patch) => {
+    const idFor = requestIds(counter());
+    expect(idFor(request())).not.toBe(idFor(request(patch)));
+  });
+
+  it("returns A's ID for details A, then B, then A again", () => {
+    const idFor = requestIds(counter());
+    const a = idFor(request());
+    const b = idFor(request({ total: "12" }));
+    expect(idFor(request())).toBe(a);
+    expect(b).not.toBe(a);
+  });
+
+  it("mints UUIDs by default", () => {
+    expect(requestIds()(request())).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   });
 });

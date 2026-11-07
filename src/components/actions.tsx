@@ -1,42 +1,101 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { createContext, use, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ACTIONS, WORDS } from "@/client/catalog";
 import type { Action, ActionsView } from "@/client/checkout-view";
+import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
 import { useWalletSession } from "./wallet/wallet-scope";
 
-type Notice = { readonly text: string; readonly followUp: Action | null };
+/** The live room's tracker. Viewer provides it. Elsewhere, such as create, a reply shows nothing. */
+export const RoomTrack = createContext<Track>(untracked);
+
+/**
+ * A notice shows only while the wallet that raised it is still the signed-in one and the action that
+ * raised it is still offered. It clears itself when the viewer switches account, or when the room
+ * changes under it, such as a join that timed out but went through.
+ */
+type Notice = {
+  readonly text: string;
+  readonly followUp: Action | null;
+  readonly wallet: string | null;
+  readonly raisedBy: Action["kind"];
+};
 
 export function ActionGroup({
   actions,
   onEditDetails,
+  fallbackFocus,
   children,
 }: {
   readonly actions: ActionsView;
   readonly onEditDetails?: () => void;
+  /** Gets focus when the focused control goes away and the group has no primary action left. */
+  readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children?: ReactNode;
 }): ReactNode {
+  const { session, expired } = useWalletSession();
+  const track = use(RoomTrack);
+  const router = useRouter();
+  const [busy, setBusy] = useState<LiveKind | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const inFlight = useRef(false);
+  const root = useRef<HTMLDivElement>(null);
+  const focused = useRef<Element | null>(null);
+  const wallet = session?.wallet ?? null;
+
+  // A reply can remove the control that has focus, such as Join after joining. Focus then moves to the
+  // primary action instead of dropping to the page.
+  useLayoutEffect(() => {
+    const lost = focused.current;
+    const dropped = document.activeElement === null || document.activeElement === document.body;
+    if (lost === null || lost.isConnected || !dropped) return;
+    focused.current = null;
+    (root.current?.querySelector<HTMLElement>("[data-action='primary']") ?? fallbackFocus?.current)?.focus();
+  });
+
+  const runLive = async (action: LiveAction) => {
+    const sentAs = session;
+    inFlight.current = true;
+    setNotice(null);
+    setBusy(action.kind);
+    const outcome = await live.run(action, track);
+    switch (outcome.kind) {
+      case "open":
+        router.push(outcome.href);
+        return;
+      case "done":
+        break;
+      case "signed_out":
+        if (sentAs) expired(sentAs);
+        break;
+      case "notice":
+        setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: action.kind });
+        break;
+    }
+    inFlight.current = false;
+    setBusy(null);
+  };
 
   const run = async (action: Action) => {
+    if (inFlight.current) return;
+    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action.kind });
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
-      setNotice({
-        text: `${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`,
-        followUp: actions.sample.followUp,
-      });
+      say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`, actions.sample.followUp);
       return;
     }
+    if (isLiveAction(action)) return runLive(action);
     switch (action.kind) {
       case "copy_link":
         try {
           await navigator.clipboard.writeText(new URL(action.href, window.location.origin).href);
-          setNotice({ text: WORDS.link_copied, followUp: null });
+          say(WORDS.link_copied);
         } catch {
-          setNotice({ text: WORDS.copy_failed, followUp: null });
+          say(WORDS.copy_failed);
         }
         return;
       case "edit_details":
@@ -46,38 +105,52 @@ export function ActionGroup({
         window.location.reload();
         return;
       default:
-        setNotice({ text: `${ACTIONS[action.kind].label} ${WORDS.not_connected_yet} ${WORDS.nothing_sent}`, followUp: null });
+        say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_yet} ${WORDS.nothing_sent}`);
     }
   };
 
+  const offered = [actions.primary, ...actions.secondary].map((a) => a?.kind);
+  const shown = notice !== null && notice.wallet === wallet && offered.includes(notice.raisedBy) ? notice : null;
   const stubbed =
     actions.sample !== null &&
     [actions.primary, ...actions.secondary].some(
       (a) => a !== null && a.kind !== "connect_wallet" && ACTIONS[a.kind].needs !== "nothing",
     );
   return (
-    <div className="flex flex-col gap-4">
+    <div
+      ref={root}
+      onFocus={(event) => {
+        focused.current = event.target;
+      }}
+      className="flex flex-col gap-4"
+    >
       {actions.primary && (
         <div>
-          <ActionControl action={actions.primary} variant="primary" onRun={run} />
+          <ActionControl action={actions.primary} variant="primary" busy={busy} onRun={run} />
         </div>
       )}
       {children}
       {actions.secondary.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           {actions.secondary.map((a) => (
-            <ActionControl key={a.kind} action={a} variant={a.kind === "back_to_checkout" ? "link" : "quiet"} onRun={run} />
+            <ActionControl
+              key={a.kind}
+              action={a}
+              variant={a.kind === "back_to_checkout" ? "link" : "quiet"}
+              busy={busy}
+              onRun={run}
+            />
           ))}
         </div>
       )}
       <div role="status" className="flex flex-col gap-1 text-small">
-        {notice ? (
+        {shown ? (
           <>
             <p className="flex items-start gap-2 font-semibold">
               <Icon name="info" />
-              {notice.text}
+              {shown.text}
             </p>
-            {notice.followUp && <ActionControl action={notice.followUp} variant="link" onRun={run} />}
+            {shown.followUp && <ActionControl action={shown.followUp} variant="link" busy={busy} onRun={run} />}
           </>
         ) : (
           stubbed && <p className="text-muted">{WORDS.sample_caption}</p>
@@ -90,10 +163,13 @@ export function ActionGroup({
 function ActionControl({
   action,
   variant,
+  busy,
   onRun,
 }: {
   readonly action: Action;
   readonly variant: keyof typeof BUTTON;
+  /** The live action the group is running. Every button in the group waits for it. */
+  readonly busy: LiveKind | null;
   readonly onRun: (action: Action) => void;
 }): ReactNode {
   const meta = ACTIONS[action.kind];
@@ -116,10 +192,32 @@ function ActionControl({
       </Link>
     );
   }
-  return (
-    <button type="button" data-action={dataAction} onClick={() => onRun(action)} className={BUTTON[variant]}>
+  const idle = (
+    <>
       {action.kind === "copy_link" && <Icon name="copy" />}
       {meta.label}
+    </>
+  );
+  return (
+    <button
+      type="button"
+      data-action={dataAction}
+      aria-disabled={busy !== null || undefined}
+      onClick={busy !== null ? undefined : () => onRun(action)}
+      className={`${BUTTON[variant]} aria-disabled:cursor-progress`}
+    >
+      {busy === action.kind && "busy" in meta ? (
+        <span className="grid">
+          {/* The hidden idle label keeps the button's width while it's busy. */}
+          <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-2">{idle}</span>
+          <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">
+            <Icon name="spinner" />
+            {meta.busy}
+          </span>
+        </span>
+      ) : (
+        idle
+      )}
     </button>
   );
 }
