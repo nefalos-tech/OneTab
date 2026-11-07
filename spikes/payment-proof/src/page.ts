@@ -22,35 +22,55 @@ const refresh = element('refresh', HTMLButtonElement);
 const message = element('message', HTMLParagraphElement);
 const inventory = element('inventory', HTMLPreElement);
 const payment = element('payment', HTMLPreElement);
-const params = new URLSearchParams(location.hash.slice(1));
-const rawInvite = params.get('invite');
-if (rawInvite) {
+const invitationKey = 'onetab-p1-invitation';
+function captureInvitation(params: URLSearchParams) {
+  if (!params.has('invite')) return;
   history.replaceState(null, '', location.pathname);
-  const checked = inviteSchema.parse(JSON.parse(rawInvite));
-  sessionStorage.setItem('onetab-p1-invitation', JSON.stringify(checked));
+  sessionStorage.removeItem(invitationKey);
+  sessionStorage.setItem(invitationKey, params.get('invite') ?? '');
 }
-const stored = sessionStorage.getItem('onetab-p1-invitation');
-const invite = stored ? inviteSchema.parse(JSON.parse(stored)) : null;
+captureInvitation(new URLSearchParams(location.hash.slice(1)));
+let invite: z.infer<typeof inviteSchema> | null = null;
+let invalidInvitation = false;
+try {
+  const stored = sessionStorage.getItem(invitationKey);
+  invite = stored === null ? null : inviteSchema.parse(JSON.parse(stored));
+} catch {
+  sessionStorage.removeItem(invitationKey);
+  invalidInvitation = true;
+}
+const navigation = new AbortController();
 let activeOperations = 0;
 let disconnecting = false;
 let state: unknown = null;
 const wallets = getWallets();
 const session = new WalletSession(() => render());
+window.addEventListener('hashchange', () => {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (!params.has('invite')) return;
+  navigation.abort();
+  session.clear();
+  captureInvitation(params);
+  location.reload();
+});
 
 async function api(path: string, method: 'GET' | 'POST' = 'GET', body: unknown = {}): Promise<unknown> {
-  const response = await fetch(`/api/${path}`, { method, cache: 'no-store',
+  navigation.signal.throwIfAborted();
+  const response = await fetch(`/api/${path}`, { method, cache: 'no-store', signal: navigation.signal,
     headers: { ...(invite ? { authorization: `Bearer ${invite.capability}` } : {}), ...(method === 'POST' ? { 'content-type': 'application/json' } : {}) },
     ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
   });
   if (!response.ok) throw new Error('Request rejected. Check account, message lifetime, and current state.');
-  return response.json();
+  const value: unknown = await response.json();
+  navigation.signal.throwIfAborted();
+  return value;
 }
 const viewSchema = z.object({
   kind: z.literal('experiment'), id: z.string(), messageHash: z.string(), planHash: z.string(), state: z.string(),
   approvedSlots: z.array(z.object({ slot: slotSchema })),
 });
 function render() {
-  const busy = activeOperations > 0;
+  const busy = activeOperations > 0 || navigation.signal.aborted;
   const info = session.inventory();
   inventory.textContent = JSON.stringify(info ?? { availableWallets: wallets.get().map(wallet => ({
     name: wallet.name, walletStandardVersion: wallet.version, chains: [...wallet.chains], features: Object.keys(wallet.features),
@@ -72,7 +92,7 @@ function listWallets() {
   })); render();
 }
 async function run(operation: () => Promise<void>, interrupt = false) {
-  if (activeOperations && !interrupt) return;
+  if (navigation.signal.aborted || activeOperations && !interrupt) return;
   activeOperations++; message.textContent = ''; render();
   try { await operation(); }
   catch (error) { message.textContent = error instanceof Error ? error.message : 'Operation failed'; }
@@ -112,4 +132,5 @@ simulate.onclick = () => void run(async () => { message.textContent = JSON.strin
 wallets.on('register', listWallets);
 wallets.on('unregister', () => { session.clear(); listWallets(); });
 listWallets();
-void run(async () => { state = await api('view'); });
+if (invalidInvitation) message.textContent = 'Invalid private invitation. Open a valid payer invitation.';
+else void run(async () => { state = await api('view'); });

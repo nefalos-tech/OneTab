@@ -19,10 +19,12 @@ Use the current profile sequentially with two distinct payer accounts, or open e
 ## Change payer in the same profile
 
 1. Select the registered wallet and choose **Disconnect wallet**. Wait for the provider-disconnection result. This explicit action calls the optional Wallet Standard `standard:disconnect` feature, even if the last connection failed or no local account is connected. An unavailable feature or provider failure reports an error. **Clear local connection** only forgets this tab's account and does not call the provider.
-2. Open the intended payer's invitation, then choose **Connect wallet**. Select that payer in the wallet prompt if the wallet offers an account choice. Verify the exact displayed address before approving.
+2. Switch the selected Phantom account to the intended payer. Open that payer's invitation, then choose **Connect wallet**. Verify the exact displayed address before approving. If another wallet offers an account choice in its connection prompt, select the intended payer there.
 3. If Phantom still returns the previous account, open that account's **Settings > Connected Apps** in Phantom. Disconnect only this experiment's origin. Choose **Connect wallet** again, open the account avatar in the fresh prompt, and select the intended payer. Verify the displayed address again. Leave other connected apps alone.
 
-Wallet Standard disconnect does not promise permission revocation or a different account on the next connect. The new app button's effect on Phantom account selection still requires a live check. No connection operation automatically disconnects a wallet. Disconnecting invalidates pending local approvals immediately, even if provider cleanup later fails. It does not revoke an approval already issued for the frozen payment.
+The coordinator verified this order in the current Chrome profile with Phantom `26.38.1` and Chrome `155.0.8059.41`. After **Disconnect wallet**, switching the selected Phantom account, and **Connect wallet**, the page displayed the intended distinct account.
+
+Wallet Standard disconnect does not revoke previously granted permissions or guarantee a different account on the next connect. No connection operation automatically disconnects a wallet. Disconnecting invalidates pending local approvals immediately, even if provider cleanup later fails. It does not revoke an approval already issued for the frozen payment.
 
 ## Prepare the fixed payment
 
@@ -61,7 +63,7 @@ The state directory requires mode `0700`. SQLite and invitation files use mode `
 
 ## Approve and submit
 
-1. Open payer zero's private invitation. The page removes the URL fragment and retains that invitation in this tab's session storage. Check the displayed plan against the reviewed public configuration.
+1. Open payer zero's private invitation. The page removes the URL fragment and retains that invitation in this tab's session storage. Opening another invitation in the same tab clears the local wallet connection, cancels outstanding requests, and reloads the page before using the new invitation. An invalid invitation discards the previous stored capability and disables payment actions. Check the displayed plan against the reviewed public configuration.
 2. Connect the expected account. Select **Approve my contribution**. The browser validates the full message before one sign-only prompt. The coordinator independently verifies the returned Ed25519 signature.
 3. Verify that submit remains disabled with one approval. Select **Check first-signature refusal**. Only an explicit RPC signature-verification error counts as refusal. An unrelated simulation failure is inconclusive. Simulation never broadcasts.
 4. In the same profile, follow **Change payer in the same profile** before connecting payer one. Alternatively, open payer one's invitation in its independent profile. Verify the second distinct account and approve separately. Compare both displayed message hashes.
@@ -85,3 +87,16 @@ npm run proof -- report --out .private/public-report.json
 Inspect that public report before sharing it. Its explicit projection excludes raw signatures, signable and signed transaction bytes, role tokens, and RPC credentials. It includes only public payment details, hashes, approval timestamps, diagnostics, status, and any verified receipt. Record browser and extension versions separately. `walletStandardVersion` describes the interface, not the installed extension version.
 
 Local tests use clearly synthetic ephemeral keys. They establish transaction, persistence, and boundary behavior. They do not establish real browser-wallet acceptance, live balance changes, or Postgres recovery.
+
+## Check invitation navigation in a disposable browser
+
+The browser regression runs separately from `npm run check`. Use an existing Playwright installation and its Chromium browser. No additional project dependencies are required. Run from this directory after installing the committed dependencies.
+
+```sh
+npm run build
+node --import tsx test/invite-navigation.mjs --playwright-module /path/to/playwright/index.mjs
+```
+
+If using an existing Chromium binary instead of Playwright's default, append `--browser-executable /path/to/chrome-headless-shell`.
+
+The check starts an ephemeral loopback server and a disposable headless browser. Its synthetic wallet signs synthetic transactions. It checks fresh invitations, same-document payer changes, invalid invitations, and old pending signature and rejection results released during navigation. It verifies that navigation alone makes no approval, decline, or submission request. It never reads `.private/`, connects to a wallet extension, or calls Solana RPC.

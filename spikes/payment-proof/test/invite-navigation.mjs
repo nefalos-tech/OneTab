@@ -26,7 +26,7 @@ for (const entry of readdirSync('dist', { recursive: true, withFileTypes: true }
   assets.set(path === '/index.html' ? '/' : path, readFileSync(absolute));
 }
 const requests = [];
-const server = createServer(async (request, response) => {
+const server = createServer((request, response) => {
   const path = new URL(request.url, 'http://127.0.0.1').pathname;
   if (path.startsWith('/api/')) {
     const role = invitations.find(invite => request.headers.authorization === `Bearer ${invite.capability}`)?.slot ?? null;
@@ -123,8 +123,8 @@ try {
     assert.equal(requests.at(-1).role, 1); assert.equal(mutations().length, 0);
     await connected(page, 1); await signedOnce(page, 1);
   });
-  for (const fragment of ['#invite=%7Bbad-json', '#invite=']) {
-    await scenario(`invalid incoming ${fragment === '#invite=' ? 'empty' : 'malformed'} invitation fails closed`, async page => {
+  for (const [kind, fragment] of [['malformed', '#invite=%7Bbad-json'], ['empty', '#invite='], ['schema-invalid', '#invite=%7B%7D']]) {
+    await scenario(`invalid incoming ${kind} invitation fails closed`, async page => {
       await page.goto(inviteUrl(0)); await loaded(page, 0); await connected(page, 0);
       requests.length = 0;
       await page.goto(`${origin}/${fragment}`);
@@ -140,25 +140,23 @@ try {
     });
   }
   for (const reject of [false, true]) {
-    await scenario(`invitation change invalidates an old pending ${reject ? 'rejection' : 'signature'} before reload completes`, async page => {
+    await scenario(`invitation change invalidates an old pending ${reject ? 'rejection' : 'signature'} before reload`, async page => {
       await page.goto(inviteUrl(0)); await loaded(page, 0); await connected(page, 0);
       await page.evaluate(() => { window.holdSyntheticSign = true; });
       await page.getByRole('button', { name: 'Approve my contribution', exact: true }).click();
       await page.waitForFunction(() => typeof window.completeSyntheticSign === 'function');
-      let releaseReload;
-      let reloadStarted;
-      const started = new Promise(resolveStarted => { reloadStarted = resolveStarted; });
-      const held = new Promise(resolveHeld => { releaseReload = resolveHeld; });
-      await page.route(`${origin}/`, async route => { reloadStarted(); await held; await route.continue(); });
-      try {
-        await page.evaluate(url => { location.href = url; }, inviteUrl(1));
-        await Promise.race([started, new Promise((_, rejectTimeout) => setTimeout(() => rejectTimeout(new Error('No document reload started')), 3000))]);
-        await page.evaluate(reject => window.completeSyntheticSign(reject), reject);
-        await page.waitForFunction(() => document.querySelector('#message').textContent.includes('Wallet changed during approval'));
-        assert.equal(await page.locator('#approve').isDisabled(), true);
-        assert.equal(mutations().length, 0);
-      } finally { releaseReload(); }
+      await page.evaluate(reject => window.addEventListener('hashchange', () => {
+        sessionStorage.setItem('synthetic-old-document', JSON.stringify({
+          disabled: document.querySelector('#approve').disabled, hash: location.hash,
+          account: JSON.parse(document.querySelector('#inventory').textContent).account ?? null,
+        }));
+        window.completeSyntheticSign(reject);
+      }, { once: true }), reject);
+      await page.goto(inviteUrl(1));
       await loaded(page, 1);
+      assert.deepEqual(await page.evaluate(() => JSON.parse(sessionStorage.getItem('synthetic-old-document'))),
+        { disabled: true, hash: '', account: null });
+      assert.equal(await page.evaluate(() => Number(sessionStorage.getItem('synthetic-sign-count'))), 1);
       assert.equal(mutations().length, 0);
     });
   }
