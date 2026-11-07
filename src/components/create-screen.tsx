@@ -50,7 +50,7 @@ export function CreateScreen({ state }: { readonly state: CreateState }): ReactN
 function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const [input, setInput] = useState<DraftInput>(EMPTY);
   const [touched, setTouched] = useState<ReadonlySet<DraftField>>(new Set());
-  const [review, setReview] = useState<DraftReview | null>(null);
+  const [reviewing, setReviewing] = useState(false);
   const formHeading = useRef<HTMLHeadingElement>(null);
   const reviewHeading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
@@ -59,11 +59,14 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const check = checkDraft(input, ctx);
   const errors = check.ok ? {} : check.errors;
   const errorOf = (field: DraftField) => (touched.has(field) ? errors[field] : undefined);
+  // Derived each render, so an identity change re-checks the draft against the new organizer.
+  const review = reviewing && check.ok ? check.review : null;
+  const showingReview = review !== null;
 
   useEffect(() => {
     if (!moved.current) return;
-    (review ? reviewHeading : formHeading).current?.focus();
-  }, [review]);
+    (showingReview ? reviewHeading : formHeading).current?.focus();
+  }, [showingReview]);
 
   const set = (field: DraftField) => (value: string) => setInput((prev) => ({ ...prev, [field]: value }));
   const touch = (field: DraftField) => () => setTouched((prev) => new Set(prev).add(field));
@@ -73,7 +76,7 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
     setTouched(new Set(FIELDS));
     if (check.ok) {
       moved.current = true;
-      setReview(check.review);
+      setReviewing(true);
       return;
     }
     const first = FIELDS.find((f) => errors[f]);
@@ -92,7 +95,7 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
             headingRef={reviewHeading}
             onEdit={() => {
               moved.current = true;
-              setReview(null);
+              setReviewing(false);
             }}
           />
         ) : (

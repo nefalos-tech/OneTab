@@ -71,7 +71,6 @@ export type ViewerRole =
 
 export type Chrome = {
   readonly networkLabel: string;
-  readonly viewerWallet: Address | null;
   readonly flow: readonly FlowStepView[];
   readonly sample: SampleBanner | null;
 };
@@ -249,7 +248,6 @@ export function deriveResultView(state: CheckoutState): ResultView {
 export function deriveCreateView(state: CreateState): CreateView {
   const chrome: Chrome = {
     networkLabel: NETWORK_LABELS[state.config?.network ?? "devnet"],
-    viewerWallet: state.session?.wallet ?? null,
     flow: flowOf("create"),
     sample: state.source.kind === "sample" ? { fixtureLabel: null, personas: [], indexHref: SAMPLES_PATH } : null,
   };
@@ -491,7 +489,6 @@ function chromeOf(state: CheckoutState, step: FlowStepId | "complete", screen: S
   const { source } = state;
   return {
     networkLabel: NETWORK_LABELS[state.config.network],
-    viewerWallet: state.session?.wallet ?? null,
     flow: flowOf(step),
     sample:
       source.kind === "sample"

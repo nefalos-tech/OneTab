@@ -6,6 +6,7 @@ import { ACTIONS, WORDS } from "@/client/catalog";
 import type { Action, ActionsView } from "@/client/checkout-view";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
+import { useWalletSession } from "./wallet/wallet-scope";
 
 type Notice = { readonly text: string; readonly followUp: Action | null };
 
@@ -19,8 +20,11 @@ export function ActionGroup({
   readonly children?: ReactNode;
 }): ReactNode {
   const [notice, setNotice] = useState<Notice | null>(null);
+  const wallet = useWalletSession();
 
   const run = async (action: Action) => {
+    // The sample wallet is a real device on sample pages, so Connect wallet works there too.
+    if (action.kind === "connect_wallet") return wallet.connect();
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       setNotice({
@@ -51,7 +55,9 @@ export function ActionGroup({
 
   const stubbed =
     actions.sample !== null &&
-    [actions.primary, ...actions.secondary].some((a) => a !== null && ACTIONS[a.kind].needs !== "nothing");
+    [actions.primary, ...actions.secondary].some(
+      (a) => a !== null && a.kind !== "connect_wallet" && ACTIONS[a.kind].needs !== "nothing",
+    );
   return (
     <div className="flex flex-col gap-4">
       {actions.primary && (
