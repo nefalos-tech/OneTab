@@ -30,7 +30,7 @@ export function WalletStatus(): ReactNode {
             : ""
         }
       >
-        <p role="status" className={shown ? "flex items-start gap-2 py-1 font-semibold" : "sr-only"}>
+        <p role="status" data-wallet-line="" className={shown ? "flex items-start gap-2 py-1 font-semibold" : "sr-only"}>
           {shown && <Icon name={shown.kind === "problem" ? "alert" : "spinner"} />}
           {status?.text}
         </p>

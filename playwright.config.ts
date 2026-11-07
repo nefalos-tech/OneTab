@@ -10,7 +10,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never" }]],
   use: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   projects: [
-    { name: "samples", testMatch: "samples.spec.ts", use: { baseURL: `http://localhost:${SAMPLES_PORT}` } },
+    { name: "samples", testMatch: ["samples.spec.ts", "wallet.spec.ts"], use: { baseURL: `http://localhost:${SAMPLES_PORT}` } },
     { name: "gating", testMatch: "gating.spec.ts", use: { baseURL: `http://localhost:${GATED_PORT}` } },
   ],
   webServer: [
