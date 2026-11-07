@@ -50,7 +50,7 @@ function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered:
         shown = ticket;
         show(answer.value);
       }
-      if (intent === "read" && current && ticket > reported) {
+      if (current && ticket > reported && (answer.ok || intent === "read")) {
         reported = ticket;
         reached(answer.ok);
       }
@@ -326,7 +326,28 @@ export type Live = {
   watch(room: Watched): () => void;
   tracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track;
   readonly noted: NotedCauses;
+  readonly arrivals: Arrivals;
 };
+
+/** A move unmounts the page that made it, so the page it opens learns of the move from here. */
+export type Arrivals = {
+  moveTo(href: string): void;
+  movedTo(href: string): boolean;
+  landed(): void;
+};
+
+function arrivals(): Arrivals {
+  let target: string | null = null;
+  return {
+    moveTo(href) {
+      target = href;
+    },
+    movedTo: (href) => target === href,
+    landed() {
+      target = null;
+    },
+  };
+}
 
 type Refused = { readonly cause: FundingCause; readonly replacing: AttemptId | null };
 
@@ -377,6 +398,7 @@ export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment
         show(snapshot);
       }, reached),
     noted: { subscribe: memory.subscribe, current: memory.current },
+    arrivals: arrivals(),
   };
 }
 

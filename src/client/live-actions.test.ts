@@ -1110,7 +1110,15 @@ describe("the tracker's report of whether the room answered", () => {
     expect(reports).toEqual([true]);
   });
 
-  it("ignores a read sent while a write was in flight", async () => {
+  it("reports that the room answered when a write shows a room, after reads that failed", async () => {
+    const reports: boolean[] = [];
+    const track = tracker(() => {}, (answered) => reports.push(answered));
+    await track("read", async () => failed);
+    await track("write", async () => ({ ok: true, value: JOINED }));
+    expect(reports).toEqual([false, true]);
+  });
+
+  it("ignores a failed read sent while a write was in flight, and reports the room the write shows", async () => {
     const reports: boolean[] = [];
     const track = tracker(() => {}, (answered) => reports.push(answered));
     const write = settle<Result<RoomSnapshot, "unavailable">>();
@@ -1118,7 +1126,7 @@ describe("the tracker's report of whether the room answered", () => {
     await track("read", async () => failed);
     write.release({ ok: true, value: OPEN });
     await writing;
-    expect(reports).toEqual([]);
+    expect(reports).toEqual([true]);
   });
 });
 
@@ -1164,7 +1172,7 @@ describe("the tracker, in every order of sends and answers", () => {
         readsOpen.delete(step.index);
         const shows = request.ok && !straddles.has(step.index) && step.index > newestBefore;
         expect(shown.at(-1) ?? -1, `${where}: answer ${step.index}`).toBe(shows ? step.index : newestBefore);
-        const reported = request.intent === "read" && !straddles.has(step.index) && step.index > newestKnown;
+        const reported = (request.ok || request.intent === "read") && !straddles.has(step.index) && step.index > newestKnown;
         expect(reports.slice(reportsBefore), `${where}: reach of answer ${step.index}`).toEqual(reported ? [[step.index, request.ok]] : []);
       }
       expect(reports.map(([i]) => i), `${where}: reports in send order`).toEqual(reports.map(([i]) => i).sort((a, b) => a - b));

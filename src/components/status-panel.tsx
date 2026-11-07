@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { createContext, use, useEffect, useRef, type ReactNode } from "react";
 import { WORDS, type Situation, type Tone } from "@/client/catalog";
 import type { ActionsView, ApprovalView, Reason, StatusView, YouView } from "@/client/checkout-view";
 import { ActionGroup } from "./actions";
@@ -29,6 +29,9 @@ const ICON: { readonly [S in Situation]: IconName } = {
   paid: "check",
 };
 
+/** True on the screen a live page moved the viewer to, so it reads the new status first. */
+export const ArrivedByMove = createContext(false);
+
 export function StatusPanel({
   status,
   you,
@@ -49,7 +52,11 @@ export function StatusPanel({
   readonly children?: ReactNode;
 }): ReactNode {
   const Heading = heading;
-  const line = useRef<HTMLParagraphElement>(null);
+  const block = useRef<HTMLDivElement>(null);
+  const arrived = use(ArrivedByMove);
+  useEffect(() => {
+    if (arrived) block.current?.focus();
+  }, [arrived]);
   return (
     <section
       data-situation={status.situation}
@@ -64,21 +71,23 @@ export function StatusPanel({
         <Icon name={ICON[status.situation]} />
         <span data-status-label="">{status.label}</span>
       </Heading>
-      <p ref={line} role="status" tabIndex={-1} data-status-line="" className="max-w-prose focus:outline-none">
-        {status.line}
-      </p>
-      {connection && (
-        <p data-connection="" className="flex items-start gap-2 text-small text-muted">
-          <Icon name="alert" />
-          {connection}
+      <div ref={block} role="status" tabIndex={-1} data-status-block="" className="flex flex-col gap-4 focus:outline-none">
+        <p data-status-line="" className="max-w-prose">
+          {status.line}
         </p>
-      )}
-      {reason && (
-        <div data-status-reason="" data-reason-from={reason.from} className="flex max-w-prose flex-col gap-1 text-muted">
-          <p>{reason.happened}</p>
-          {reason.next && <p>{reason.next}</p>}
-        </div>
-      )}
+        {connection && (
+          <p data-connection="" className="flex items-start gap-2 text-small text-muted">
+            <Icon name="alert" />
+            {connection}
+          </p>
+        )}
+        {reason && (
+          <div data-status-reason="" data-reason-from={reason.from} className="flex max-w-prose flex-col gap-1 text-muted">
+            <p>{reason.happened}</p>
+            {reason.next && <p>{reason.next}</p>}
+          </div>
+        )}
+      </div>
       {approval ? (
         <ApprovalSummary approval={approval} />
       ) : (
@@ -91,7 +100,7 @@ export function StatusPanel({
           </div>
         )
       )}
-      <ActionGroup actions={actions} fallbackFocus={line}>
+      <ActionGroup actions={actions} fallbackFocus={block}>
         {children}
       </ActionGroup>
     </section>

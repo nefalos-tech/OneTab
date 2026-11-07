@@ -11,6 +11,7 @@ import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
 import { ResultScreen } from "./result-screen";
 import { RoomScreen } from "./room-screen";
+import { ArrivedByMove } from "./status-panel";
 import { SampleWalletProvider, useWalletSession } from "./wallet/wallet-scope";
 
 export type ViewerProps =
@@ -38,6 +39,8 @@ function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly
   const noted = useSyncExternalStore(live.noted.subscribe, live.noted.current, () => NOTHING_HEARD.noted);
   const { session, expired } = useWalletSession();
   const router = useRouter();
+  const [arrived] = useState(() => live.arrivals.movedTo(state.source.links[screen]));
+  useEffect(() => live.arrivals.landed(), []);
   const snapshot = received ?? state.snapshot;
   const id = state.snapshot.checkout.id;
 
@@ -53,12 +56,16 @@ function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly
     const next = ownerOf(received);
     const moved = lastOwner.current !== null && next !== lastOwner.current;
     lastOwner.current = next;
-    if (moved && next !== screen) router.push(state.source.links[next]);
+    if (!moved || next === screen) return;
+    live.arrivals.moveTo(state.source.links[next]);
+    router.push(state.source.links[next]);
   }, [received, screen, router, state.source.links]);
 
   return (
     <RoomTrack value={track}>
-      <Screen screen={screen} state={{ ...state, snapshot, page: { noted, roomUnreachable } }} />
+      <ArrivedByMove value={arrived}>
+        <Screen screen={screen} state={{ ...state, snapshot, page: { noted, roomUnreachable } }} />
+      </ArrivedByMove>
     </RoomTrack>
   );
 }

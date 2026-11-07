@@ -22,6 +22,8 @@ const room = (id: string) => `/checkouts/${id}`;
 const result = (id: string) => `/checkouts/${id}/result`;
 const panel = (page: Page) => page.locator("[data-situation]");
 const actions = (page: Page) => panel(page).locator("[data-action]");
+const statusRegion = (page: Page) => page.locator("[data-status-block][role='status']");
+const focusedStatus = (page: Page) => page.evaluate(() => document.activeElement?.hasAttribute("data-status-block") ?? false);
 const browserReads = (page: Page, id: string) => page.waitForRequest((r) => new URL(r.url()).pathname === `/api/checkouts/${id}`);
 
 function countReads(page: Page, id: string): { readonly count: () => number } {
@@ -101,9 +103,10 @@ test("losing the connection keeps the same transaction on screen and says so unt
   const attempt = await attemptShown(page);
   const line = await page.locator("[data-status-line]").textContent();
   await expect(page.locator("[data-connection]")).toHaveCount(0);
+  expect(await focusedStatus(page), "a direct load leaves focus where the browser puts it").toBe(false);
 
   await request.post(outage(id, true));
-  await expect(page.locator("[data-connection]")).toHaveText(WORDS.room_unreachable, { timeout: 5_000 });
+  await expect(statusRegion(page).locator("[data-connection]")).toHaveText(WORDS.room_unreachable, { timeout: 5_000 });
   await expect(page.locator("[data-status-label]")).toHaveText(SITUATIONS.unresolved.label);
   await expect(page.locator("[data-status-line]")).toHaveText(line!);
   await expect(panel(page)).toContainText(REFERENCE);
@@ -173,7 +176,8 @@ test("a payment that fails before sending moves viewers to an honest result, and
   await expect(page).toHaveURL(result(id));
   await expect(panel(page)).toHaveAttribute("data-situation", "failed");
   await expect(panel(page)).toHaveAttribute("data-attempt", failed!);
-  const reason = page.locator("[data-status-reason]");
+  await expect.poll(() => focusedStatus(page), "the move puts focus on the status, so it is read first").toBe(true);
+  const reason = statusRegion(page).locator("[data-status-reason]");
   await expect(reason).toHaveAttribute("data-reason-from", "attempt");
   await expect(reason).toHaveText(`${STOP_REASONS.not_sent.happened}${STOP_REASONS.not_sent.next}`);
   await expect(page.locator("[data-status-line]")).toContainText("The organizer can start a new payment, and everyone approves again.");
