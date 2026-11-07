@@ -40,6 +40,28 @@ const NO_API_CLIENT = {
   group: ["@/client/api", "**/client/api"],
   message: "Only src/client and the live sign-in client send requests. Components start them through @/client/live-actions, pages load through @/client/checkout-source.",
 };
+const NO_PAYMENT_CHECK = {
+  group: ["@/client/payment-check", "**/client/payment-check"],
+  message: "Approvals run through live.run in @/client/live-actions, which checks the payment before any wallet prompt.",
+};
+const BROADCAST = "OneTab's browser only asks a wallet to approve. The server sends the one payment.";
+const NO_BROADCAST = [
+  {
+    name: "@solana/wallet-standard-features",
+    importNames: ["SolanaSignAndSendTransaction", "SolanaSignAndSendTransactionFeature"],
+    message: BROADCAST,
+  },
+  {
+    name: "@solana/kit",
+    importNames: [
+      "createSolanaRpc",
+      "createSolanaRpcSubscriptions",
+      "sendAndConfirmTransactionFactory",
+      "sendTransactionWithoutConfirmingFactory",
+    ],
+    message: BROADCAST,
+  },
+];
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],
   message: "Components render views from @/client/checkout-view. Loading, wire types and samples stay in src/client.",
@@ -51,7 +73,7 @@ const PAGE_INPUTS = {
 
 /** A file matched by several blocks gets only the last block's patterns, so each block lists its full set. */
 const restrict = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, ...patterns] }],
+  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, ...patterns] }],
 });
 
 export default defineConfig([
@@ -68,15 +90,15 @@ export default defineConfig([
   },
   {
     files: ["src/components/**/*.{ts,tsx}"],
-    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT),
+    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
   },
   {
     files: ["src/app/**/*.{ts,tsx}"],
-    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT),
+    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
   },
   {
     files: ["src/components/wallet/wallet-scope.tsx"],
-    rules: restrict(NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT),
+    rules: restrict(NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
   },
   {
     files: ["src/lib/wallet/**/*.{ts,tsx}"],
@@ -92,6 +114,7 @@ export default defineConfig([
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {
+          paths: NO_BROADCAST,
           patterns: [
             {
               group: ["*", "./*", "../*"],
