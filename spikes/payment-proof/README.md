@@ -55,6 +55,8 @@ Wallet Standard disconnect does not promise permission revocation or a different
 npm run proof -- prepare --config .private/payment.config.json --port 4317
 ```
 
+The original message includes a fixed 400,000-compute-unit limit and zero priority price before both transfers. This prevents Phantom from choosing fees by changing the message at signing. Every payer still must return the exact frozen bytes. Zero priority price is a bounded Devnet policy, not a production fee recommendation.
+
 Preparation checks the Devnet genesis, the fixed Circle mint, token-account owners and states, balances, and the actual message fee estimate. It rejects delegated, native, close-authority, frozen, and extension token accounts. The message format supports direct signatures by the two expected payer authorities. Equal shares use integer units. Slot zero receives an odd remainder and pays the SOL fee.
 
 The command stores one frozen message and disposable local role tokens in `.private/proof.sqlite`. It exports private invitations to `.private/proof.sqlite.invitations.json`. The SQLite file is authoritative. Repeating the same preparation re-exports its existing tokens and message. A different plan fails. An interruption before invitation export does not require a new payment.
