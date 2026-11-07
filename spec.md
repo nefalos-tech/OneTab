@@ -30,7 +30,7 @@ The organizer creates the checkout, occupies the first payer slot and starts a p
 
 ### Create checkout
 
-The organizer connects and authenticates a wallet, then enters a title, seller wallet, positive USDC total and participant count. A review step shows the network, seller, total and exact individual shares.
+The organizer enters a title, seller wallet, positive USDC total and participant count. A review step shows the network, seller, total and exact individual shares. The organizer connects and authenticates a wallet at the review step, before creating. If that wallet is the seller, the review returns to the form ([F3](docs/cards/F3.md)).
 
 Creating the checkout fixes the seller, total and participant count. Corrections require a new checkout. The app returns a shareable room link.
 

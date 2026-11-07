@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { ActionKind } from "./catalog";
-import { deriveCreateView, deriveResultView, deriveRoomView, type CheckoutState } from "./checkout-view";
-import { fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
+import {
+  checkoutLinks,
+  deriveCreateView,
+  deriveResultView,
+  deriveReviewActions,
+  deriveRoomView,
+  noticeApplies,
+  type ActionsView,
+  type CheckoutState,
+  type ClientRequestId,
+  type Notice,
+} from "./checkout-view";
+import { SAMPLE_WALLETS } from "./fixture-data";
+import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
 
 const CASES = fixtureCases();
 const caseById = (id: string): FixtureCase => {
@@ -162,6 +174,50 @@ describe("contract-inconsistent snapshots stay honest", () => {
   });
 });
 
+describe("a live room", () => {
+  const outsider = caseById("open-spots as outsider").state;
+  const live: CheckoutState = {
+    ...outsider,
+    source: { kind: "live", links: checkoutLinks(outsider.snapshot.checkout.id) },
+  };
+
+  it("offers Join with the checkout's own ID, so the action knows which checkout to join", () => {
+    expect(deriveRoomView(live).actions.primary).toEqual({ kind: "join", checkoutId: outsider.snapshot.checkout.id });
+  });
+
+  it("labels the network from the checkout itself", () => {
+    for (const view of [deriveRoomView(live), deriveResultView(live)]) {
+      expect(view.chrome.networkLabel).toBe("Test USDC on Solana Devnet");
+    }
+  });
+
+  it("links the room and the result with no query", () => {
+    const id = outsider.snapshot.checkout.id;
+    expect(deriveResultView(live).actions.primary).toEqual({ kind: "back_to_checkout", href: `/checkouts/${id}` });
+  });
+});
+
+describe("the seller", () => {
+  const asSeller = (id: string): CheckoutState => {
+    const { state } = caseById(id);
+    return { ...state, session: { wallet: state.snapshot.checkout.sellerWallet, expiresAt: "2099-01-01T00:00:00.000Z" } };
+  };
+
+  it("is told they don't take a spot, and gets no action, while spots are open", () => {
+    const room = deriveRoomView(asSeller("open-spots as outsider"));
+    expect(room.status.line).toBe("You're the seller, so you don't take a spot.");
+    expect(room.actions.primary).toBeNull();
+    expect(room.actions.secondary).toEqual([]);
+    expect(room.you).toBeNull();
+  });
+
+  it("reads like anyone else with the link once the room is full", () => {
+    const room = deriveRoomView(asSeller("full-not-ready as outsider"));
+    expect(room.status.line).toBe("This checkout is full. Waiting for 1 payer to get ready.");
+    expect(room.actions.primary).toBeNull();
+  });
+});
+
 describe("the create screen", () => {
   it("is unavailable without payment configuration and offers samples only while they are on", () => {
     const off = deriveCreateView({ config: null, session: null, source: { kind: "live", samplesOn: false } });
@@ -171,10 +227,67 @@ describe("the create screen", () => {
     expect(on).toMatchObject({ kind: "unavailable", samples: { indexHref: "/samples", createHref: "/?sample" } });
   });
 
+  const form = (session: CheckoutState["session"]) => {
+    const view = deriveCreateView({ ...sampleCreateState(), session });
+    if (view.kind !== "form") throw new Error("The sample create screen isn't a form");
+    return view;
+  };
+  const request = {
+    title: "Cabin weekend groceries",
+    sellerWallet: SAMPLE_WALLETS.seller,
+    totalUnits: FIXTURES["open-spots"].snapshot.checkout.totalUnits,
+    payerCount: 3,
+  } as const;
+  const requestId = "6f1c2b9e-3d4a-4e5f-8a7b-9c0d1e2f3a4b" as ClientRequestId;
+
+  it("asks a signed-out organizer to connect a wallet in Create checkout's place", () => {
+    const actions = deriveReviewActions(form(null), request, requestId);
+    expect(actions.primary).toEqual({ kind: "connect_wallet" });
+    expect(actions.secondary).toEqual([{ kind: "edit_details" }]);
+  });
+
+  it("offers Create checkout with the reviewed request and its ID once signed in", () => {
+    const session = { wallet: SAMPLE_WALLETS.organizer, expiresAt: "2099-01-01T00:00:00.000Z" };
+    expect(deriveReviewActions(form(session), request, requestId).primary).toEqual({
+      kind: "create_checkout",
+      request,
+      clientRequestId: requestId,
+    });
+  });
+
   it("with sample data, is a labeled form that leads to the open sample room", () => {
     const view = deriveCreateView(sampleCreateState());
     expect(view).toMatchObject({ kind: "form", sampleRoomHref: "/checkouts/sample-open-spots?as=spot-1" });
     expect(view.chrome.sample).not.toBeNull();
     expect(view.chrome.flow.map((s) => s.state)).toEqual(["current", "upcoming", "upcoming", "upcoming"]);
+  });
+});
+
+describe("a notice applies while its wallet is signed in and its action is offered", () => {
+  const offering = (primary: ActionsView["primary"], secondary: ActionsView["secondary"] = []): ActionsView => ({
+    primary,
+    secondary,
+    sample: null,
+  });
+  const join = offering({ kind: "join", checkoutId: FIXTURES["open-spots"].snapshot.checkout.id });
+  const notice: Notice = { text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: "join" };
+
+  it("applies to the wallet that raised it while the action is the primary or a secondary one", () => {
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: join })).toBe(true);
+    expect(noticeApplies({ ...notice, raisedBy: "edit_details" }, { wallet: SAMPLE_WALLETS.bea, actions: offering(null, [{ kind: "edit_details" }]) })).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["another wallet", SAMPLE_WALLETS.cam],
+    ["no wallet", null],
+  ])("ends when %s is signed in", (_, wallet) => {
+    expect(noticeApplies(notice, { wallet, actions: join })).toBe(false);
+  });
+
+  it("ends when its action is no longer offered", () => {
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering({ kind: "connect_wallet" }) })).toBe(false);
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering(null) })).toBe(false);
   });
 });

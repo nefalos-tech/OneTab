@@ -2,6 +2,7 @@ import type {
   Address,
   AttemptSummary,
   CheckoutId,
+  ClientRequestId,
   PayerCount,
   PublicConfig,
   Receipt,
@@ -10,11 +11,12 @@ import type {
   TokenUnits,
 } from "./contracts";
 
-export type { Session } from "./contracts";
+export type { ClientRequestId, Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
   SITUATIONS,
+  WORDS,
   type ActionKind,
   type FlowStepId,
   type OwnedBy,
@@ -27,7 +29,6 @@ import { splitEqually, type Money } from "./units";
 import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
 export type CheckoutState = {
-  readonly config: PublicConfig;
   readonly snapshot: RoomSnapshot;
   readonly session: Session | null;
   readonly source: CheckoutSource;
@@ -68,6 +69,7 @@ export function checkoutLinks(segment: CheckoutId | `sample-${string}`, query = 
 export type ViewerRole =
   | { readonly kind: "organizer"; readonly slot: number }
   | { readonly kind: "payer"; readonly slot: number }
+  | { readonly kind: "seller" }
   | { readonly kind: "guest" }
   | { readonly kind: "spectator" }
   | { readonly kind: "signed_out" };
@@ -124,10 +126,10 @@ type Href = { readonly href: string };
 type ActionPayload = {
   readonly review_checkout: NoPayload;
   readonly edit_details: NoPayload;
-  readonly create_checkout: { readonly request: CreateRequest };
+  readonly create_checkout: { readonly request: CreateRequest; readonly clientRequestId: ClientRequestId };
   readonly copy_link: Href;
   readonly connect_wallet: NoPayload;
-  readonly join: NoPayload;
+  readonly join: { readonly checkoutId: CheckoutId };
   readonly mark_ready: NoPayload;
   readonly mark_not_ready: NoPayload;
   readonly start_payment: NoPayload;
@@ -141,13 +143,26 @@ type ActionPayload = {
   readonly create_a_checkout: Href;
   readonly reload_page: NoPayload;
 };
-export type Action = { [K in ActionKind]: { readonly kind: K } & ActionPayload[K] }[ActionKind];
+export type ActionOf<K extends ActionKind> = { [P in K]: { readonly kind: P } & ActionPayload[P] }[K];
+export type Action = ActionOf<ActionKind>;
 
 export type ActionsView = {
   readonly primary: Action | null;
   readonly secondary: readonly Action[];
   readonly sample: { readonly followUp: Action | null } | null;
 };
+
+export type Notice = {
+  readonly text: string;
+  readonly followUp: Action | null;
+  readonly wallet: Address | null;
+  readonly raisedBy: ActionKind;
+};
+
+export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
+  const offered = [now.actions.primary, ...now.actions.secondary];
+  return notice.wallet === now.wallet && offered.some((action) => action?.kind === notice.raisedBy);
+}
 
 export type Recovery =
   | { readonly kind: "on_hold" }
@@ -216,7 +231,7 @@ export function deriveRoomView(state: CheckoutState): RoomView {
   const tab = tabOf(state.snapshot, role);
   const me = tab.spots.find((s) => s.isViewer) ?? null;
   const plan = isOwnedBy(c.situation, "room")
-    ? ROOM_ACTIONS[c.situation]({ role, me: me?.status ?? null, links: state.source.links })
+    ? ROOM_ACTIONS[c.situation]({ checkoutId: state.snapshot.checkout.id, role, me: me?.status ?? null, links: state.source.links })
     : {
         primary:
           c.situation === "paid"
@@ -273,9 +288,10 @@ export function deriveCreateView(state: CreateState): CreateView {
 export function deriveReviewActions(
   view: Extract<CreateView, { readonly kind: "form" }>,
   request: CreateRequest,
+  clientRequestId: ClientRequestId,
 ): ActionsView {
   return {
-    primary: { kind: "create_checkout", request },
+    primary: view.organizer === null ? { kind: "connect_wallet" } : { kind: "create_checkout", request, clientRequestId },
     secondary: [{ kind: "edit_details" }],
     sample: view.sampleRoomHref === null ? null : { followUp: { kind: "open_sample_room", href: view.sampleRoomHref } },
   };
@@ -324,13 +340,13 @@ function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation
 
 function roleOf(snapshot: RoomSnapshot, session: Session | null, situation: Situation): ViewerRole {
   if (session === null) return { kind: "signed_out" };
+  if (session.wallet === snapshot.checkout.sellerWallet) return { kind: "seller" };
   const spot = snapshot.participants.find((p) => p.wallet === session.wallet);
   if (spot) {
     return session.wallet === snapshot.checkout.organizerWallet
       ? { kind: "organizer", slot: spot.slot }
       : { kind: "payer", slot: spot.slot };
   }
-  if (session.wallet === snapshot.checkout.sellerWallet) return { kind: "spectator" };
   return situation === "open_spots" ? { kind: "guest" } : { kind: "spectator" };
 }
 
@@ -490,7 +506,7 @@ function flowOf(step: FlowStepId | "complete"): readonly FlowStepView[] {
 function chromeOf(state: CheckoutState, step: FlowStepId | "complete", screen: Screen): Chrome {
   const { source } = state;
   return {
-    networkLabel: NETWORK_LABELS[state.config.network],
+    networkLabel: NETWORK_LABELS[state.snapshot.checkout.network],
     flow: flowOf(step),
     sample:
       source.kind === "sample"
@@ -507,7 +523,12 @@ function sampleActions(state: CheckoutState): ActionsView["sample"] {
   return state.source.kind === "sample" ? { followUp: null } : null;
 }
 
-type ActorContext = { readonly role: ViewerRole; readonly me: SpotStatus | null; readonly links: ScreenLinks };
+type ActorContext = {
+  readonly checkoutId: CheckoutId;
+  readonly role: ViewerRole;
+  readonly me: SpotStatus | null;
+  readonly links: ScreenLinks;
+};
 type ActionPlan = { readonly primary: Action | null; readonly secondary: readonly Action[] };
 
 const NONE: ActionPlan = { primary: null, secondary: [] };
@@ -523,7 +544,7 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
       : isMember(c.role)
         ? { primary: { kind: "copy_link", href: c.links.room }, secondary: [readinessToggle(c.me)] }
         : c.role.kind === "guest"
-          ? { primary: { kind: "join" }, secondary: [] }
+          ? { primary: { kind: "join", checkoutId: c.checkoutId }, secondary: [] }
           : NONE,
   full_not_ready: (c) =>
     c.role.kind === "signed_out"
@@ -568,11 +589,13 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       ? "There's an open spot. Join to pay your share."
       : c.role.kind === "signed_out"
         ? "Sign in with your wallet to take an open spot."
-        : c.role.kind === "organizer"
-          ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
-          : c.role.kind === "payer"
-            ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
-            : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
+        : c.role.kind === "seller"
+          ? WORDS.seller_no_spot
+          : c.role.kind === "organizer"
+            ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            : c.role.kind === "payer"
+              ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
+              : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
   full_not_ready: (c) =>
     isMember(c.role) && c.me !== "ready"
       ? "Everyone has joined. Check your share, then tell the group you're ready."
