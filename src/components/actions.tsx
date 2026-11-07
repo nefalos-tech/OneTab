@@ -2,7 +2,17 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createContext, use, useLayoutEffect, useRef, useState, useTransition, type ReactNode, type RefObject } from "react";
+import {
+  createContext,
+  use,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useTransition,
+  type FocusEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { ACTIONS, WORDS } from "@/client/catalog";
 import { noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
@@ -30,19 +40,10 @@ export function ActionGroup({
   const [, startNavigation] = useTransition();
   const [notice, setNotice] = useState<Notice | null>(null);
   const inFlight = useRef(false);
-  const root = useRef<HTMLDivElement>(null);
-  const focused = useRef<Element | null>(null);
+  const focusFallback = useFocusFallback(fallbackFocus);
   const wallet = session?.wallet ?? null;
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
-
-  useLayoutEffect(() => {
-    const lost = focused.current;
-    const dropped = document.activeElement === null || document.activeElement === document.body;
-    if (lost === null || lost.isConnected || !dropped) return;
-    focused.current = null;
-    (root.current?.querySelector<HTMLElement>("[data-action='primary']") ?? fallbackFocus?.current)?.focus();
-  });
 
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
@@ -107,13 +108,7 @@ export function ActionGroup({
       (a) => a !== null && a.kind !== "connect_wallet" && ACTIONS[a.kind].needs !== "nothing",
     );
   return (
-    <div
-      ref={root}
-      onFocus={(event) => {
-        focused.current = event.target;
-      }}
-      className="flex flex-col gap-4"
-    >
+    <div {...focusFallback} className="flex flex-col gap-4">
       {actions.primary && (
         <div>
           <ActionControl action={actions.primary} variant="primary" busy={busy} onRun={run} />
@@ -148,6 +143,24 @@ export function ActionGroup({
       </div>
     </div>
   );
+}
+
+function useFocusFallback(fallback: RefObject<HTMLElement | null> | undefined) {
+  const root = useRef<HTMLDivElement>(null);
+  const focused = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    const lost = focused.current;
+    const dropped = document.activeElement === null || document.activeElement === document.body;
+    if (lost === null || lost.isConnected || !dropped) return;
+    focused.current = null;
+    (root.current?.querySelector<HTMLElement>("[data-action='primary']") ?? fallback?.current)?.focus();
+  });
+  return {
+    ref: root,
+    onFocus: (event: FocusEvent<HTMLDivElement>) => {
+      focused.current = event.target;
+    },
+  };
 }
 
 function ActionControl({
@@ -195,18 +208,20 @@ function ActionControl({
       onClick={busy !== null ? undefined : () => onRun(action)}
       className={`${BUTTON[variant]} aria-disabled:cursor-progress`}
     >
-      {busy === action.kind && "busy" in meta ? (
-        <span className="grid">
-          <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-2">{idle}</span>
-          <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">
-            <Icon name="spinner" />
-            {meta.busy}
-          </span>
-        </span>
-      ) : (
-        idle
-      )}
+      {busy === action.kind && "busy" in meta ? <BusyLabel busy={meta.busy} keepWidthOf={idle} /> : idle}
     </button>
+  );
+}
+
+function BusyLabel({ busy, keepWidthOf }: { readonly busy: string; readonly keepWidthOf: ReactNode }): ReactNode {
+  return (
+    <span className="grid">
+      <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-2">{keepWidthOf}</span>
+      <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">
+        <Icon name="spinner" />
+        {busy}
+      </span>
+    </span>
   );
 }
 
