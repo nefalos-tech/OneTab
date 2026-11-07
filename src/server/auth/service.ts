@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { isRecord, looksLikeAddress, type Address } from "@/client/contracts";
+import { decodePublicKey } from "../solana/address";
 
 const COOKIE_NAME = "onetab_session";
 const CHALLENGE_TTL_MS = 5 * 60_000;
@@ -48,20 +49,6 @@ function decodeBase64(value: unknown, bytes: number): Uint8Array<ArrayBuffer> | 
   return decoded.length === bytes && decoded.toString("base64") === value ? Uint8Array.from(decoded) : null;
 }
 
-function decodeBase58(value: string): Uint8Array<ArrayBuffer> | null {
-  let number = 0n;
-  for (const char of value) {
-    const digit = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".indexOf(char);
-    if (digit < 0) return null;
-    number = number * 58n + BigInt(digit);
-  }
-  const tail = number === 0n ? [] : [...Buffer.from(number.toString(16).padStart(number.toString(16).length + number.toString(16).length % 2, "0"), "hex")];
-  const leadingZeros = value.match(/^1*/)?.[0].length ?? 0;
-  const decoded = new Uint8Array(leadingZeros + tail.length);
-  decoded.set(tail, leadingZeros);
-  return decoded.length === 32 ? decoded : null;
-}
-
 export function signInMessage(input: { id: string; wallet: string; origin: string; expiresAt: string }): Uint8Array {
   return new TextEncoder().encode([
     "OneTab sign-in",
@@ -76,7 +63,7 @@ export function signInMessage(input: { id: string; wallet: string; origin: strin
 export async function issueChallenge(walletValue: unknown): Promise<AuthResult<IssuedChallenge>> {
   const config = configured();
   if (!config) return { ok: false, code: "CONFIGURATION_UNAVAILABLE" };
-  if (typeof walletValue !== "string" || !looksLikeAddress(walletValue) || !decodeBase58(walletValue)) return { ok: false, code: "INVALID_INPUT" };
+  if (typeof walletValue !== "string" || !looksLikeAddress(walletValue) || !decodePublicKey(walletValue)) return { ok: false, code: "INVALID_INPUT" };
   const id = randomUUID();
   const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS).toISOString();
   const message = signInMessage({ id, wallet: walletValue, origin: config.origin, expiresAt });
@@ -130,7 +117,7 @@ export async function verifyChallenge(input: { id: unknown; signature: unknown; 
     };
     if (challenge.expires_at <= new Date().toISOString()) return { ok: false, code: "CHALLENGE_EXPIRED" };
     if (!looksLikeAddress(challenge.wallet) || challenge.origin !== config.origin || challenge.purpose !== PURPOSE) return { ok: false, code: "ORIGIN_MISMATCH" };
-    const keyBytes = decodeBase58(challenge.wallet);
+    const keyBytes = decodePublicKey(challenge.wallet);
     if (!keyBytes) return { ok: false, code: "INVALID_INPUT" };
     const publicKey = await crypto.subtle.importKey("raw", Uint8Array.from(keyBytes), { name: "Ed25519" }, false, ["verify"]);
     const message = Uint8Array.from(Buffer.from(challenge.message_bytes.replace(/^\\x/, ""), "hex"));
