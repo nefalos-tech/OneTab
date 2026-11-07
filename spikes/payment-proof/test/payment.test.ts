@@ -1,13 +1,14 @@
 import { test } from 'node:test';
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import assert from 'node:assert/strict';
 import {
-  address, createTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
+  address, createTransactionMessage, getAddressDecoder, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
   getTransactionDecoder, getTransactionEncoder, setTransactionMessageComputeUnitLimit,
   setTransactionMessageComputeUnitPrice, signatureBytes, type TransactionMessage,
 } from '@solana/kit';
 import { getTransferCheckedInstructionDataDecoder, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import {
-  assembleSubmission, freezePayment, fromBase64, inspectPayment, planSchema, toBase64, unitsSchema,
+  approvalSchema, assembleSubmission, assembleVerifiedApprovals, freezePayment, fromBase64, inspectPayment, planSchema, toBase64, unitsSchema,
   sha256, verifyApproval, verifyWalletReturn, type FrozenPayment,
 } from '../src/payment.js';
 import { randomAddress, syntheticFixture } from './fixtures.js';
@@ -280,4 +281,69 @@ test('P1 safeParse rejects malformed and overflowing canonical units without thr
       assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
     }
   }
+});
+
+const P1_SIGNATURE_KNOWN_ANSWER = {
+  "signed": {
+    "reference": "33Xojbf2raPCjgBV9un3Kj6kh2KhS3Py3Fw6fyrka7vxs61m9r1fbwf3YdVqaMPayNRfuJ9PjuDbQHb7HNXmKoqV",
+    "signedBase64": "AmY3fPcGr2Cv0LiNOcNea8e+m3xhbahKZwJt8JlxdFU4c+hlsnoO6FA0Q6nvDRQm1D1FOKTp8qXNu8w/O1VMQwRR/LykN7sSBm0Z7spcsD4mN111oXtUZplmOivXCL5PQgvyo3xbIR1+lJeWo1SG/ed0Xj3s6mpUcpzde/IfKf8EAgEDCIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cgTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+    "signedHash": "d812e54e532ea8836d2182d149227637780478b34e61e1edc1b248c49f5e94e4"
+  },
+  "diagnostic": {
+    "reference": "",
+    "signedBase64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABR/LykN7sSBm0Z7spcsD4mN111oXtUZplmOivXCL5PQgvyo3xbIR1+lJeWo1SG/ed0Xj3s6mpUcpzde/IfKf8EAgEDCIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cgTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY="
+  }
+};
+
+async function deterministicSignatureFixture() {
+  const syntheticAddress = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
+  const keys = [1, 2].map(value => createPrivateKey({
+    key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.alloc(32, value)]),
+    format: 'der', type: 'pkcs8',
+  }));
+  const wallets = keys.map(key => getAddressDecoder().decode(
+    createPublicKey(key).export({ format: 'der', type: 'spki' }).subarray(-32),
+  ));
+  const plan = planSchema.parse({
+    network: 'devnet', mint: P1_KNOWN_ANSWER.plan.mint, decimals: 6, tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    sellerWallet: syntheticAddress(10), sellerTokenAccount: syntheticAddress(11), feePayer: wallets[0], total: '4000001',
+    contributions: wallets.map((wallet, slot) => ({
+      slot, wallet, sourceTokenAccount: syntheticAddress(20 + slot), units: slot ? '2000000' : '2000001',
+    })),
+  });
+  const payment = await freezePayment({ id: P1_KNOWN_ANSWER.id, plan, blockhash: syntheticAddress(30), lastValidBlockHeight: '100' });
+  const approvals = await Promise.all(keys.map(async (key, slot) => {
+    const imported = await crypto.subtle.importKey('pkcs8', key.export({ format: 'der', type: 'pkcs8' }), 'Ed25519', false, ['sign']);
+    return { slot, messageHash: payment.messageHash, signatureBase64: toBase64(new Uint8Array(
+      await crypto.subtle.sign('Ed25519', imported, Uint8Array.from(fromBase64(payment.messageBase64)).buffer),
+    )) };
+  }));
+  return { payment, approvals: approvals.map(value => approvalSchema.parse(value)) };
+}
+
+test('P1 signed transaction, reference, hash and incomplete diagnostic match the pre-extraction Ed25519 baseline', async () => {
+  const { payment, approvals } = await deterministicSignatureFixture();
+  assert.deepEqual(await assembleSubmission(payment, approvals), P1_SIGNATURE_KNOWN_ANSWER.signed);
+  assert.deepEqual(await assembleSubmission(payment, [...approvals].reverse()), P1_SIGNATURE_KNOWN_ANSWER.signed);
+  assert.deepEqual(assembleVerifiedApprovals(payment, approvals.slice(1), true), P1_SIGNATURE_KNOWN_ANSWER.diagnostic);
+});
+
+test('P1 signature adapters snapshot the payment message before awaiting verification', async () => {
+  const first = await deterministicSignatureFixture();
+  const approval = first.approvals[0];
+  assert.ok(approval);
+  const verification = verifyApproval(first.payment, approval);
+  first.payment.messageBase64 = toBase64(new Uint8Array([1, 2, 3]));
+  assert.deepEqual(await verification, approval);
+});
+
+test('P1 signature adapters snapshot the frozen transaction and complete approval collection before awaiting assembly', async () => {
+  const second = await deterministicSignatureFixture();
+  const assembly = assembleSubmission(second.payment, second.approvals);
+  second.payment.messageBase64 = toBase64(new Uint8Array([1, 2, 3]));
+  second.payment.transactionBase64 = '';
+  second.payment.plan.feePayer = randomAddress();
+  second.approvals[0] = { slot: 1, messageHash: '0'.repeat(64), signatureBase64: '' };
+  second.approvals.length = 1;
+  assert.deepEqual(await assembly, P1_SIGNATURE_KNOWN_ANSWER.signed);
 });
