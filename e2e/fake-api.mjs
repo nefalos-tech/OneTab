@@ -1,5 +1,3 @@
-// A stand-in for Backend's public read routes, for the e2e servers' page loads. Browsers never reach it.
-// It never serves a sample's UUID, so those still return 404 through the real CHECKOUT_NOT_FOUND path.
 import { createServer } from "node:http";
 
 export const FAKE_API = { empty: "http://localhost:3198", rooms: "http://localhost:3199" };

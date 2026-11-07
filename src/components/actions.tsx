@@ -10,14 +10,8 @@ import { BUTTON } from "./button";
 import { Icon } from "./icon";
 import { useWalletSession } from "./wallet/wallet-scope";
 
-/** The live room's tracker. Viewer provides it. Elsewhere, such as create, a reply shows nothing. */
 export const RoomTrack = createContext<Track>(untracked);
 
-/**
- * A notice shows only while the wallet that raised it is still the signed-in one and the action that
- * raised it is still offered. It clears itself when the viewer switches account, or when the room
- * changes under it, such as a join that timed out but went through.
- */
 type Notice = {
   readonly text: string;
   readonly followUp: Action | null;
@@ -33,7 +27,6 @@ export function ActionGroup({
 }: {
   readonly actions: ActionsView;
   readonly onEditDetails?: () => void;
-  /** Gets focus when the focused control goes away and the group has no primary action left. */
   readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children?: ReactNode;
 }): ReactNode {
@@ -47,8 +40,6 @@ export function ActionGroup({
   const focused = useRef<Element | null>(null);
   const wallet = session?.wallet ?? null;
 
-  // A reply can remove the control that has focus, such as Join after joining. Focus then moves to the
-  // primary action instead of dropping to the page.
   useLayoutEffect(() => {
     const lost = focused.current;
     const dropped = document.activeElement === null || document.activeElement === document.body;
@@ -168,7 +159,6 @@ function ActionControl({
 }: {
   readonly action: Action;
   readonly variant: keyof typeof BUTTON;
-  /** The live action the group is running. Every button in the group waits for it. */
   readonly busy: LiveKind | null;
   readonly onRun: (action: Action) => void;
 }): ReactNode {
@@ -208,7 +198,6 @@ function ActionControl({
     >
       {busy === action.kind && "busy" in meta ? (
         <span className="grid">
-          {/* The hidden idle label keeps the button's width while it's busy. */}
           <span className="invisible col-start-1 row-start-1 inline-flex items-center gap-2">{idle}</span>
           <span className="col-start-1 row-start-1 inline-flex items-center justify-center gap-2">
             <Icon name="spinner" />

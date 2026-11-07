@@ -66,12 +66,6 @@ export function checkDraft(
   };
 }
 
-/**
- * One clientRequestId per distinct set of details, for the life of one create form. A retry after an
- * unknown outcome, or Edit details with nothing changed, sends the same ID, so the server returns the
- * checkout the first try may have created. Each set keeps its own ID, so details A, then B, then A again
- * reuse A's, and the server never sees one ID with two sets of details.
- */
 export function requestIds(
   mint: () => ClientRequestId = () => crypto.randomUUID() as ClientRequestId,
 ): (request: CreateRequest) => ClientRequestId {

@@ -14,7 +14,6 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const errorBody = (code: string) => ({ error: { code, message: "Something the browser never shows." } });
 
-/** Answers each request with the next response in line, and records what was sent. */
 function server(...responses: (() => Response | Promise<Response>)[]): { readonly fetch: FetchLike; readonly calls: Call[] } {
   const calls: Call[] = [];
   return {
@@ -139,7 +138,6 @@ describe("live actions", () => {
 type Request = { readonly intent: "read" | "write"; readonly ok: boolean };
 type Step = { readonly kind: "send" | "answer"; readonly index: number };
 
-/** Every order of sends and answers where requests are sent in index order and each answer follows its send. */
 function interleavings(count: number): Step[][] {
   const orders: Step[][] = [];
   const walk = (sent: number, answered: ReadonlySet<number>, steps: Step[]) => {

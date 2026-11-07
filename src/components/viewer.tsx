@@ -29,11 +29,6 @@ export function Viewer(props: ViewerProps): ReactNode {
   return <LiveCheckout key={props.state.snapshot.checkout.id} screen={props.screen} state={props.state} />;
 }
 
-/**
- * One live checkout. It shows the newest room a browser request returned, else the server's load, and
- * the tracker decides which reply is newest. Keyed by checkout ID, so no reply crosses to another
- * checkout. F4's poll joins here through live.refresh with this tracker.
- */
 function LiveCheckout({ screen, state }: { readonly screen: "room" | "result"; readonly state: CheckoutState }): ReactNode {
   const [received, setReceived] = useState<CheckoutState["snapshot"] | null>(null);
   const [track] = useState(() => roomTracker(setReceived));

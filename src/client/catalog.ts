@@ -128,7 +128,6 @@ type ActionMeta = {
   readonly label: string;
   readonly needs: "nothing" | "backend" | "wallet" | "chain";
   readonly element: "button" | "link" | "external_link";
-  /** The label while the request runs. An action with one is live, and live-actions.ts must run it. */
   readonly busy?: string;
 };
 
@@ -154,10 +153,6 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
-/**
- * What the viewer reads when a create or join produced no snapshot. signed_out has no words, because the
- * wallet status already says the sign-in expired.
- */
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",

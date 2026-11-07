@@ -23,14 +23,12 @@ export default defineConfig({
       reuseExistingServer: false,
     },
     {
-      // Samples on, and a backend that knows no checkout and can't create one.
       command: `npx next start -p ${SAMPLES_PORT}`,
       url: `http://localhost:${SAMPLES_PORT}/samples`,
       env: { ONETAB_FIXTURES: "1", ONETAB_API_ORIGIN: FAKE_API.empty },
       reuseExistingServer: false,
     },
     {
-      // Samples off, and a backend with live rooms: the hosted app once Backend's routes land.
       command: `npx next start -p ${GATED_PORT}`,
       url: `http://localhost:${GATED_PORT}/`,
       env: { ONETAB_FIXTURES: "", ONETAB_API_ORIGIN: FAKE_API.rooms },

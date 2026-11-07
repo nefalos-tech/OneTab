@@ -150,10 +150,8 @@ export type RoomSnapshot = {
   readonly attempt: AttemptSummary | null;
 };
 
-/** A client-generated UUID that makes POST /api/checkouts idempotent for one organizer. */
 export type ClientRequestId = string & { readonly __brand: "ClientRequestId" };
 
-/** PROVISIONAL(B1): POST /api/checkouts body. */
 export type CreateCheckoutBody = {
   readonly title: string;
   readonly sellerWallet: Address;
@@ -168,13 +166,6 @@ export type AuthChallenge = { readonly challengeId: string; readonly messageBase
 /** PROVISIONAL(B1): POST /api/auth/verify body. */
 export type AuthVerifyRequest = { readonly challengeId: string; readonly signatureBase64: string };
 
-/**
- * PROVISIONAL(B1): the boundary check for a room the server sent, until B1 publishes runtime schemas.
- * It checks field types, branded strings, enums, a payer count of 2 or 3 and slots inside it, and returns
- * a fresh object with only the contract's fields. It doesn't re-check server invariants such as shares
- * summing to the total. deriveRoomView trusts its input, so a lane mismatch reads as an outage here
- * instead of a crash inside the view.
- */
 export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
   if (!isRecord(data) || !isOneOf(data.phase, PHASES)) return null;
   const checkout = parseCheckout(data.checkout);
@@ -185,7 +176,6 @@ export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
   return { checkout, participants, phase: data.phase, attempt };
 }
 
-/** PROVISIONAL(B1): GET /api/config data. */
 export function parsePublicConfig(data: unknown): PublicConfig | null {
   if (!isRecord(data)) return null;
   const { network, mint, tokenDecimals, confirmationTarget } = data;
@@ -193,9 +183,6 @@ export function parsePublicConfig(data: unknown): PublicConfig | null {
     ? { network, mint, tokenDecimals, confirmationTarget }
     : null;
 }
-
-// The parsers below return undefined when the data doesn't parse, because null is a valid attempt,
-// attempt error and receipt.
 
 function parseCheckout(data: unknown): Checkout | undefined {
   if (!isRecord(data)) return undefined;

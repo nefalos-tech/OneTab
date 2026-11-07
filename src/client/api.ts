@@ -15,13 +15,6 @@ import {
 
 export type FetchLike = (path: string, init: RequestInit) => Promise<Response>;
 
-/**
- * One answer from a contract route.
- * - `data`: status 200 or 201 with a `{ data }` body. Creation may answer 201.
- * - `error`: any other answer. `code` is null when the body has no known error code, such as the
- *   HTML 404 a route returns before Backend deploys it.
- * - `no_answer`: the request failed or timed out. For a mutation the outcome is unknown.
- */
 export type Reply =
   | { readonly kind: "data"; readonly data: unknown }
   | { readonly kind: "error"; readonly status: number; readonly code: ErrorCode | null }
@@ -29,7 +22,6 @@ export type Reply =
 
 const TIMEOUT_MS = 10_000;
 
-/** Never throws, and drops the envelope's `message`, so no caller can show it. */
 export async function send(
   fetchImpl: FetchLike,
   method: "GET" | "POST" | "DELETE",
@@ -58,28 +50,17 @@ export async function send(
   return { kind: "error", status: response.status, code };
 }
 
-/** Why a room read produced no snapshot. Only the contract's CHECKOUT_NOT_FOUND is `not_found`. */
 export type RoomReadProblem = "not_found" | "unavailable";
 
-/** Why a create or join produced no snapshot. */
 export type RequestProblem = "signed_out" | "room_full" | "rate_limited" | "refused" | "unavailable";
 
 export type CheckoutApi = {
-  /** GET /api/config. */
   readConfig(): Promise<Result<PublicConfig, "unavailable">>;
-  /** GET /api/checkouts/:checkoutId. A snapshot of another checkout is `unavailable`. */
   readRoom(id: CheckoutId): Promise<Result<RoomSnapshot, RoomReadProblem>>;
-  /** POST /api/checkouts. The same ID with the same details returns the same checkout. */
   create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
-  /** POST /api/checkouts/:checkoutId/join. Rejoining returns the wallet's existing spot. */
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
 };
 
-/**
- * `refused` codes are ones the screens already prevent, such as a seller who is the organizer or a
- * changed request under one ID, so they mean a stale page or a bug. Any other code, a bare status and
- * no answer are `unavailable`: the outcome is unknown, and create and join are both safe to repeat.
- */
 const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, RequestProblem>> = {
   UNAUTHENTICATED: "signed_out",
   ROOM_FULL: "room_full",
@@ -122,7 +103,6 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
   };
 }
 
-/** `expectedId` null accepts any checkout, for a create. */
 function roomOf(data: unknown, expectedId: CheckoutId | null): Result<RoomSnapshot, "unavailable"> {
   const snapshot = parseRoomSnapshot(data);
   return snapshot !== null && (expectedId === null || snapshot.checkout.id === expectedId)
@@ -136,14 +116,8 @@ function mutationResult(reply: Reply, expectedId: CheckoutId | null): Result<Roo
   return { ok: false, failure: problem ?? "unavailable" };
 }
 
-/** The server's configuration for page loads. Never read from the incoming request. */
 export type ApiEnv = { readonly [name: string]: string | undefined };
 
-/**
- * The origin that page loads read the API from: ONETAB_API_ORIGIN, else APP_ORIGIN. Null unless the
- * value is an http or https origin with no path, query or fragment. The request's Host header is never
- * used, because a crafted request could then point the server's fetch at any host it can reach.
- */
 export function apiOrigin(env: ApiEnv): string | null {
   const value = env.ONETAB_API_ORIGIN || env.APP_ORIGIN;
   if (!value) return null;
@@ -157,11 +131,6 @@ export function apiOrigin(env: ApiEnv): string | null {
   return isHttp && url.origin === value.replace(/\/$/, "") ? url.origin : null;
 }
 
-/**
- * The server's FetchLike. It reads the origin on every call, so `next start` honors the environment it
- * started with, and rejects a path that would leave that origin. A rejection reads as no answer. No
- * cookie or header from the viewer's request is forwarded: page loads read only public routes.
- */
 export function originFetch(
   env: ApiEnv,
   fetchImpl: typeof fetch = (input, init) => globalThis.fetch(input, init),

@@ -42,11 +42,6 @@ export async function loadCheckout(props: CheckoutRouteProps): Promise<CheckoutS
   };
 }
 
-/**
- * The checkout layout calls this before its loading boundary streams. A gated address, or a checkout
- * the server says doesn't exist, then answers with a real 404, and an unreadable room reaches the error
- * page. The page reuses this read.
- */
 export async function requireCheckoutAddress(params: Promise<{ readonly id: string }>): Promise<void> {
   const [{ id }, fixturesOn] = await Promise.all([params, fixturesEnabled()]);
   const ref = parseCheckoutRef({ id, as: undefined, fixturesOn });
@@ -70,10 +65,6 @@ export async function loadSampleIndex(): Promise<readonly SampleIndexEntry[]> {
   return sampleIndex();
 }
 
-/**
- * Only the contract's CHECKOUT_NOT_FOUND means not found. A bare 404 from a route that isn't deployed
- * is an outage like any other, so the viewer gets Try again instead of "check the link".
- */
 async function liveRoom(id: CheckoutId): Promise<RoomSnapshot> {
   const room = await readRoom(id);
   if (room.ok) return room.value;

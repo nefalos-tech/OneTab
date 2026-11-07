@@ -272,7 +272,6 @@ export function deriveCreateView(state: CreateState): CreateView {
   };
 }
 
-/** Creating needs a signed-in organizer, so a signed-out review offers Connect wallet in its place. */
 export function deriveReviewActions(
   view: Extract<CreateView, { readonly kind: "form" }>,
   request: CreateRequest,

@@ -33,10 +33,6 @@ type FormView = Extract<CreateView, { readonly kind: "form" }>;
 const EMPTY: DraftInput = { title: "", seller: "", total: "", payerCount: "2" };
 const FIELDS: readonly DraftField[] = ["title", "seller", "total", "payerCount"];
 
-/**
- * Where the form is. The review holds the request ID for exactly the details under review. The form
- * names where focus goes when the viewer arrives, and null on first load leaves focus alone.
- */
 type Step =
   | { readonly kind: "form"; readonly focus: "heading" | DraftField | null }
   | { readonly kind: "review"; readonly requestId: ClientRequestId };
@@ -79,7 +75,6 @@ function CreateForm({ view }: { readonly view: FormView }): ReactNode {
   const errors = check.ok ? {} : check.errors;
   const errorOf = (field: DraftField) => (touched.has(field) ? errors[field] : undefined);
   if (step.kind === "review" && !check.ok) {
-    // Under a review only the organizer can change, so the viewer signed in with the seller's wallet.
     setStep({ kind: "form", focus: firstError(errors) ?? "heading" });
   }
   const reviewing = step.kind === "review" && check.ok ? { review: check.review, requestId: step.requestId } : null;
