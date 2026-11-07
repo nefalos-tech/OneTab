@@ -9,7 +9,7 @@ The earlier baseline `a8c1d5cb524589bc13350af09dd7c07e8b66fa8e` contained planni
 | P3 application collection and browser signature extraction | [`d8ba143a2578edec4628de2952cfaff7c8a1fc39`](https://github.com/nefalos-tech/OneTab/tree/d8ba143a2578edec4628de2952cfaff7c8a1fc39) |
 | Combined P3 and P4 submission, reconciliation, and HTTP composition | [`0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d`](https://github.com/nefalos-tech/OneTab/tree/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d) |
 
-P3 subsequently merged into main as `639a27600497f78c814fa60ad182581c5024a8ab`. The later P4 head `3ffde1173f1e676ed0394f3a2c5cd74c4cb4d1e8` has the identical Git tree as the tested `0d1124b` revision. The records below retain the original test identities.
+P3 subsequently merged into main as `639a27600497f78c814fa60ad182581c5024a8ab`. The later P4 head `3ffde1173f1e676ed0394f3a2c5cd74c4cb4d1e8` has the identical Git tree as the tested `0d1124b` revision. P4 then merged as `fe2d5abe4f6ff456bd127249b2fc996e8aff9135` after its final CI passed. The records below retain the original test identities.
 
 These are source and local-test identities, not deployed revisions. [P3's application contract](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-service.md) and [P4's settlement evidence](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-settlement.md) describe the inspected modules.
 
@@ -100,7 +100,7 @@ Every integrated scenario remains **NOT RUN**. The proof below supplements the c
 
 - Setup. Safely resolve an old attempt, then explicitly create a new attempt for the unpaid checkout. Retain an old signature privately.
 - Action. Upload the old signature to the closed attempt. Upload its old `messageHash` and signature to the new attempt.
-- Expect. The closed attempt accepts no new signature. An identical previously verified upload may return its existing summary without progress. The new attempt rejects the old message hash. No signature carries forward. Every payer must approve the new message.
+- Expect. Once a replacement is current, the old attempt rejects uploads, including duplicates. Before replacement, an identical verified upload to the still-current closed attempt may return its existing summary without progress. The new attempt rejects the old message hash. No signature carries forward. Every payer must approve the new message.
 - Proof. Save both attempt IDs and hashes, upload responses, signer rows, and fresh approval records. Use `real database` and `real browser wallet`.
 
 ### 4. Message tampering
