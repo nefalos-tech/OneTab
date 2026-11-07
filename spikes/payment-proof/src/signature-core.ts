@@ -3,7 +3,7 @@ import {
   getTransactionDecoder, getTransactionEncoder, signatureBytes,
   type Address, type ReadonlyUint8Array,
 } from '@solana/kit';
-import { equalBytes, type MessageCandidate, type PaymentPlan } from './payment-core.js';
+import { equalBytes, type MessageCandidate, type PaymentPlan } from '../../../src/lib/payments/payment-core.js';
 
 export type SignatureTarget = Readonly<{ plan: PaymentPlan; message: MessageCandidate }>;
 export type PayerSignature = Readonly<{ wallet: Address; signatureBytes: ReadonlyUint8Array }>;

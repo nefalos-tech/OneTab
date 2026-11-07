@@ -5,7 +5,7 @@ import {
   getCompiledTransactionMessageEncoder, getTransactionDecoder, getTransactionEncoder, signatureBytes,
   type Address, type ReadonlyUint8Array,
 } from '@solana/kit';
-import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessage } from '../src/payment-core.js';
+import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessage } from '../../../src/lib/payments/payment-core.js';
 import {
   assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
   type PayerSignature, type SignatureTarget,

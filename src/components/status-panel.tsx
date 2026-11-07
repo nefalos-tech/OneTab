@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { WORDS, type Situation, type Tone } from "@/client/catalog";
 import type { ActionsView, StatusView, YouView } from "@/client/checkout-view";
 import { ActionGroup } from "./actions";
@@ -44,6 +44,7 @@ export function StatusPanel({
   readonly children?: ReactNode;
 }): ReactNode {
   const Heading = heading;
+  const line = useRef<HTMLParagraphElement>(null);
   return (
     <section data-situation={status.situation} aria-labelledby="status-label" className="flex flex-col gap-4">
       <Heading
@@ -53,7 +54,7 @@ export function StatusPanel({
         <Icon name={ICON[status.situation]} />
         <span data-status-label="">{status.label}</span>
       </Heading>
-      <p role="status" data-status-line="" className="max-w-prose">
+      <p ref={line} role="status" tabIndex={-1} data-status-line="" className="max-w-prose focus:outline-none">
         {status.line}
       </p>
       {reason && (
@@ -69,7 +70,9 @@ export function StatusPanel({
           </p>
         </div>
       )}
-      <ActionGroup actions={actions}>{children}</ActionGroup>
+      <ActionGroup actions={actions} fallbackFocus={line}>
+        {children}
+      </ActionGroup>
     </section>
   );
 }

@@ -1,18 +1,18 @@
-import {
-  address, blockhash, type ReadonlyUint8Array,
-} from '@solana/kit';
+import { address, blockhash } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import {
   DEVNET_USDC, buildPaymentMessage, createPaymentPlan, equalBytes, equalShares, inspectPaymentMessage, sha256,
   type PaymentPlan,
-} from './payment-core.js';
+} from '../../../src/lib/payments/payment-core.js';
 import { z } from 'zod';
 import {
   assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
   type PayerSignature, type SignatureTarget,
 } from './signature-core.js';
+import { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
+export { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
 
-export { DEVNET_USDC, equalBytes, sha256 } from './payment-core.js';
+export { DEVNET_USDC, equalBytes, sha256 } from '../../../src/lib/payments/payment-core.js';
 
 const U64_MAX = (1n << 64n) - 1n;
 export const addressSchema = z.string().transform(value => address(value));
@@ -56,12 +56,6 @@ export const approvalSchema = z.strictObject({
 export type Approval = z.infer<typeof approvalSchema>;
 export type Submission = Readonly<{ reference: string; signedBase64: string; signedHash: string }>;
 
-export function toBase64(bytes: ReadonlyUint8Array): string { return btoa(String.fromCharCode(...bytes)); }
-export function fromBase64(value: string): Uint8Array {
-  const bytes = Uint8Array.from(atob(value), char => char.charCodeAt(0));
-  if (toBase64(bytes) !== value) throw new Error('Noncanonical base64');
-  return bytes;
-}
 export function planBytes(plan: Plan): Uint8Array { return new TextEncoder().encode(JSON.stringify(planSchema.parse(plan))); }
 
 export function corePlanFromProofPlan(input: Plan): PaymentPlan {

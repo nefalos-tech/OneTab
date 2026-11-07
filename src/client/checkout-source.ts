@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import type { CheckoutState, CreateState } from "./checkout-view";
+import { cache } from "react";
+import { apiOrigin, checkoutApi, originFetch } from "./api";
+import { checkoutLinks, type CheckoutState, type CreateState } from "./checkout-view";
+import type { CheckoutId, RoomSnapshot } from "./contracts";
 import {
   parseCheckoutRef,
   parseFixtureFlag,
@@ -19,20 +22,31 @@ export type CheckoutRouteProps = {
   readonly searchParams: SearchParams;
 };
 
+const serverApi = checkoutApi(originFetch(process.env));
+
+/**
+ * The layout, generateMetadata and the page each ask for the room. Next doesn't memoize a fetch that
+ * carries a timeout signal, so React's cache is what gives them one read per request.
+ */
+const readRoom = cache((id: CheckoutId) => serverApi.readRoom(id));
+
 export async function loadCheckout(props: CheckoutRouteProps): Promise<CheckoutState> {
   const [{ id }, query, fixturesOn] = await Promise.all([props.params, props.searchParams, fixturesEnabled()]);
   const ref = parseCheckoutRef({ id, as: query.as, fixturesOn });
-  if (ref?.kind !== "sample") notFound();
-  return sampleCheckoutState(ref);
+  if (ref === null) notFound();
+  if (ref.kind === "sample") return sampleCheckoutState(ref);
+  return {
+    snapshot: await liveRoom(ref.checkoutId),
+    session: null,
+    source: { kind: "live", links: checkoutLinks(ref.checkoutId) },
+  };
 }
 
-/**
- * The checkout layout calls this before its loading boundary streams, so an unknown or gated
- * address answers with a real 404 status instead of a 200 page that says not found.
- */
-export async function requireCheckoutAddress(params: Promise<{ readonly id: string }>): Promise<void> {
+export async function requireCheckout(params: Promise<{ readonly id: string }>): Promise<void> {
   const [{ id }, fixturesOn] = await Promise.all([params, fixturesEnabled()]);
-  if (parseCheckoutRef({ id, as: undefined, fixturesOn })?.kind !== "sample") notFound();
+  const ref = parseCheckoutRef({ id, as: undefined, fixturesOn });
+  if (ref === null) notFound();
+  if (ref.kind === "live") await liveRoom(ref.checkoutId);
 }
 
 export async function loadCreate(props: { readonly searchParams: SearchParams }): Promise<CreateState> {
@@ -41,12 +55,26 @@ export async function loadCreate(props: { readonly searchParams: SearchParams })
     if (!fixturesOn) notFound();
     return sampleCreateState();
   }
-  return { config: null, session: null, source: { kind: "live", samplesOn: fixturesOn } };
+  const config = await serverApi.readConfig();
+  if (!config.ok) console.error(`GET /api/config failed, so the create screen says creation is unavailable. ${originNote()}`);
+  return { config: config.ok ? config.value : null, session: null, source: { kind: "live", samplesOn: fixturesOn } };
 }
 
 export async function loadSampleIndex(): Promise<readonly SampleIndexEntry[]> {
   if (!(await fixturesEnabled())) notFound();
   return sampleIndex();
+}
+
+async function liveRoom(id: CheckoutId): Promise<RoomSnapshot> {
+  const room = await readRoom(id);
+  if (room.ok) return room.value;
+  if (room.failure === "not_found") notFound();
+  throw new Error(`Checkout ${id} didn't load. ${originNote()}`);
+}
+
+function originNote(): string {
+  const origin = apiOrigin(process.env);
+  return origin === null ? "No API origin is set. Set ONETAB_API_ORIGIN or APP_ORIGIN." : `The API origin is ${origin}.`;
 }
 
 /**
