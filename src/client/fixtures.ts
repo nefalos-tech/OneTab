@@ -57,7 +57,7 @@ export const FIXTURES = {
     defaultPersona: ORGANIZER,
   },
   "paid-no-receipt": {
-    label: "Marked paid, receipt not in the room yet",
+    label: "Finalizing, receipt not in the room yet",
     situation: "confirming",
     snapshot: SNAPSHOTS["paid-no-receipt"],
     defaultPersona: ORGANIZER,

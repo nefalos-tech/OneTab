@@ -253,7 +253,8 @@ export type Reason = {
 };
 
 export type ResultBody =
-  | { readonly kind: "not_started"; readonly approving: boolean }
+  | { readonly kind: "not_started" }
+  | { readonly kind: "approvals"; readonly stage: "preparing" | "signing" }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
   | { readonly kind: "unresolved"; readonly transactionReference: string | null }
   | {
@@ -598,10 +599,10 @@ function bodyOf(c: Classified, role: ViewerRole, tab: TabView, page: PageFacts, 
     case "open_spots":
     case "full_not_ready":
     case "ready":
-      return { kind: "not_started", approving: false };
+      return { kind: "not_started" };
     case "preparing":
     case "signing":
-      return { kind: "not_started", approving: true };
+      return { kind: "approvals", stage: c.situation };
     case "submitting":
     case "confirming":
       return { kind: "in_progress", transactionReference: c.attempt?.transactionReference ?? null };
@@ -671,6 +672,7 @@ function resultActions(
   const connect = c.signedOut ? ({ kind: "connect_wallet" } as const) : null;
   switch (body.kind) {
     case "not_started":
+    case "approvals":
       return { primary: back, secondary: [] };
     case "in_progress":
     case "unresolved":
@@ -772,16 +774,13 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const FULL = "This checkout is full.";
-const SIGNED_OUT = "Sign in with your wallet if you hold a spot.";
 
-const recoveryLine = (r: Recovery | null, onHold: string): string =>
-  r?.kind === "organizer_can_retry"
-    ? "Try again to ask everyone to approve a new payment."
-    : r?.kind === "waiting_for_organizer"
-      ? "The organizer can start a new payment, and everyone approves again."
-      : onHold;
+const STOPPED: { readonly [S in "failed" | "expired"]: { readonly [R in Recovery["kind"]]: string } } = {
+  failed: { organizer_can_retry: WORDS.failed_retry, waiting_for_organizer: WORDS.failed_waiting, on_hold: WORDS.failed_on_hold },
+  expired: { organizer_can_retry: WORDS.expired_retry, waiting_for_organizer: WORDS.expired_waiting, on_hold: WORDS.expired_on_hold },
+};
 
-const signInIfOut = (c: CopyContext): string => (c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : "");
+const signInIfOut = (c: CopyContext): string => (c.role.kind === "signed_out" ? ` ${WORDS.sign_in}` : "");
 
 const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
   open_spots: (c) =>
@@ -792,7 +791,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
         : c.role.kind === "seller"
           ? WORDS.seller_no_spot
           : c.role.kind === "organizer"
-            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}, so copy the link and send it to them.`
             : c.role.kind === "payer"
               ? `${c.me === "ready" ? WORDS.you_are_ready : "You joined."} Waiting for ${count(c.openSpots, "more payer")}.`
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
@@ -802,7 +801,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       : isMember(c.role)
         ? `${WORDS.you_are_ready} Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
-          ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${SIGNED_OUT}`
+          ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${WORDS.sign_in}`
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,
   ready: (c) =>
     c.role.kind === "organizer"
@@ -810,26 +809,20 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       : isMember(c.role)
         ? "Everyone is ready. Waiting for the organizer to start the payment."
         : c.role.kind === "signed_out"
-          ? `Everyone is ready. ${SIGNED_OUT}`
+          ? `Everyone is ready. ${WORDS.sign_in}`
           : `${FULL} Everyone is ready to pay.`,
-  preparing: (c) =>
-    `Preparing the payment, and approvals open in a moment.${signInIfOut(c)}`,
+  preparing: (c) => `${WORDS.preparing}${signInIfOut(c)}`,
   signing: (c) =>
     isMember(c.role) && c.me !== "approved"
       ? "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."
       : isMember(c.role)
         ? `You approved. Waiting for ${count(c.approvals.total - c.approvals.done, "more approval")}.`
         : `${c.approvals.done} of ${c.approvals.total} payers approved.${signInIfOut(c)}`,
-  submitting: (c) =>
-    `Sending one payment with every share to the seller. We'll confirm it once the network finalizes it.${signInIfOut(c)}`,
-  confirming: (c) => `The network accepted the payment. The receipt appears once it's final.${signInIfOut(c)}`,
-  unresolved: (c) =>
-    `We can't confirm the result yet. ${isMember(c.role) ? WORDS.keeps_checking_here : WORDS.keeps_checking_payers}${signInIfOut(c)}`,
-  declined: (c) =>
-    `A payer declined. ${recoveryLine(c.recovery, "Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed.")}${signInIfOut(c)}`,
-  failed: (c) =>
-    `No share reached the seller. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}${signInIfOut(c)}`,
-  expired: (c) =>
-    `This payment expired before it went through, so nothing reached the seller. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}${signInIfOut(c)}`,
+  submitting: (c) => `${WORDS.sending}${signInIfOut(c)}`,
+  confirming: (c) => `${WORDS.finalizing}${signInIfOut(c)}`,
+  unresolved: (c) => `${isMember(c.role) ? WORDS.unresolved_here : WORDS.unresolved_payers}${signInIfOut(c)}`,
+  declined: (c) => `${WORDS.payer_declined}${signInIfOut(c)}`,
+  failed: (c) => `${STOPPED.failed[c.recovery?.kind ?? "on_hold"]}${signInIfOut(c)}`,
+  expired: (c) => `${STOPPED.expired[c.recovery?.kind ?? "on_hold"]}${signInIfOut(c)}`,
   paid: () => "The seller received every share in one transaction.",
 };

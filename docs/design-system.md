@@ -219,7 +219,7 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
 | Status panel | The current state | Tone, label, status line, the connection line, the reason when a payment failed, your share, and the action group. The connection line, "Can't reach OneTab right now…", shows on both screens while the latest room read failed, and clears once a read answers. The reason comes from the stop reasons table: what happened, then what to do next. It names the cause the room gives, or the one this page's own Start or Try again heard for that exact attempt, and otherwise says the payment stopped before it was sent. It never shows the server's message. While a payer has a payment to approve, the approval summary takes your share's place, above **Approve in wallet**: the share as the hero, the full seller with **Copy**, the total and the network, who pays the network fee, and a note that one approval covers every share |
-| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change, or when the screen shows another attempt. A notice can offer a follow-up, such as **Decline payment** after a refusal in the wallet. The follow-up shows its busy label in the notice, stays offered if it fails, and clears the notice once it goes through. While this page waits on the wallet's payment prompt, **Approve in wallet** on the room screen shows **Approving…**, only for the attempt the prompt is for. Another tab has its own prompt. While spots are open, **I'm ready** and **Not ready yet** are one secondary toggle that keeps its button and focus when it flips. Once the room is full, **I'm ready** is the primary action and **Not ready yet** a secondary one, so a flip removes the focused button. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none. So **Not ready yet** hands focus to **I'm ready**, and **I'm ready** hands it to the status line, or to **Start payment** for the organizer once everyone is ready. **Try again** shows **Starting…** like **Start payment**, and its notice lasts only while Try again is for the same attempt. On a result that isn't paid, a signed-out viewer gets **Connect wallet** as the primary action, so a payer who reloaded can sign in and the page resumes checking. A payment that is sending or unresolved offers nothing else but **Back to checkout** |
+| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change, or when the screen shows another attempt. A notice can offer a follow-up, such as **Decline payment** after a refusal in the wallet. The follow-up shows its busy label in the notice, stays offered if it fails, and clears the notice once it goes through. While this page waits on the wallet's payment prompt, **Approve in wallet** on the room screen shows **Approving…**, only for the attempt the prompt is for. Another tab has its own prompt. While spots are open, **I'm ready** and **Not ready yet** are one secondary toggle that keeps its button and focus when it flips. Once the room is full, **I'm ready** is the primary action and **Not ready yet** a secondary one, so a flip removes the focused button. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none. So **Not ready yet** hands focus to **I'm ready**, and **I'm ready** hands it to the status line, or to **Start payment** for the organizer once everyone is ready. **Try again** shows **Starting…** like **Start payment**, and its notice lasts only while Try again is for the same attempt. On a result that is in progress, unresolved or needs attention, a signed-out viewer gets **Connect wallet** as the primary action, so a payer who reloaded can sign in and the page resumes checking. Before a payment starts, and during approvals, the result keeps **Back to checkout** first. A payment that is sending or unresolved offers nothing else but **Back to checkout** |
 | Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. It shows only when the room is paid and the receipt names the attempt's own transaction reference, this checkout's seller and total, and every share in spot order. Anything less reads **Finalizing**. The explorer link is built from the reference, never taken from the server. A sample receipt has no explorer link |
 | Notice | Inline message | Info, success, warning, danger. Icon plus text |
 
@@ -256,12 +256,12 @@ Every checkout is in exactly one state. Each state has an owner screen, where it
 | `preparing` | room | approve | info | Preparing payment | attempt preparing |
 | `signing` | room | approve | info | Collecting approvals | attempt signing |
 | `submitting` | result | paid | info | Sending payment | attempt submitting |
-| `confirming` | result | paid | info | Finalizing | attempt confirmed, but no receipt or phase not paid |
+| `confirming` | result | paid | info | Finalizing | phase paid without a receipt that proves it, or attempt confirmed before the phase is paid |
 | `unresolved` | result | paid | warning | Checking the network | attempt unresolved |
 | `declined` | result | approve | warning | Approval declined | attempt declined |
 | `failed` | result | approve | danger | Payment failed | attempt failed |
-| `expired` | result | approve | warning | Approval window ended | attempt expired |
-| `paid` | result | complete | success | Paid | phase paid and attempt confirmed with a receipt |
+| `expired` | result | approve | warning | Payment expired | attempt expired |
+| `paid` | result | complete | success | Paid | phase paid, attempt confirmed, and a receipt that matches the checkout, every spot and the attempt's signature |
 
 | Spot status | Label | Meaning |
 | --- | --- | --- |
@@ -364,15 +364,15 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `room_full` | Someone took the last spot first. This checkout is full. |
 | `room_changed` | The checkout moved on before this went through. It shows the latest now. |
 | `room_changed_unread` | The checkout moved on before this went through. OneTab couldn't load the latest yet. |
-| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid. Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
-| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid. The organizer adds SOL on Solana Devnet to their wallet. |
-| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid. That wallet receives test USDC on Solana Devnet once before the next try. |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so nothing was sent and no network fee was paid. Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so nothing was sent and no network fee was paid. The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so nothing was sent and no network fee was paid. That wallet receives test USDC on Solana Devnet once before the next try. |
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
 | `mismatch` | The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved. |
 | `unsupported` | Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved. |
-| `rejected` | You didn't approve in your wallet, so nothing was sent. You can approve again. Declining stops this payment for everyone, and the checkout stays on hold until it's safely closed. |
+| `rejected` | You didn't approve in your wallet, so nothing was sent, and you can approve again. Declining stops this payment for everyone and keeps the checkout on hold until it's safely closed. |
 | `busy` | Your wallet already has an approval request open. Finish it there first. |
 | `failed` | Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again. |
 | `unchecked` | OneTab couldn't check the approval your wallet returned, so nothing was sent. |
@@ -380,11 +380,11 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 
 | Stop reason | What happened | What to do next |
 | --- | --- | --- |
-| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid. | Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
-| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid. | The organizer adds SOL on Solana Devnet to their wallet. |
-| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid. | That wallet receives test USDC on Solana Devnet once before the next try. |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so nothing was sent and no network fee was paid. | Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so nothing was sent and no network fee was paid. | The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so nothing was sent and no network fee was paid. | That wallet receives test USDC on Solana Devnet once before the next try. |
 | `network_unreachable` | OneTab couldn't reach Solana Devnet while preparing the payment, so nothing was sent and no network fee was paid. | None. The status line says who can act. |
-| `network_rejected` | The network rejected the payment, so no share reached the seller. The organizer's wallet may have paid a small network fee in SOL. | Before the next try, each payer checks that their wallet still holds their share in test USDC. |
+| `network_rejected` | The network rejected the payment, so no share reached the seller, though the organizer's wallet may have paid a small network fee in SOL. | Before the next try, each payer checks that their wallet still holds their share in test USDC. |
 | `not_sent` | The payment stopped before it was sent, so nothing reached the seller and no network fee was paid. | Before the next try, each payer checks that their wallet holds their share in test USDC, and the organizer checks that theirs holds SOL for the network fee. |
 
 | Word | Text |
@@ -444,11 +444,23 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `you_are_ready` | You're ready. |
 | `end_sign_in` | End sign-in |
 | `no_payment_yet` | No payment has started yet. Its status appears here once everyone approves. |
+| `approvals_soon` | Approvals open on the checkout page in a moment, and this page shows the payment once everyone approves. |
 | `approvals_open` | Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then. |
 | `room_unreachable` | Can't reach OneTab right now. This page keeps trying and shows the last update it got. |
-| `keeps_checking_here` | This page keeps checking the same transaction, and no new payment will start. |
 | `retry_stopped` | Your new try stopped before it was sent, so nothing moved. The reason is above. |
-| `keeps_checking_payers` | OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. |
+| `sign_in` | Sign in with your wallet if you hold a spot. |
+| `preparing` | Preparing the payment, and approvals open in a moment. |
+| `sending` | Sending one payment with every share to the seller, and OneTab confirms it once the network finalizes it. |
+| `finalizing` | The network accepted the payment, and the receipt appears once it's final. |
+| `unresolved_here` | We can't confirm the result yet, so this page keeps checking the same transaction and no new payment will start. |
+| `unresolved_payers` | We can't confirm the result yet, so OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. |
+| `payer_declined` | A payer declined, so this payment stays on hold until it's safely closed. |
+| `failed_retry` | No share reached the seller. Try again to ask everyone to approve a new payment. |
+| `failed_waiting` | No share reached the seller, and the organizer can start a new payment that everyone approves again. |
+| `failed_on_hold` | No share reached the seller, and a new payment can start once this one is safely closed. |
+| `expired_retry` | This payment expired before reaching the seller. Try again to ask everyone to approve a new payment. |
+| `expired_waiting` | This payment expired before reaching the seller, and the organizer can start a new payment that everyone approves again. |
+| `expired_on_hold` | This payment expired before reaching the seller, and a new one can start once it's safely closed. |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
 <!-- /design-system:words -->

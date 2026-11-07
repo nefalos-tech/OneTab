@@ -180,7 +180,7 @@ test("a payment that fails before sending moves viewers to an honest result, and
   const reason = statusRegion(page).locator("[data-status-reason]");
   await expect(reason).toHaveAttribute("data-reason-from", "attempt");
   await expect(reason).toHaveText(`${STOP_REASONS.not_sent.happened}${STOP_REASONS.not_sent.next}`);
-  await expect(page.locator("[data-status-line]")).toContainText("The organizer can start a new payment, and everyone approves again.");
+  await expect(page.locator("[data-status-line]")).toHaveText(`${WORDS.failed_waiting} ${WORDS.sign_in}`);
   await expect(page.getByRole("button", { name: ACTIONS.retry.label })).toHaveCount(0);
   await expect(page.getByText("Payment attempt did not complete.")).toHaveCount(0);
   await capture(page, "failed-not-sent-signed-out");

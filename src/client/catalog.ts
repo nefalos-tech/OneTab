@@ -71,7 +71,7 @@ export const SITUATIONS = {
     step: "paid",
     tone: "info",
     label: "Finalizing",
-    when: "attempt confirmed, but no receipt or phase not paid",
+    when: "phase paid without a receipt that proves it, or attempt confirmed before the phase is paid",
   },
   unresolved: {
     owner: "result",
@@ -98,7 +98,7 @@ export const SITUATIONS = {
     owner: "result",
     step: "approve",
     tone: "warning",
-    label: "Approval window ended",
+    label: "Payment expired",
     when: "attempt expired",
   },
   paid: {
@@ -106,7 +106,7 @@ export const SITUATIONS = {
     step: "complete",
     tone: "success",
     label: "Paid",
-    when: "phase paid and attempt confirmed with a receipt",
+    when: "phase paid, attempt confirmed, and a receipt that matches the checkout, every spot and the attempt's signature",
   },
 } as const satisfies Record<string, SituationMeta>;
 export type Situation = keyof typeof SITUATIONS;
@@ -168,18 +168,16 @@ type StopWords = { readonly happened: string; readonly next: string | null };
 
 export const STOP_REASONS = {
   short_usdc: {
-    happened:
-      "A payer's wallet didn't hold their full share in test USDC, so the payment didn't start. Nothing was sent and no network fee was paid.",
+    happened: "A payer's wallet didn't hold their full share in test USDC, so nothing was sent and no network fee was paid.",
     next: "Each payer checks that their wallet holds their share in test USDC on Solana Devnet.",
   },
   short_sol: {
-    happened:
-      "The organizer's wallet didn't hold enough SOL for the network fee, so the payment didn't start. Nothing was sent and no network fee was paid.",
+    happened: "The organizer's wallet didn't hold enough SOL for the network fee, so nothing was sent and no network fee was paid.",
     next: "The organizer adds SOL on Solana Devnet to their wallet.",
   },
   no_token_account: {
     happened:
-      "A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so the payment didn't start. Nothing was sent and no network fee was paid.",
+      "A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so nothing was sent and no network fee was paid.",
     next: "That wallet receives test USDC on Solana Devnet once before the next try.",
   },
   network_unreachable: {
@@ -188,7 +186,7 @@ export const STOP_REASONS = {
   },
   network_rejected: {
     happened:
-      "The network rejected the payment, so no share reached the seller. The organizer's wallet may have paid a small network fee in SOL.",
+      "The network rejected the payment, so no share reached the seller, though the organizer's wallet may have paid a small network fee in SOL.",
     next: "Before the next try, each payer checks that their wallet still holds their share in test USDC.",
   },
   not_sent: {
@@ -238,7 +236,7 @@ export const REQUEST_PROBLEMS = {
   mismatch: "The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved.",
   unsupported: "Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved.",
   rejected:
-    "You didn't approve in your wallet, so nothing was sent. You can approve again. Declining stops this payment for everyone, and the checkout stays on hold until it's safely closed.",
+    "You didn't approve in your wallet, so nothing was sent, and you can approve again. Declining stops this payment for everyone and keeps the checkout on hold until it's safely closed.",
   busy: "Your wallet already has an approval request open. Finish it there first.",
   failed: "Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again.",
   unchecked: "OneTab couldn't check the approval your wallet returned, so nothing was sent.",
@@ -304,13 +302,25 @@ export const WORDS = {
   you_are_ready: "You're ready.",
   end_sign_in: "End sign-in",
   no_payment_yet: "No payment has started yet. Its status appears here once everyone approves.",
+  approvals_soon: "Approvals open on the checkout page in a moment, and this page shows the payment once everyone approves.",
   approvals_open:
     "Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then.",
   room_unreachable: "Can't reach OneTab right now. This page keeps trying and shows the last update it got.",
-  keeps_checking_here: "This page keeps checking the same transaction, and no new payment will start.",
   retry_stopped: "Your new try stopped before it was sent, so nothing moved. The reason is above.",
-  keeps_checking_payers:
-    "OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
+  sign_in: "Sign in with your wallet if you hold a spot.",
+  preparing: "Preparing the payment, and approvals open in a moment.",
+  sending: "Sending one payment with every share to the seller, and OneTab confirms it once the network finalizes it.",
+  finalizing: "The network accepted the payment, and the receipt appears once it's final.",
+  unresolved_here: "We can't confirm the result yet, so this page keeps checking the same transaction and no new payment will start.",
+  unresolved_payers:
+    "We can't confirm the result yet, so OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
+  payer_declined: "A payer declined, so this payment stays on hold until it's safely closed.",
+  failed_retry: "No share reached the seller. Try again to ask everyone to approve a new payment.",
+  failed_waiting: "No share reached the seller, and the organizer can start a new payment that everyone approves again.",
+  failed_on_hold: "No share reached the seller, and a new payment can start once this one is safely closed.",
+  expired_retry: "This payment expired before reaching the seller. Try again to ask everyone to approve a new payment.",
+  expired_waiting: "This payment expired before reaching the seller, and the organizer can start a new payment that everyone approves again.",
+  expired_on_hold: "This payment expired before reaching the seller, and a new one can start once it's safely closed.",
 } as const;
 
 type WalletFixMeta =

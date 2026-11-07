@@ -28,10 +28,14 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
   );
 }
 
+const APPROVALS = { preparing: WORDS.approvals_soon, signing: WORDS.approvals_open } as const;
+
 function ResultDetails({ body }: { readonly body: ResultBody }): ReactNode {
   switch (body.kind) {
     case "not_started":
-      return <p className="text-muted">{body.approving ? WORDS.approvals_open : WORDS.no_payment_yet}</p>;
+      return <p className="text-muted">{WORDS.no_payment_yet}</p>;
+    case "approvals":
+      return <p className="text-muted">{APPROVALS[body.stage]}</p>;
     case "in_progress":
     case "unresolved":
     case "needs_attention":

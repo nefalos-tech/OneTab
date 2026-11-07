@@ -103,7 +103,7 @@ describe.each(CASES)("honesty rules hold for $id", (c) => {
   });
 
   it("never says an approval was withdrawn, revoked or canceled", () => {
-    for (const v of [room, result]) expect(v.status.line).not.toMatch(/revok|cancel|(?<!aren't )withdr/i);
+    for (const v of [room, result]) expect(v.status.line).not.toMatch(/revok|cancel|withdr/i);
   });
 
   it("offers Try again only to the organizer, only when the server says canRetry", () => {
@@ -149,30 +149,31 @@ describe("status lines speak to the viewer", () => {
     ["signing as spot-2", "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."],
     ["full-not-ready as spot-3", "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."],
     ["ready as spot-1", "Everyone is ready. Start the payment to ask each payer to approve it."],
-    ["open-spots as spot-1", "You're ready. Waiting for 1 more payer. Copy the link and send it to them."],
+    ["open-spots as spot-1", "You're ready. Waiting for 1 more payer, so copy the link and send it to them."],
     ["open-spots as spot-2", "You joined. Waiting for 1 more payer."],
     ["full-not-ready as outsider", "This checkout is full. Waiting for 1 payer to get ready."],
-    ["declined as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
-    ["unresolved as spot-1", "We can't confirm the result yet. This page keeps checking the same transaction, and no new payment will start."],
+    ["declined as spot-1", "A payer declined, so this payment stays on hold until it's safely closed."],
+    ["unresolved as spot-1", "We can't confirm the result yet, so this page keeps checking the same transaction and no new payment will start."],
     [
       "unresolved as outsider",
-      "We can't confirm the result yet. OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
+      "We can't confirm the result yet, so OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start.",
     ],
     [
       "unresolved as signed-out",
-      "We can't confirm the result yet. OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. Sign in with your wallet if you hold a spot.",
+      "We can't confirm the result yet, so OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. Sign in with your wallet if you hold a spot.",
     ],
+    ["failed-not-sent as signed-out", "No share reached the seller, and the organizer can start a new payment that everyone approves again. Sign in with your wallet if you hold a spot."],
     ["failed-not-sent as spot-1", "No share reached the seller. Try again to ask everyone to approve a new payment."],
     [
       "expired as spot-2",
-      "This payment expired before it went through, so nothing reached the seller. The organizer can start a new payment, and everyone approves again.",
+      "This payment expired before reaching the seller, and the organizer can start a new payment that everyone approves again.",
     ],
   ])("%s", (id, line) => {
     expect(deriveRoomView(caseById(id).state).status.line).toBe(line);
   });
 
   it.each<[string, string, boolean, string]>([
-    ["the organizer", "open-spots as spot-1", false, "Waiting for 1 more payer. Copy the link and send it to them."],
+    ["the organizer", "open-spots as spot-1", false, "Waiting for 1 more payer, so copy the link and send it to them."],
     ["a payer", "open-spots as spot-2", true, "You're ready. Waiting for 1 more payer."],
   ])("while a spot is open, the line says when %s turns ready or not, so the status region announces it", (_, id, ready, line) => {
     const { state } = caseById(id);
@@ -802,14 +803,18 @@ describe("why a failed payment stopped", () => {
 });
 
 describe("the result screen before and after sending", () => {
-  it.each(["preparing as spot-1", "signing as spot-2", "signing as signed-out"])("%s says approvals are open, with Back first", (id) => {
+  it.each([
+    ["preparing as spot-1", "preparing"],
+    ["signing as spot-2", "signing"],
+    ["signing as signed-out", "signing"],
+  ] as const)("%s says where approvals stand, with Back first", (id, stage) => {
     const view = deriveResultView(caseById(id).state);
-    expect(view.body).toEqual({ kind: "not_started", approving: true });
+    expect(view.body).toEqual({ kind: "approvals", stage });
     expect(view.actions.primary?.kind).toBe("back_to_checkout");
   });
 
   it.each(["open-spots as spot-1", "ready as spot-1"])("%s says no payment has started", (id) => {
-    expect(deriveResultView(caseById(id).state).body).toEqual({ kind: "not_started", approving: false });
+    expect(deriveResultView(caseById(id).state).body).toEqual({ kind: "not_started" });
   });
 
   it.each(CASES.filter((c) => c.situation === "submitting" || c.situation === "confirming" || c.situation === "unresolved"))(
@@ -977,5 +982,30 @@ describe("every room the generator builds keeps the honesty rules", () => {
       breaking((b) => b.views.every((v) => same(v.room.actions, b.views[0]!.room.actions) && same(v.result.actions, b.views[0]!.result.actions))),
     ).toEqual([]);
     expect(breaking((b) => b.views.every((v) => (v.room.connection !== null && v.result.connection !== null) === v.page.roomUnreachable))).toEqual([]);
+  });
+});
+
+describe("every explanation is at most two sentences", () => {
+  const sentences = (text: string) => text.split(/(?<=[.!?])\s+/).filter((s) => s.trim() !== "");
+  const atMostTwo = (where: string, text: string) => expect(sentences(text).length, `${where}: ${text}`).toBeLessThanOrEqual(2);
+
+  it.each(CASES)("for $id on both screens", (c) => {
+    const [room, result] = views(c.state);
+    atMostTwo("room line", room.status.line);
+    atMostTwo("result line", result.status.line);
+    const reason = result.body.kind === "needs_attention" ? result.body.reason : null;
+    if (reason) {
+      expect(sentences(reason.happened), reason.happened).toHaveLength(1);
+      if (reason.next) expect(sentences(reason.next), reason.next).toHaveLength(1);
+    }
+  });
+
+  it("for every stop reason, request problem and word", () => {
+    for (const [key, r] of Object.entries(STOP_REASONS)) {
+      expect(sentences(r.happened), key).toHaveLength(1);
+      if (r.next) expect(sentences(r.next), key).toHaveLength(1);
+    }
+    for (const [key, text] of Object.entries(REQUEST_PROBLEMS)) atMostTwo(key, text);
+    for (const [key, text] of Object.entries(WORDS)) atMostTwo(key, text);
   });
 });
