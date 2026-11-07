@@ -2,7 +2,7 @@ import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
 import { checkoutLinks, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
-import type { AttemptId, CheckoutId, RoomSnapshot, Session } from "./contracts";
+import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
 export type LiveKind = {
@@ -185,7 +185,9 @@ export const browserPollEnv: PollEnv = {
   },
 };
 
-function watch(api: CheckoutApi, env: PollEnv, room: Watched): () => void {
+type RefreshOnce = (id: AttemptId) => Promise<Result<AttemptSummary, RequestProblem>> | null;
+
+function watch(api: CheckoutApi, env: PollEnv, room: Watched, refreshOnce: RefreshOnce): () => void {
   let stopped = false;
   let polling = false;
   let delay = POLL_MS;
@@ -193,19 +195,18 @@ function watch(api: CheckoutApi, env: PollEnv, room: Watched): () => void {
 
   const poll = async () => {
     if (stopped || polling || !env.visible()) return;
-    polling = true;
     const { snapshot, session } = room.now();
     const plan = pollPlan(snapshot, session);
-    let ok = true;
-    if (plan.refresh !== null) {
-      const refreshed = await api.refreshAttempt(plan.refresh);
-      if (!refreshed.ok && refreshed.failure === "signed_out" && session !== null) room.signedOut(session);
-      ok = refreshed.ok;
-    }
-    if (plan.read) ok = (await room.track("read", () => api.readRoom(room.id))).ok && ok;
+    if (!plan.read) return;
+    polling = true;
+    const [read, refreshed] = await Promise.all([
+      room.track("read", () => api.readRoom(room.id)),
+      plan.refresh === null ? null : refreshOnce(plan.refresh),
+    ]);
     polling = false;
-    if (stopped || !plan.read) return;
-    delay = ok ? POLL_MS : Math.min(delay * 2, MAX_BACKOFF_MS);
+    if (stopped) return;
+    if (refreshed?.ok === false && refreshed.failure === "signed_out" && session !== null) room.signedOut(session);
+    delay = read.ok && refreshed?.ok !== false ? POLL_MS : Math.min(delay * 2, MAX_BACKOFF_MS);
     cancel = env.wait(delay, poll);
   };
 
@@ -228,9 +229,17 @@ export type Live = {
 };
 
 export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment, env: PollEnv = browserPollEnv): Live {
+  let refreshing = false;
+  const refreshOnce: RefreshOnce = (id) => {
+    if (refreshing) return null;
+    refreshing = true;
+    return api.refreshAttempt(id).finally(() => {
+      refreshing = false;
+    });
+  };
   return {
     run: (action, scope) => run(action, { ...scope, api, check }),
-    watch: (room) => watch(api, env, room),
+    watch: (room) => watch(api, env, room, refreshOnce),
   };
 }
 

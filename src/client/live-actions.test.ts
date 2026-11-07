@@ -510,12 +510,12 @@ describe("the poller", () => {
     expect(p.shown).toEqual([OPEN, OPEN]);
   });
 
-  it("asks the server to advance the attempt before each read for its payer, and only reads for anyone else", async () => {
+  it("asks the server to advance the attempt with each read for its payer, and only reads for anyone else", async () => {
     const p = polling(answers(SIGNING), { snapshot: SIGNING, session: null });
     await p.after(0);
     p.room.now = { snapshot: SIGNING, session: PAYER };
     await p.after(2000);
-    expect(p.calls).toEqual([read(SIGNING), refresh, read(SIGNING)]);
+    expect(p.calls).toEqual([read(SIGNING), read(SIGNING), refresh]);
   });
 
   it("waits for a slow poll before sending another, however long it takes", async () => {
@@ -552,9 +552,9 @@ describe("the poller", () => {
       session: PAYER,
     });
     await p.after(2000);
-    expect(p.calls).toEqual([refresh, read(SIGNING)]);
+    expect(p.calls).toEqual([read(SIGNING), refresh]);
     await p.after(2000);
-    expect(p.calls).toEqual([refresh, read(SIGNING), refresh, read(SIGNING)]);
+    expect(p.calls).toEqual([read(SIGNING), refresh, read(SIGNING), refresh]);
   });
 
   it("sends nothing while the page is hidden, and polls at once when it shows", async () => {
@@ -588,6 +588,62 @@ describe("the poller", () => {
     p.resume();
     await p.after(0);
     expect(p.calls).toEqual([read(sending)]);
+  });
+
+  it("reads the room at once for a payer, without waiting for the attempt's refresh", async () => {
+    const p = polling((method) => (method === "POST" ? new Promise<Response>(() => {}) : json(200, { data: SIGNING })), {
+      snapshot: SIGNING,
+      session: PAYER,
+    });
+    await p.after(0);
+    expect(p.calls).toContain(read(SIGNING));
+    expect(p.shown).toEqual([SIGNING]);
+  });
+
+  it("sends nothing after it is stopped, even when the attempt's refresh answers later", async () => {
+    let answer!: () => void;
+    const p = polling(
+      (method) => (method === "POST" ? new Promise((resolve) => (answer = () => resolve(json(200, { data: SIGNING.attempt })))) : json(200, { data: SIGNING })),
+      { snapshot: SIGNING, session: PAYER },
+    );
+    await p.after(0);
+    const sentBeforeStop = [...p.calls];
+    p.stop();
+    answer();
+    await p.after(60_000);
+    p.resume();
+    await p.after(0);
+    expect(p.calls).toEqual(sentBeforeStop);
+  });
+
+  it("keeps one refresh in flight per browser when the page remounts its watch", async () => {
+    vi.useFakeTimers();
+    const env: PollEnv = { wait: browserPollEnv.wait, visible: () => true, onResume: () => () => {} };
+    const answers: (() => void)[] = [];
+    let inFlight = 0;
+    let most = 0;
+    const calls: string[] = [];
+    const fetch: FetchLike = async (path, init) => {
+      calls.push(`${init.method} ${path}`);
+      if (init.method !== "POST") return json(200, { data: SIGNING });
+      most = Math.max(most, ++inFlight);
+      await new Promise<void>((resolve) => answers.push(resolve));
+      inFlight -= 1;
+      return json(200, { data: SIGNING.attempt });
+    };
+    const live = liveActions(checkoutApi(fetch), undefined, env);
+    const room = { id: ROOM, now: () => ({ snapshot: SIGNING, session: PAYER }), signedOut: () => {} };
+    const stopRoomPage = live.watch({ ...room, track: shownBy().track });
+    await vi.advanceTimersByTimeAsync(0);
+    stopRoomPage();
+    const stopResultPage = live.watch({ ...room, track: shownBy().track });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(calls.filter((c) => c === refresh)).toHaveLength(1);
+    answers.shift()!();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(calls.filter((c) => c === refresh), "the next poll refreshes once the first refresh answered").toHaveLength(2);
+    expect(most).toBe(1);
+    stopResultPage();
   });
 
   it("sends nothing after it is stopped, even when a poll was still in flight", async () => {
