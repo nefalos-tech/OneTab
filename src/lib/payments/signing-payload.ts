@@ -1,11 +1,11 @@
 import { address, blockhash, LEGACY_TRANSACTION_SIZE_LIMIT, type ReadonlyUint8Array } from "@solana/kit";
 import { findAssociatedTokenPda, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { z } from "zod";
-import type { Checkout, Participant, PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index.js";
+import type { Checkout, Participant, PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index";
 import {
   createPaymentPlan, DEVNET_USDC, inspectPaymentMessage,
   type MessageCandidate, type PaymentPlan,
-} from "./payment-core.js";
+} from "./payment-core";
 
 const units = z.string().max(20).regex(/^(0|[1-9][0-9]*)$/)
   .pipe(z.string().refine(value => BigInt(value) <= 18446744073709551615n));

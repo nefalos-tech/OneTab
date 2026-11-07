@@ -1,9 +1,9 @@
-import type { RoomSnapshot } from "../../contracts/index.js";
-import { expectedOrigin, requireWalletSession } from "../auth/service.js";
-import { getRoom, publicConfig } from "../rooms/service.js";
-import { PaymentFailure } from "./errors.js";
-import { createPaymentHandlers } from "./http.js";
-import { createPaymentService, type PaymentDependencies } from "./service.js";
+import type { RoomSnapshot } from "../../contracts/index";
+import { expectedOrigin, requireWalletSession } from "../auth/service";
+import { getRoom, publicConfig } from "../rooms/service";
+import { PaymentFailure } from "./errors";
+import { createPaymentHandlers } from "./http";
+import { createPaymentService, type PaymentDependencies } from "./service";
 
 export async function readPaymentRoom(input: { checkoutId: string }): Promise<RoomSnapshot | null> {
   const result = await getRoom(input.checkoutId);

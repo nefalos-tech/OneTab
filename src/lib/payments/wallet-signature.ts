@@ -1,6 +1,6 @@
 import { address, type ReadonlyUint8Array } from "@solana/kit";
-import { verifyWalletSignature } from "./signature-core.js";
-import { toBase64, type ValidatedSigningPayload } from "./signing-payload.js";
+import { verifyWalletSignature } from "./signature-core";
+import { toBase64, type ValidatedSigningPayload } from "./signing-payload";
 
 export async function extractPaymentSignature(input: {
   validated: ValidatedSigningPayload; wallet: string; transactionBytes: ReadonlyUint8Array;

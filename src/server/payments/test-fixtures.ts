@@ -1,11 +1,11 @@
 import { AccountState, getMintEncoder, getTokenEncoder, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
 import { getAddressDecoder, type ReadonlyUint8Array } from "@solana/kit";
-import type { PublicConfig, RoomSnapshot } from "../../contracts/index.js";
-import { DEVNET_USDC, equalShares } from "../../lib/payments/payment-core.js";
-import { createCheckoutPaymentPlan, fromBase64, toBase64 } from "../../lib/payments/signing-payload.js";
-import { DEVNET_GENESIS_HASH, type PaymentRpc } from "./preflight.js";
-import { createPaymentService } from "./service.js";
-import { TestAttemptStore } from "./test-store.js";
+import type { PublicConfig, RoomSnapshot } from "../../contracts/index";
+import { DEVNET_USDC, equalShares } from "../../lib/payments/payment-core";
+import { createCheckoutPaymentPlan, fromBase64, toBase64 } from "../../lib/payments/signing-payload";
+import { DEVNET_GENESIS_HASH, type PaymentRpc } from "./preflight";
+import { createPaymentService } from "./service";
+import { TestAttemptStore } from "./test-store";
 
 export async function serviceFixture(count: 2 | 3 = 2) {
   const signers = await Promise.all(Array.from({ length: count }, async () => {
