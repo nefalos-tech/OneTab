@@ -64,7 +64,7 @@ export async function observePayment(input: {
     await assertDevnet(rpc);
     // Keep F, S, P ordered. The cache may advance after S captures its context.
     let finalized: z.infer<typeof epoch> | null = null;
-    try { finalized = epoch.parse(await rpc.call("getEpochInfo", [{ commitment: "finalized" }])); } catch { /* Positive evidence remains useful. */ }
+    try { finalized = epoch.parse(await rpc.call("getEpochInfo", [{ commitment: "finalized" }])); } catch {}
     const readStatus = async (history: boolean) => parseChainStatus(await rpc.call("getSignatureStatuses", [
       [expected.reference], { searchTransactionHistory: history },
     ]));
@@ -78,7 +78,7 @@ export async function observePayment(input: {
       let afterLookup: number | null = null;
       try { afterLookup = integer.parse(await rpc.call("getSlot", [{
         commitment: "processed", minContextSlot: Number(status.contextSlot),
-      }])); } catch { /* A failed bound can only fall back to positive history. */ }
+      }])); } catch {}
       if (afterLookup !== null) {
         const absence = { kind: "recent_absence" as const, finalizedSlot: BigInt(finalized.absoluteSlot),
           finalizedBlockHeight: BigInt(finalized.blockHeight), statusContextSlot: status.contextSlot,

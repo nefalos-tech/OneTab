@@ -36,10 +36,18 @@ The local tests generate real synthetic Ed25519 signatures. Each test owns its f
 
 The suite covers persisted-before-send order, concurrent lease claims, recovery after persistence before first send, lost responses followed by the same receipt, stale leases, changed bytes and signatures, wrong cluster, sanitized errors, and finalized metadata failures. Expiry tests cover equal lifetime height, strict greater height, cache age 299 versus 300, skipped-slot bounds, cache advancement during lookup, context regression, unverified affinity, and unavailable history. A finalized expired height cannot be undone by a later lower processed height.
 
-Commands run on the application Node 24.22.1 toolchain are `npm run typecheck`, scoped ESLint, and `vitest run src/lib/payments src/server/payments`. Spike verification uses its Node 25.9.0 toolchain. Its lint, typecheck, build, and 91 non-loopback tests passed. The HTTP loopback test initially could not start its server in the sandbox. Its isolated rerun with local port access passed.
+The combined application `npm run check` passed lint, route type generation, TypeScript, design checks, and 1,064 tests on Node 24.22.1. The complete spike `npm run check` passed lint, typecheck, build, and all 92 tests on Node 25.9.0 with local port access. Independent review also passed 29 focused composition and settlement tests plus five fault-injection probes.
 
 No live RPC, wallet, database, or hosted application call was made for this increment. A new progress instance over one fake store demonstrates orchestration recovery, not durable database survival. Real B4 fencing and atomic paid-state behavior remain integration requirements.
 
 Incomplete signatures cannot claim submission. A declined or unresolved authorization without submission bytes has no agreed B1 reconciliation lease. Progress returns its stored blocking state without inventing a transition, reference, or address-history scan. This limitation includes missing organizer signatures after lifetime expiry. Safe expiry does not itself authorize or create another attempt.
 
 Model the Domain shaped the separate observation and decision types. Make Operations Idempotent shaped exact persisted identity recovery. The throughput checkpoint kept frozen validation ahead of network work, assigned these P4 files to one writer, left P3 composition with its owner, and used B1 fencing only for the shared attempt invariant.
+
+## Application composition
+
+The Payments runtime now constructs `createPaymentProgress` from the same explicit store, lifecycle and RPC ports used by the P3 service. Checkout reads and public configuration come from B3. The production routes still return `CONFIGURATION_UNAVAILABLE` because the durable B4 composition is not supplied. No in-memory fallback or backend-affinity assumption is enabled.
+
+`src/server/payments/application.test.ts` runs the actual P2 validator and wallet-result extractor, P3 HTTP handlers and service, and P4 progress function together. For two and three synthetic payers it verifies duplicate preparation, concurrent approvals, persistence before the simulated send, a lost send response, blocked replacement, concurrent refresh and submit through fresh service instances, and the same finalized receipt. Literal splits are `[5, 5]` and `[4, 3, 3]` for ten units. The simulated token and fee deltas must pass the real chain inspector. Identical uploads after confirmation do not send again or obtain another blockhash.
+
+These are local tests with a test store, synthetic keys and simulated RPC responses. Fresh service instances prove composition recovery, not process restart durability. They are not P5 live balance evidence or P6 hosted wallet acceptance.
