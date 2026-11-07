@@ -350,6 +350,30 @@ describe("a notice applies while its wallet is signed in and its action is offer
   });
 });
 
+describe("approvals that arrive out of spot order", () => {
+  const room = FIXTURES.signing.snapshot;
+  const withApprovals = (...wallets: Address[]) => ({ ...room, attempt: { ...room.attempt!, signedWallets: wallets } });
+  const viewOf = (snapshot: typeof room, wallet: Address) =>
+    deriveRoomView({ snapshot, session: { wallet, expiresAt: "2099-01-01T00:00:00.000Z" }, source: { kind: "live", links: checkoutLinks(room.checkout.id) } });
+
+  it.each<[string, Address[], string[]]>([
+    ["the last spot first", [SAMPLE_WALLETS.cam], ["ready", "ready", "approved"]],
+    ["the last and first spots, listed last first", [SAMPLE_WALLETS.cam, SAMPLE_WALLETS.organizer], ["approved", "ready", "approved"]],
+  ])("mark Approved exactly the spots whose wallets approved: %s", (_, wallets, spots) => {
+    for (const viewer of [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam, SAMPLE_WALLETS.outsider]) {
+      const view = viewOf(withApprovals(...wallets), viewer);
+      expect(view.tab.spots.map((s) => s.status), viewer).toEqual(spots);
+      expect(view.tab.progress, viewer).toBe(`${wallets.length} of 3 approved`);
+    }
+  });
+
+  it("offer Approve to the payer still waiting, and not to one who approved first", () => {
+    const camFirst = withApprovals(SAMPLE_WALLETS.cam);
+    expect(viewOf(camFirst, SAMPLE_WALLETS.cam).actions.primary).toBeNull();
+    expect(viewOf(camFirst, SAMPLE_WALLETS.bea).actions.primary?.kind).toBe("approve");
+  });
+});
+
 describe("Approve is offered only to a member with the payment's terms", () => {
   const room = FIXTURES.signing.snapshot;
   const seller = room.checkout.sellerWallet;

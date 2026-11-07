@@ -159,8 +159,8 @@ test("three payers' screens agree on readiness and approvals at every step, and 
     { label: SITUATIONS.full_not_ready.label, progress: "3 of 3 joined, 1 ready", spots: ["ready", "joined", "joined"] },
     { label: SITUATIONS.ready.label, progress: "3 of 3 joined, 3 ready", spots: ["ready", "ready", "ready"] },
     { label: SITUATIONS.preparing.label, progress: "0 of 3 approved", spots: ["ready", "ready", "ready"] },
-    { label: SITUATIONS.signing.label, progress: "1 of 3 approved", spots: ["approved", "ready", "ready"] },
-    { label: SITUATIONS.signing.label, progress: "2 of 3 approved", spots: ["approved", "approved", "ready"] },
+    { label: SITUATIONS.signing.label, progress: "1 of 3 approved", spots: ["ready", "ready", "approved"] },
+    { label: SITUATIONS.signing.label, progress: "2 of 3 approved", spots: ["approved", "ready", "approved"] },
   ];
   for (const [index, step] of steps.entries()) {
     if (index > 0) await request.post(nextStep(id));
@@ -173,7 +173,7 @@ test("three payers' screens agree on readiness and approvals at every step, and 
     }
   }
   const approved = await spotStatus(page, 1).evaluate((el) => getComputedStyle(el).backgroundColor);
-  const ready = await spotStatus(page, 3).evaluate((el) => getComputedStyle(el).backgroundColor);
+  const ready = await spotStatus(page, 2).evaluate((el) => getComputedStyle(el).backgroundColor);
   expect(approved, "Ready and Approved look different").not.toBe(ready);
   await capture(page, "room-two-approved");
 
@@ -214,3 +214,47 @@ test("a page opened after the room moved on stays put, and Back after a move sho
   await expect(page).toHaveURL(room(id));
   await capture(page, "room-after-back");
 });
+
+function roomReadTimes(page: Page, id: string): number[] {
+  const at: number[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === `/api/checkouts/${id}`) at.push(Date.now());
+  });
+  return at;
+}
+
+const showPage = (page: Page, state: "hidden" | "visible") =>
+  page.evaluate((visibility) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+
+test("a live page reads its room about every two seconds, never faster", async ({ page }) => {
+  const id = scriptedRoom();
+  const reads = roomReadTimes(page, id);
+  await page.goto(room(id));
+  await expect.poll(() => reads.length).toBe(1);
+  const from = reads[0]!;
+  await page.waitForTimeout(6_500);
+  const inWindow = reads.filter((t) => t <= from + 6_500);
+  expect(inWindow.length, "a read at once, then one every two seconds").toBeGreaterThanOrEqual(3);
+  expect(inWindow.length, "no faster than every two seconds").toBeLessThanOrEqual(4);
+  for (const [i, t] of inWindow.slice(1).entries()) expect(t - inWindow[i]!, `gap before read ${i + 2}`).toBeGreaterThan(1_500);
+});
+
+test("a hidden live page stops reading its room, and reads at once when shown again", async ({ page }) => {
+  const id = scriptedRoom();
+  const reads = roomReadTimes(page, id);
+  await page.goto(room(id));
+  await expect.poll(() => reads.length).toBe(1);
+  await showPage(page, "hidden");
+  const whileHidden = reads.length;
+  await page.waitForTimeout(5_000);
+  expect(reads.length, "no reads while hidden").toBe(whileHidden);
+  const shownAt = Date.now();
+  await showPage(page, "visible");
+  await expect.poll(() => reads.length).toBe(whileHidden + 1);
+  expect(reads.at(-1)! - shownAt, "the read is at once, not at the next tick").toBeLessThan(1_000);
+  await expect.poll(() => reads.length, { timeout: 4_000 }).toBe(whileHidden + 2);
+});
+

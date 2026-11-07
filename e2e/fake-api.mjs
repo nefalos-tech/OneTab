@@ -72,10 +72,10 @@ const party = (id) => ({
   participants: PARTY.map((wallet, slot) => ({ slot, wallet, shareUnits: "30000000", ready: true })),
 });
 
-const attempt = (id, state, approvals) => ({
+const attempt = (id, state, signedWallets) => ({
   id: `a7${id.slice(2)}`,
   state,
-  signedWallets: PARTY.slice(0, approvals),
+  signedWallets,
   transactionReference: null,
   lastValidBlockHeight: state === "preparing" ? null : "312345678",
   error: null,
@@ -86,10 +86,10 @@ const attempt = (id, state, approvals) => ({
 export const SCRIPT = [
   (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
   (id) => ({ ...party(id), phase: "ready", attempt: null }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", 0) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", 1) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", 2) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", 3) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo]) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo, WALLETS.ava]) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
 ];
 
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
