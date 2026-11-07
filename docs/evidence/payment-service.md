@@ -59,7 +59,7 @@ Decline atomically rechecks frozen membership and current attempt. It closes col
 
 Preparation failure requires the current, unexpired preparation fencing token, preparing state, and no frozen payload. It can mark the attempt failed and safely resolved only before a usable authorization is exposed. Stale workers cannot close a newly frozen or recovered attempt. No B1 `recordOutcome` token-domain assumption substitutes for this operation.
 
-Known adapter failures must throw `new PaymentFailure(code)` from `src/server/payments/errors.ts`, using the B1 `ErrorCode` vocabulary. Unknown adapter exceptions become `CONFIGURATION_UNAVAILABLE` at the HTTP boundary. Arbitrary exception text and unvalidated database messages are never public error codes.
+The Payments composition adapter translates B4's documented structured failures into `new PaymentFailure(code)` from `src/server/payments/errors.ts`, using the B1 `ErrorCode` vocabulary. Database helpers do not import Payments. Unknown adapter exceptions become `CONFIGURATION_UNAVAILABLE` at the HTTP boundary. Arbitrary exception text and unvalidated database messages are never public error codes.
 
 The B1 insertion result has no `inserted` flag. Concurrent identical final-signature uploads can both observe completeness after atomic idempotent insertion. P4 must fence submission and network progress through its store claim. This is also required for concurrent submit and refresh requests. P3 does not claim exactly one network send from a request count.
 
