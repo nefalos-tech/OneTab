@@ -2,6 +2,7 @@ import { isCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "
 import { SITUATIONS, type Screen, type Situation } from "./catalog";
 import { checkoutLinks, spotNumber, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
+import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
 export type Persona =
   | { readonly kind: "member"; readonly slot: number }
@@ -139,10 +140,11 @@ export function personaParam(persona: Persona): string {
 export function sampleCheckoutState(ref: SampleRef): CheckoutState {
   const entry = FIXTURES[ref.fixture];
   const { snapshot } = entry;
+  const session = sessionFor(ref.persona, snapshot);
   return {
     config: SAMPLE_CONFIG,
     snapshot,
-    session: sessionFor(ref.persona, snapshot),
+    session,
     source: {
       kind: "sample",
       fixtureLabel: entry.label,
@@ -152,15 +154,30 @@ export function sampleCheckoutState(ref: SampleRef): CheckoutState {
         links: sampleLinks(ref.fixture, p),
         current: samePersona(p, ref.persona),
       })),
+      wallet: sampleWalletSeed(session),
     },
   };
 }
 
 export function sampleCreateState(): CreateState {
+  const session = { wallet: SAMPLE_WALLETS.organizer, expiresAt: SAMPLE_SESSION_EXPIRY };
   return {
     config: SAMPLE_CONFIG,
-    session: { wallet: SAMPLE_WALLETS.organizer, expiresAt: SAMPLE_SESSION_EXPIRY },
-    source: { kind: "sample", sampleRoomHref: sampleLinks(OPEN_ROOM, ORGANIZER).room },
+    session,
+    source: { kind: "sample", sampleRoomHref: sampleLinks(OPEN_ROOM, ORGANIZER).room, wallet: sampleWalletSeed(session) },
+  };
+}
+
+/** The sample wallet's accounts. It starts on the persona's wallet, or on the outsider when signed out. */
+function sampleWalletSeed(session: Session | null): SampleWalletSeed {
+  return {
+    accounts: [
+      { label: "Organizer", wallet: SAMPLE_WALLETS.organizer },
+      { label: "Bea", wallet: SAMPLE_WALLETS.bea },
+      { label: "Cam", wallet: SAMPLE_WALLETS.cam },
+      { label: "Someone with the link", wallet: SAMPLE_WALLETS.outsider },
+    ],
+    selected: session?.wallet ?? SAMPLE_WALLETS.outsider,
   };
 }
 

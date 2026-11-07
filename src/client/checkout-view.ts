@@ -22,10 +22,12 @@ import {
   type Tone,
 } from "./catalog";
 import { splitEqually, type Money } from "./units";
+import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
 export type CheckoutState = {
   readonly config: PublicConfig;
   readonly snapshot: RoomSnapshot;
+  /** The viewer's identity. Loaders supply the sample persona's; Viewer replaces it with the wallet's. */
   readonly session: Session | null;
   readonly source: CheckoutSource;
 };
@@ -36,6 +38,7 @@ export type CheckoutSource =
       readonly fixtureLabel: string;
       readonly links: ScreenLinks;
       readonly personas: readonly PersonaOption[];
+      readonly wallet: SampleWalletSeed;
     }
   | { readonly kind: "live"; readonly links: ScreenLinks };
 
@@ -46,7 +49,7 @@ export type CreateState = {
   readonly config: PublicConfig | null;
   readonly session: Session | null;
   readonly source:
-    | { readonly kind: "sample"; readonly sampleRoomHref: string }
+    | { readonly kind: "sample"; readonly sampleRoomHref: string; readonly wallet: SampleWalletSeed }
     | { readonly kind: "live"; readonly samplesOn: boolean };
 };
 
