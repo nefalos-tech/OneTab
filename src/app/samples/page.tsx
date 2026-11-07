@@ -12,7 +12,7 @@ export default async function SamplesPage() {
   const entries = await loadSampleIndex();
   return (
     <>
-      <SiteHeader networkLabel={NETWORK_LABELS.devnet} viewerWallet={null} />
+      <SiteHeader networkLabel={NETWORK_LABELS.devnet} />
       <main id="main" tabIndex={-1} className="mx-auto flex max-w-content flex-col gap-8 px-6 pt-8 pb-16 focus:outline-none">
         <div className="flex flex-col gap-2">
           <h1 className="text-title font-bold">{WORDS.sample}</h1>

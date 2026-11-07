@@ -8,7 +8,7 @@ import { SiteHeader } from "@/components/page-shell";
 export default function ErrorPage({ retry }: { readonly error: unknown; readonly retry: () => void }) {
   return (
     <>
-      <SiteHeader networkLabel={NETWORK_LABELS.devnet} viewerWallet={null} />
+      <SiteHeader networkLabel={NETWORK_LABELS.devnet} />
       <main id="main" tabIndex={-1} className="mx-auto flex max-w-result flex-col gap-4 px-6 py-16 focus:outline-none">
         <h1 className="text-title font-bold">This page didn&apos;t load</h1>
         <p role="alert">Something went wrong while loading this page. Nothing was sent from it.</p>

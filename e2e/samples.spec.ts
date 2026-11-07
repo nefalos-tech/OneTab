@@ -70,7 +70,9 @@ test("the room's primary action sits above the payer list when stacked, and besi
   for (const c of cases) {
     await page.setViewportSize({ width: 640, height: 900 });
     await page.goto(c.state.source.links.room);
-    const primary = await page.locator("[data-action='primary']").boundingBox();
+    const action = page.locator("[data-action='primary']");
+    await expect(action, c.id).toBeVisible();
+    const primary = await action.boundingBox();
     const payers = await page.getByRole("heading", { name: "Payers", exact: true }).boundingBox();
     expect(primary!.y, c.id).toBeLessThan(payers!.y);
 
@@ -83,28 +85,15 @@ test("the room's primary action sits above the payer list when stacked, and besi
   }
 });
 
-test("the header wallet slot is plain status text, not a control", async ({ page }) => {
+test("the header wallet control shows the persona's short address, or Connect wallet when signed out", async ({ page }) => {
   const signedIn = fixtureCases().find((c) => c.state.source.links.room === "/checkouts/sample-signing?as=spot-2");
-  const wallet = deriveRoomView(signedIn!.state).chrome.viewerWallet!;
-  const views = [
-    { href: signedIn!.state.source.links.room, text: `Viewing as ${wallet.slice(0, 4)}…${wallet.slice(-4)}` },
-    { href: "/checkouts/sample-signing?as=signed-out", text: "No wallet connected" },
-  ];
-  for (const { href, text } of views) {
-    await page.goto(href);
-    const slot = page.getByRole("banner").locator("p", { hasText: text.replace("Viewing as ", "") });
-    await expect(slot).toHaveText(text);
-    const findings = await slot.evaluate((el) => {
-      const found: string[] = [];
-      if (el.closest("a, button, [role='button'], [role='link'], [tabindex]")) found.push("inside a control");
-      for (let node: Element | null = el; node && node.tagName !== "HEADER"; node = node.parentElement) {
-        if (parseFloat(getComputedStyle(node).borderTopWidth) > 0) found.push(`${node.tagName} has a border`);
-      }
-      for (const child of el.querySelectorAll("*")) if (parseFloat(getComputedStyle(child).borderTopWidth) > 0) found.push("child has a border");
-      return found;
-    });
-    expect(findings, href).toEqual([]);
-  }
+  const wallet = signedIn!.state.session!.wallet;
+  await page.goto(signedIn!.state.source.links.room);
+  const account = page.getByRole("banner").getByRole("button", { name: `Signed in as ${wallet.slice(0, 4)}…${wallet.slice(-4)}` });
+  await expect(account).toHaveAttribute("aria-expanded", "false");
+
+  await page.goto("/checkouts/sample-signing?as=signed-out");
+  await expect(page.getByRole("banner").getByRole("button", { name: ACTIONS.connect_wallet.label })).toBeVisible();
 });
 
 test("a stubbed action announces that nothing was sent and stays put", async ({ page }) => {

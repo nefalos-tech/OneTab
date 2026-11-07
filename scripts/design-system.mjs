@@ -1,5 +1,3 @@
-//   node scripts/design-system.mjs           check: exit 1 on drift, a missing reset or role, a failing contrast pair or an arbitrary value
-//   node scripts/design-system.mjs --write   regenerate the generated regions in place, then run the same checks
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { relative } from "node:path";
@@ -21,7 +19,7 @@ const REQUIRED_RESETS = [
   "--breakpoint-*",
   "--container-*",
 ];
-// Tailwind arbitrary values (`bg-[#fff]`, `max-w-[640px]`) and CSS-variable shorthands (`bg-(--x)`) bypass the tokens.
+const EXAMPLE_ADDRESS = "SAMP…Bea2";
 const ARBITRARY_VALUE = /(?<![\w-])-?[a-z][a-z0-9-]*-(?:\[[^\]\s]+\]|\(--[^)\s]+\))/g;
 
 const write = process.argv.includes("--write");
@@ -65,6 +63,7 @@ const regions = {
   contrast: contrast.table,
   states: renderStates(catalog),
   words: renderWords(catalog),
+  wallet: renderWallet(catalog),
 };
 let next = doc;
 for (const [name, body] of Object.entries(regions)) next = replaceRegion(next, name, body);
@@ -133,6 +132,28 @@ function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS }) {
     ],
   );
   return `${actions}\n\n${words}`;
+}
+
+function renderWallet({ ACTIONS, WALLET_FIXES, WALLET_PROBLEMS, WALLET_WAITING, WORDS }) {
+  const bold = (s) => `**${s}**`;
+  const quoted = (s) => `"${s}"`;
+  return markdownTable(
+    ["State", "Status line", "Action"],
+    [
+      ["Signed out", "None", bold(ACTIONS.connect_wallet.label)],
+      ...Object.values(WALLET_WAITING).map((w) => [w.state, quoted(w.line), bold(WORDS.cancel)]),
+      [
+        "Signed in",
+        `None. The header shows the short address, and screen readers hear ${quoted(`${WORDS.signed_in_as} ${EXAMPLE_ADDRESS}.`)}`,
+        `Menu: ${bold(WORDS.copy_address)}, ${bold(WORDS.disconnect)}`,
+      ],
+      ...Object.values(WALLET_PROBLEMS).map((p) => [
+        p.state,
+        quoted(p.message.replace("{address}", EXAMPLE_ADDRESS)),
+        bold(WALLET_FIXES[p.fix].label),
+      ]),
+    ],
+  );
 }
 
 async function scanArbitraryValues(dir) {

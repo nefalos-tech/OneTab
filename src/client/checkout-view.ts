@@ -9,6 +9,8 @@ import type {
   Session,
   TokenUnits,
 } from "./contracts";
+
+export type { Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
@@ -22,6 +24,7 @@ import {
   type Tone,
 } from "./catalog";
 import { splitEqually, type Money } from "./units";
+import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
 export type CheckoutState = {
   readonly config: PublicConfig;
@@ -36,6 +39,7 @@ export type CheckoutSource =
       readonly fixtureLabel: string;
       readonly links: ScreenLinks;
       readonly personas: readonly PersonaOption[];
+      readonly wallet: SampleWalletSeed;
     }
   | { readonly kind: "live"; readonly links: ScreenLinks };
 
@@ -46,13 +50,15 @@ export type CreateState = {
   readonly config: PublicConfig | null;
   readonly session: Session | null;
   readonly source:
-    | { readonly kind: "sample"; readonly sampleRoomHref: string }
+    | { readonly kind: "sample"; readonly sampleRoomHref: string; readonly wallet: SampleWalletSeed }
     | { readonly kind: "live"; readonly samplesOn: boolean };
 };
 
 export const SAMPLES_PATH = "/samples";
 
 export const spotNumber = (slot: number): number => slot + 1;
+
+export const shortAddress = (address: string): string => `${address.slice(0, 4)}…${address.slice(-4)}`;
 export const SAMPLE_CREATE_PATH = "/?sample";
 
 export function checkoutLinks(segment: CheckoutId | `sample-${string}`, query = ""): ScreenLinks {
@@ -68,7 +74,6 @@ export type ViewerRole =
 
 export type Chrome = {
   readonly networkLabel: string;
-  readonly viewerWallet: Address | null;
   readonly flow: readonly FlowStepView[];
   readonly sample: SampleBanner | null;
 };
@@ -107,7 +112,6 @@ export type TabView = {
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
 
-/** The POST /api/checkouts body without clientRequestId, which F3 adds. */
 export type CreateRequest = {
   readonly title: string;
   readonly sellerWallet: Address;
@@ -246,7 +250,6 @@ export function deriveResultView(state: CheckoutState): ResultView {
 export function deriveCreateView(state: CreateState): CreateView {
   const chrome: Chrome = {
     networkLabel: NETWORK_LABELS[state.config?.network ?? "devnet"],
-    viewerWallet: state.session?.wallet ?? null,
     flow: flowOf("create"),
     sample: state.source.kind === "sample" ? { fixtureLabel: null, personas: [], indexHref: SAMPLES_PATH } : null,
   };
@@ -488,7 +491,6 @@ function chromeOf(state: CheckoutState, step: FlowStepId | "complete", screen: S
   const { source } = state;
   return {
     networkLabel: NETWORK_LABELS[state.config.network],
-    viewerWallet: state.session?.wallet ?? null,
     flow: flowOf(step),
     sample:
       source.kind === "sample"
@@ -551,7 +553,7 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const FULL = "This checkout is full.";
-const SIGNED_OUT = "Connect your wallet if you hold a spot.";
+const SIGNED_OUT = "Sign in with your wallet if you hold a spot.";
 
 const recoveryLine = (r: Recovery | null, onHold: string): string =>
   r?.kind === "organizer_can_retry"
@@ -565,7 +567,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
     c.role.kind === "guest"
       ? "There's an open spot. Join to pay your share."
       : c.role.kind === "signed_out"
-        ? "Connect your wallet to take an open spot."
+        ? "Sign in with your wallet to take an open spot."
         : c.role.kind === "organizer"
           ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
           : c.role.kind === "payer"
