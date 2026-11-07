@@ -9,6 +9,7 @@ import { DevnetRpc } from './rpc.js';
 import { startServer } from './server.js';
 import { prepareExperiment } from './setup.js';
 import { ProofFailure } from './errors.js';
+import { PaymentPreflightFailure } from '../../../src/server/payments/preflight.js';
 
 const { positionals, values } = parseArgs({ allowPositionals: true, options: {
   state: { type: 'string', default: './.private/proof.sqlite' }, config: { type: 'string' },
@@ -45,7 +46,7 @@ try {
   }
 } catch (error) {
   proof.close();
-  process.stderr.write(error instanceof ProofFailure ? `${error.code}. ${error.message}\n` : error instanceof z.ZodError
+  process.stderr.write(error instanceof ProofFailure || error instanceof PaymentPreflightFailure ? `${error.code}. ${error.message}\n` : error instanceof z.ZodError
     ? 'CONFIG_INVALID. Public plan or local command values are invalid.\n'
     : 'P1 command rejected. Check the command, private state directory, and public plan.\n');
   process.exitCode = 1;
