@@ -94,23 +94,24 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
         payerCount: request.payerCount,
         clientRequestId,
       };
-      return mutationResult(await send(fetchImpl, "POST", "/api/checkouts", body), null);
+      const reply = await send(fetchImpl, "POST", "/api/checkouts", body);
+      if (reply.kind !== "data") return failureOf(reply);
+      const created = parseRoomSnapshot(reply.data);
+      return created === null ? UNAVAILABLE : { ok: true, value: created };
     },
     async join(id) {
-      return mutationResult(await send(fetchImpl, "POST", `/api/checkouts/${id}/join`), id);
+      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/join`);
+      return reply.kind === "data" ? roomOf(reply.data, id) : failureOf(reply);
     },
   };
 }
 
-function roomOf(data: unknown, expectedId: CheckoutId | null): Result<RoomSnapshot, "unavailable"> {
+function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailable"> {
   const snapshot = parseRoomSnapshot(data);
-  return snapshot !== null && (expectedId === null || snapshot.checkout.id === expectedId)
-    ? { ok: true, value: snapshot }
-    : UNAVAILABLE;
+  return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
 }
 
-function mutationResult(reply: Reply, expectedId: CheckoutId | null): Result<RoomSnapshot, RequestProblem> {
-  if (reply.kind === "data") return roomOf(reply.data, expectedId);
+function failureOf(reply: Exclude<Reply, { readonly kind: "data" }>): { readonly ok: false; readonly failure: RequestProblem } {
   if (reply.kind === "error" && reply.status === 401) return { ok: false, failure: "signed_out" };
   const problem = reply.kind === "error" && reply.code !== null ? REQUEST_PROBLEM_BY_CODE[reply.code] : undefined;
   return { ok: false, failure: problem ?? "unavailable" };
@@ -119,16 +120,13 @@ function mutationResult(reply: Reply, expectedId: CheckoutId | null): Result<Roo
 export type ApiEnv = { readonly [name: string]: string | undefined };
 
 export function apiOrigin(env: ApiEnv): string | null {
-  const value = env.ONETAB_API_ORIGIN || env.APP_ORIGIN;
-  if (!value) return null;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return null;
-  }
-  const isHttp = url.protocol === "https:" || url.protocol === "http:";
-  return isHttp && url.origin === value.replace(/\/$/, "") ? url.origin : null;
+  const origin = (env.ONETAB_API_ORIGIN || env.APP_ORIGIN)?.replace(/\/$/, "");
+  return origin && isBareOrigin(origin) ? origin : null;
+}
+
+function isBareOrigin(value: string): boolean {
+  const url = URL.parse(value);
+  return url !== null && (url.protocol === "https:" || url.protocol === "http:") && url.origin === value;
 }
 
 export function originFetch(
