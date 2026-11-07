@@ -1,8 +1,19 @@
 # Verify payment failures and recovery
 
-P5 is incomplete. Every runtime scenario below is **NOT RUN**, including local tests, integrated checks, and live Devnet checks. This checklist prepares [P5](../cards/P5.md). It is not payment evidence.
+[P5](../cards/P5.md) is incomplete. Local application, synthetic payment, and browser checks have passed. Every integrated scenario below remains **NOT RUN** with real application persistence, browser wallets, and Devnet balances.
 
-The inspected baseline is `a8c1d5cb524589bc13350af09dd7c07e8b66fa8e`, dated 2026-11-07. It has no `src/`, root `package.json`, or root `package-lock.json`. The implementations required from [P4](../cards/P4.md), [F5](../cards/F5.md), and [B4](../cards/B4.md) are absent. Their card documents describe planned work. No application test, build, or runtime command is available at this baseline.
+The earlier baseline `a8c1d5cb524589bc13350af09dd7c07e8b66fa8e` contained planning documents only. It no longer describes the available implementation. This evidence refresh starts from main `8179b47`, which includes P1 and P2, and inspects these later application revisions.
+
+| Inspected implementation | Exact revision |
+| --- | --- |
+| P3 application collection and browser signature extraction | [`d8ba143a2578edec4628de2952cfaff7c8a1fc39`](https://github.com/nefalos-tech/OneTab/tree/d8ba143a2578edec4628de2952cfaff7c8a1fc39) |
+| Combined P3 and P4 submission, reconciliation, and HTTP composition | [`0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d`](https://github.com/nefalos-tech/OneTab/tree/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d) |
+
+P3 subsequently merged into main as `639a27600497f78c814fa60ad182581c5024a8ab`. The later P4 head `3ffde1173f1e676ed0394f3a2c5cd74c4cb4d1e8` has the identical Git tree as the tested `0d1124b` revision. The records below retain the original test identities.
+
+These are source and local-test identities, not deployed revisions. [P3's application contract](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-service.md) and [P4's settlement evidence](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-settlement.md) describe the inspected modules.
+
+[B4](../cards/B4.md) has not supplied the durable application store and lifecycle adapter. Production payment routes return `CONFIGURATION_UNAVAILABLE` without those ports. F4 and [F5](../cards/F5.md) are not part of the merged baseline for this record. Their real approval and recovery flows still need integrated evidence. A fake store, simulated RPC, and sample UI cannot satisfy those checks.
 
 Follow the [spec acceptance criteria](../../spec.md#acceptance-criteria), [shared contracts](../contracts.md), [recovery rules](../architecture.md#persistence-and-request-recovery), and [development setup](../development.md). Record changed prerequisites against the exact revision used for execution.
 
@@ -34,26 +45,48 @@ Tag every observation with its evidence class. `fixture` uses synthetic data or 
 
 Simulation and preflight rejection are `Devnet` observations only when the real RPC produced them. Neither proves a landed transaction or rollback. Optional scenario 14 defines the separate proof required only if the team claims demonstrated on-chain rollback.
 
-## Run local checks separately
+## Read the recorded local results
 
-All rows are **NOT RUN**. Use actual test entry points once they exist. Record their commands and outputs separately from the integrated scenarios.
+The coordinator's final-import logs cover the combined revision `0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d`. The artifacts below are in the task-local `onetab-run-20261107` directory. They were read for this update, not rerun by the documentation author.
 
-| Setup | Action | Observable expected outcome and required proof | Evidence class |
-| --- | --- | --- | --- |
-| A fixed two-payer and three-payer message with synthetic keys. | Omit a signature. Upload invalid, unexpected, stale, and changed-message signatures. | Only valid signatures for the exact attempt, message, and expected signer enter collection. Save assertions for each variant. | `local` and `fixture` for synthetic inputs. |
-| Valid payment payload fixtures. | Change seller, amount, mint, program, fee payer, signer set, account permissions, or instructions one at a time. | Validation rejects every mutation before a wallet prompt. Save each mutation and result. | `local` and `fixture`. |
-| Fake wallet, account data, block height, and AttemptStore. | Reject approval, remove funds, expire a message, race preparation and signature writes, and request retry. | State transitions preserve signatures and block unsafe replacement. Save assertions, including fresh signatures after safe expiry. | `local` and `fixture`. No real database claim. |
-| Fake RPC with controlled pause and response loss. | Repeat submit, restart the coordinator, and drop a send response. | Every send uses the stored bytes and reference. Unknown outcomes remain unresolved. Save the call trace and state assertions. | `local` and `fixture`. No chain or durable recovery claim. |
+| Command and runtime | Observed result | Local artifact |
+| --- | --- | --- |
+| Root `npm run check`, Node `24.22.1` | PASS. Lint, route type generation, TypeScript, design checks, and 1,064 unit tests passed. | `p3-p4-import-root-check.log` |
+| Spike `npm run check`, Node `25.9.0` | PASS. Lint, TypeScript, Vite build, and all 92 tests passed. | `p3-p4-import-spike-check.log` |
+| Root `npm run test:e2e -- --workers=2`, Node `24.22.1` | PASS. Production build and 139 browser cases passed with sample data and a fake API. The build reported two font fallback warnings. | `p3-p4-import-app-browser.log` |
+| Spike `node --import tsx test/invite-navigation.mjs --playwright-module ../../node_modules/playwright/index.mjs`, Node `25.9.0` | PASS. Chromium `153.0.8010.12` passed eight invitation, 30 payment-core, and 20 signature-core cases. | `p3-p4-import-payment-browser.log` |
+
+The coordinator also recorded 17 passing guard checks against the local production Next.js build in `p4-built-route-evidence.json` at `2026-11-07T17:03:00.267759Z`. The record identifies `3ffde1173f1e676ed0394f3a2c5cd74c4cb4d1e8` and its identical built tree at `0d1124b`. Observed responses cover origin rejection, missing sessions, unsupported methods, and unavailable configuration. These route checks used no real database or wallet.
+
+The counts cover their full suites. They are not counts of completed P5 scenarios. These runs establish `local` and `fixture` behavior. They contain no new real-wallet approval, integrated Devnet payment, or real application database recovery.
+
+Use the following test map to inspect the relevant assertions at the combined revision. Every row records local PASS evidence only.
+
+| Integrated scenarios | Actual test files | Observed local behavior and remaining limit |
+| --- | --- | --- |
+| 1, 2, 3, 4, and 10. Signature integrity | `spikes/payment-proof/test/signature-core.test.ts`, `src/server/payments/service.test.ts`, and `src/server/payments/wallet-signature.test.ts` | Synthetic two- and three-payer signatures are verified and placed by wallet. Missing, invalid, unexpected, old-message, and changed wallet-return inputs fail validation. Concurrent fake-store uploads preserve valid signatures. Real extension prompts and Postgres insertion races remain NOT RUN. |
+| 1. Incomplete submit | `src/server/payments/http.test.ts` and `src/server/payments/settlement.test.ts` | The HTTP test returns 200 after only one signature. The separate settlement test returns the unchanged incomplete attempt with no claim or RPC event. Neither invents a signature, submission, or receipt. The integrated missing-signature and real RPC simulation check remains NOT RUN. |
+| 4. Payment tampering | `src/lib/payments/signing-payload.test.ts`, `spikes/payment-proof/test/payment-core.test.ts`, and `spikes/payment-proof/test/payment-core-browser.mjs` | Mutated payment fields, account roles, instructions, signer sets, and internally consistent foreign accounts fail independent validation. Browser cases cover both payer counts. The real application wallet-prompt boundary remains NOT RUN. |
+| 5 and 15. Decline and account changes | `src/server/payments/service.test.ts` and `spikes/payment-proof/test/wallet.test.ts` | Fake-store decline preserves issued signatures and blocks retry. Fake wallet rejection is distinct from provider failure. Account changes invalidate pending approval results. Real application rejection, session recovery, and balance observations remain NOT RUN. |
+| 6 and 7. Funds and fee validation | `src/server/payments/build-attempt.test.ts` and `src/server/payments/service.test.ts` | Simulated account balances reject each underfunded payer and insufficient organizer SOL. A pre-publication preparation failure permits only explicit replacement. Real insufficient-funds and post-signing preflight observations remain NOT RUN. |
+| 8 and 15. Expiry and replacement safety | `src/server/payments/reconciliation.test.ts`, `src/server/payments/settlement.test.ts`, and `src/server/payments/service.test.ts` | Controlled observations test strict expired height, cache bounds, explicit backend assurance, stale outcomes, and blocked unsafe replacement. Production assurance remains unverified. A declined or incomplete authorization without submission bytes remains blocking because no B1 reconciliation lease is defined for it. A live fresh-message retry remains NOT RUN. |
+| 9, 10, and 11. Duplicate and concurrent requests | `src/server/payments/service.test.ts`, `src/server/payments/settlement.test.ts`, and `src/server/payments/application.test.ts` | Fake-store preparation reuses one attempt. Concurrent collection, submit, and refresh retain one signed identity. Submission is stored before simulated RPC work. Real database fencing and landed payment counts remain NOT RUN. |
+| 12 and 13. Restart and lost response | `src/server/payments/settlement.test.ts` and `src/server/payments/application.test.ts` | New service instances recover the same fake-store identity after a simulated lost response. Two- and three-payer HTTP composition reaches the same synthetic finalized receipt. No real process restart over B4 or lost live send response was tested. |
+| 14. Optional on-chain rollback | `spikes/payment-proof/test/chain-inspection.test.ts` and `src/server/payments/settlement.test.ts` | Synthetic finalized failure and conflicting metadata exercise result handling. They do not prove a landed failed payment or rollback. Scenario 14 remains NOT RUN and rollback remains NOT PROVED. |
+
+The combined HTTP composition tests use ten integer units, split as `[5, 5]` or `[4, 3, 3]`. Their simulated balance metadata passes the real chain inspector. Those fixtures are not the six-USDC hosted checkout required by P6.
+
+[P1's recorded payment](payment-proof.md) remains separate historical Devnet evidence. The [P4 read-only revalidation](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-chain-inspection.md#combined-cores-and-public-chain-verification) ran at `6863914fc2ed21ea386ce3aed6ceb97ac5db307b` on Node `25.9.0`. It confirmed P1's original two-payer payment at slot `519612865`. It did not execute these failure scenarios or the current application routes.
 
 ## Run the integrated scenarios
 
-Every scenario remains **NOT RUN**. The proof below supplements the common records. Endpoint names come from the [HTTP contract](../contracts.md#http-operations); they are not implemented at the inspected baseline.
+Every integrated scenario remains **NOT RUN**. The proof below supplements the common records. Endpoint names come from the [HTTP contract](../contracts.md#http-operations). The inspected P3 and P4 implementation has these handlers, but production composition remains unavailable until B4 supplies the durable adapters.
 
 ### 1. Missing signature
 
 - Setup. Prepare a ready checkout and collect only one payer's real sign-only approval.
 - Action. Call `POST /api/attempts/:attemptId/submit`. Separately simulate the incomplete transaction through the real RPC with signature verification enabled and no blockhash replacement.
-- Expect. Submit returns `SIGNATURES_INCOMPLETE`. No submission claim, broadcast, or success receipt follows. RPC simulation rejects the incomplete signer set.
+- Expect. Submit returns HTTP 200 with the current `AttemptSummary` in signing state while signatures remain incomplete. P4 returns that stored attempt without claiming submission or sending to RPC. No successful payment or receipt follows. The separate real RPC simulation must reject the incomplete signer set. A successful HTTP response is not payment success.
 - Proof. Save the signature count, HTTP response, database state, RPC simulation rejection, and common balance records. Use `real browser wallet`, `real database`, and `Devnet`. Label the simulation as rejection, not a landed failure.
 
 ### 2. Invalid or unexpected signature
@@ -67,8 +100,8 @@ Every scenario remains **NOT RUN**. The proof below supplements the common recor
 
 - Setup. Safely resolve an old attempt, then explicitly create a new attempt for the unpaid checkout. Retain an old signature privately.
 - Action. Upload the old signature to the closed attempt. Upload its old `messageHash` and signature to the new attempt.
-- Expect. The old attempt refuses collection. The new attempt rejects the message mismatch. No signature carries forward. Every payer must approve the new message.
-- Proof. Save both attempt IDs and hashes, rejection responses, signer rows, and fresh approval records. Use `real database` and `real browser wallet`.
+- Expect. The closed attempt accepts no new signature. An identical previously verified upload may return its existing summary without progress. The new attempt rejects the old message hash. No signature carries forward. Every payer must approve the new message.
+- Proof. Save both attempt IDs and hashes, upload responses, signer rows, and fresh approval records. Use `real database` and `real browser wallet`.
 
 ### 4. Message tampering
 
