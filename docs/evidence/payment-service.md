@@ -10,7 +10,7 @@ Preparation reserves the attempt before claiming a preparation lease. The builde
 
 Signature collection requires the session wallet in frozen membership and the attempt to be current. It checks the exact stored message hash, independently validates the frozen payment through P2, and verifies Ed25519 before insertion. Identical verified uploads return the stored result even after collection closes. New signatures after closure fail. The final accepted signature calls one injected progress pass. A failed pass leaves the accepted signatures stored. Replaying an identical upload returns the current attempt without invoking progress again. Submit or refresh resumes progress for that same attempt. Submission claims and network operations belong to P4.
 
-`extractPaymentSignature` in `src/lib/payments/wallet-signature.ts` accepts `{ validated, wallet, transactionBytes }`. `validated` is P2's `ValidatedSigningPayload`. The adapter checks the wallet-returned transaction through the promoted core and returns `{ signerWallet, messageHash, signatureBase64 }` for F4. It performs no wallet connection, prompt, HTTP request, or broadcast.
+`extractPaymentSignature` in `src/lib/payments/wallet-signature.ts` accepts `{ validated, wallet, transactionBytes }`. `validated` is P2's `ValidatedSigningPayload`. The adapter checks the wallet-returned transaction through the promoted core and returns the exact HTTP upload body `{ messageHash, signatureBase64 }`. The authenticated session supplies the signer on the server. F4's separate `WalletBridge.signPayment` result includes `signerWallet` from the account passed to this verifier, as required by B1. This helper performs no wallet connection, prompt, HTTP request, or broadcast.
 
 ## HTTP and runtime
 
