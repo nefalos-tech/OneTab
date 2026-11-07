@@ -98,7 +98,7 @@ function ApprovalSummary({ approval }: { readonly approval: ApprovalView }): Rea
           <dt className="text-small text-muted">{WORDS.seller}</dt>
           <dd className="flex flex-col items-start gap-2">
             <AddressText value={approval.seller} form="full" />
-            <CopyButton value={approval.seller} labelSuffix="seller wallet" />
+            <CopyButton value={approval.seller} labelSuffix={WORDS.seller_wallet} />
           </dd>
         </div>
         <div>

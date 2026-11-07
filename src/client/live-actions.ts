@@ -136,19 +136,32 @@ function afterWrite(
   return settle(c, id, answer.failure);
 }
 
-const AFTER: { readonly [P in Exclude<RequestProblem, "signed_out">]: "say" | "reread" | "reread_and_say" } = {
-  room_full: "reread",
-  room_changed: "reread_and_say",
-  not_funded: "reread_and_say",
-  rate_limited: "say",
-  refused: "say",
-  unavailable: "say",
+/**
+ * What a failed request leaves on screen. A problem that means the room moved on reads it again, then
+ * says `ifShown` when the room read shows the latest (null says nothing), and `ifUnread` when it can't.
+ */
+type After =
+  | { readonly readAgain: false }
+  | { readonly readAgain: true; readonly ifShown: ProblemWithWords | null; readonly ifUnread: ProblemWithWords };
+
+const SAY: After = { readAgain: false };
+
+const AFTER: { readonly [P in Exclude<RequestProblem, "signed_out">]: After } = {
+  room_full: { readAgain: true, ifShown: null, ifUnread: "room_full" },
+  room_changed: { readAgain: true, ifShown: "room_changed", ifUnread: "room_changed_unread" },
+  not_funded: { readAgain: true, ifShown: "not_funded", ifUnread: "not_funded" },
+  rate_limited: SAY,
+  refused: SAY,
+  unavailable: SAY,
 };
 
 async function settle(c: Context, id: CheckoutId, problem: RequestProblem): Promise<Outcome> {
-  if (problem === "signed_out" || AFTER[problem] === "say") return said(problem);
+  if (problem === "signed_out") return SIGNED_OUT;
+  const after = AFTER[problem];
+  if (!after.readAgain) return notice(problem);
   const read = await reread(c, id);
-  return AFTER[problem] === "reread" && read.ok ? DONE : notice(problem);
+  const words = read.ok ? after.ifShown : after.ifUnread;
+  return words === null ? DONE : notice(words);
 }
 
 function said(problem: RequestProblem): Outcome {

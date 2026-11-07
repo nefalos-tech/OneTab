@@ -212,7 +212,7 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Button | Actions | Primary (Tide fill, white text), primary on Tide (Marigold fill, Deep Tide text), quiet (white, Tide text, strong border), link. States: default, hover, pressed, focus, disabled, loading |
 | Text field | Form input | Label above, hint below, error below the hint. States: default, focus, invalid, disabled |
 | Choice | Pick 2 or 3 payers | Radio group shown as two side-by-side options |
-| Amount | Money values | Number plus "test USDC", tabular figures |
+| Amount | Money values | Number plus "test USDC", tabular figures. The hero amount wraps on a narrow screen, and the others stay on one line |
 | Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
 | Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group. While a payer has a payment to approve, the approval summary takes your share's place, above **Approve in wallet**: the share as the hero, the full seller with **Copy**, the total and the network, who pays the network fee, and a note that one approval covers every share |
@@ -360,6 +360,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | --- | --- |
 | `room_full` | Someone took the last spot first. This checkout is full. |
 | `room_changed` | The checkout moved on before this went through. It shows the latest now. |
+| `room_changed_unread` | The checkout moved on before this went through. OneTab couldn't load the latest yet. |
 | `not_funded` | The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent. |
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
@@ -425,6 +426,8 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `approve` | Approve |
 | `reject` | Reject |
 | `declined` | You declined this payment. |
+| `seller_wallet` | seller wallet |
+| `you_are_ready` | You're ready. |
 | `end_sign_in` | End sign-in |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
@@ -522,7 +525,7 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
-| 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, which lasts only while that attempt is on screen, a short note when a decline lands but the room can't be read, the payment prompt's status line with **Cancel**, **Approving…** only on the checkout the prompt is for, notices for a payment that doesn't match, can't start or can't be checked yet, and for an approval OneTab can't check after the wallet answers or the server refuses, after which Approve asks the wallet again, new status lines for getting ready and approving, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
+| 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, which lasts only while that attempt is on screen, a short note when a decline lands but the room can't be read, the payment prompt's status line with **Cancel**, **Approving…** only on the checkout the prompt is for, notices for a payment that doesn't match, can't start or can't be checked yet, and for an approval OneTab can't check after the wallet answers or the server refuses, after which Approve asks the wallet again, new status lines for getting ready and approving, including **You're ready.** while a spot is still open, so the status line announces each readiness change, a readiness toggle that keeps its button and focus when it flips, **Approve in wallet** only for a payer in the room, a 409 notice that says the screen shows the latest only after the room was read again, a hero amount that wraps at 320px, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
 | 2026-11-07 | Add the busy labels **Creating…** and **Joining…**, the request problem notices, the seller's status line, Connect wallet at the create review, outage words for creation unavailable, a title for the error page, and focus moves when an answer removes the focused control | F3 creates checkouts and joins rooms against the real routes. Each request outcome needs words and a next step, and creating needs a signed-in organizer | [F3](cards/F3.md), [#9](https://github.com/nefalos-tech/OneTab/issues/9) |
 | 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
 | 2026-11-07 | First version: palette, type, layout, components, states, copy and accessibility rules, with generated token, contrast, state and word tables | F2 to F6 need one design language before they build on the screens | [F1](cards/F1.md), [#7](https://github.com/nefalos-tech/OneTab/issues/7) |

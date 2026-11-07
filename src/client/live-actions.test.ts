@@ -290,6 +290,15 @@ describe("start payment", () => {
     expect(shown).toEqual([]);
   });
 
+  it("after the room moved on, says the screen shows the latest only when the room read again", async () => {
+    const { fetch } = server(() => json(409, errorBody("ROOM_NOT_READY")), noAnswer);
+    const { track, shown } = shownBy();
+    const outcome = await liveActions(checkoutApi(fetch)).run(START, scope(track));
+    expect(outcome).toEqual(said("room_changed_unread"));
+    expect(outcome.kind === "notice" && outcome.text).not.toMatch(/shows the latest/);
+    expect(shown).toEqual([]);
+  });
+
   it("a payment that can't be funded reads the room again and says why", async () => {
     const { fetch, calls } = server(() => json(422, errorBody("INSUFFICIENT_USDC")), () => json(200, { data: SIGNING }));
     const { track, shown } = shownBy();

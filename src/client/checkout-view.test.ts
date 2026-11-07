@@ -126,12 +126,27 @@ describe("status lines speak to the viewer", () => {
     ["signing as spot-2", "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."],
     ["full-not-ready as spot-3", "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."],
     ["ready as spot-1", "Everyone is ready. Start the payment to ask each payer to approve it."],
-    ["open-spots as spot-1", "Waiting for 1 more payer. Copy the link and send it to them."],
+    ["open-spots as spot-1", "You're ready. Waiting for 1 more payer. Copy the link and send it to them."],
+    ["open-spots as spot-2", "You joined. Waiting for 1 more payer."],
     ["full-not-ready as outsider", "This checkout is full. Waiting for 1 payer to get ready."],
     ["declined-on-hold as spot-1", "A payer declined. Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed."],
     ["unresolved as spot-1", "We can't confirm the result yet. We keep checking the same transaction, and no new payment will start."],
   ])("%s", (id, line) => {
     expect(deriveRoomView(caseById(id).state).status.line).toBe(line);
+  });
+
+  it.each<[string, string, boolean, string]>([
+    ["the organizer", "open-spots as spot-1", false, "Waiting for 1 more payer. Copy the link and send it to them."],
+    ["a payer", "open-spots as spot-2", true, "You're ready. Waiting for 1 more payer."],
+  ])("while a spot is open, the line says when %s turns ready or not, so the status region announces it", (_, id, ready, line) => {
+    const { state } = caseById(id);
+    const wallet = state.session!.wallet;
+    const toggled = { ...state.snapshot, participants: state.snapshot.participants.map((p) => (p.wallet === wallet ? { ...p, ready } : p)) };
+    const before = deriveRoomView(state);
+    const after = deriveRoomView({ ...state, snapshot: toggled });
+    expect(after.status.line).toBe(line);
+    expect(after.status.line).not.toBe(before.status.line);
+    expect(after.actions.secondary.map((a) => a.kind)).toEqual([ready ? "mark_not_ready" : "mark_ready"]);
   });
 
   it("shows the viewer's own share and marks their spot", () => {
@@ -332,6 +347,36 @@ describe("a notice applies while its wallet is signed in and its action is offer
       expect(next.attempt.id).not.toBe(first.attempt!.id);
       expect(noticeApplies(rejected, { wallet: bea.wallet, actions: approve(next) })).toBe(false);
     });
+  });
+});
+
+describe("Approve is offered only to a member with the payment's terms", () => {
+  const room = FIXTURES.signing.snapshot;
+  const seller = room.checkout.sellerWallet;
+  const sellerInASpot = { ...room, participants: room.participants.map((p) => (p.slot === 2 ? { ...p, wallet: seller } : p)) };
+  const as = (wallet: Address) => ({ wallet, expiresAt: "2099-01-01T00:00:00.000Z" });
+  const live = (snapshot: typeof room, wallet: Address): CheckoutState => ({
+    snapshot,
+    session: as(wallet),
+    source: { kind: "live", links: checkoutLinks(room.checkout.id) },
+  });
+
+  it("never to the seller, even in a room that lists the seller in a spot", () => {
+    expect(termsOf(sellerInASpot, as(seller))).toBeNull();
+    const view = deriveRoomView(live(sellerInASpot, seller));
+    expect(view.actions.primary).toBeNull();
+    expect(view.approval).toBeNull();
+  });
+
+  it("never to someone outside the room", () => {
+    expect(termsOf(room, as(SAMPLE_WALLETS.outsider))).toBeNull();
+    expect(deriveRoomView(live(room, SAMPLE_WALLETS.outsider)).actions.primary).toBeNull();
+  });
+
+  it("to a payer who hasn't approved, with the approval summary beside it", () => {
+    const view = deriveRoomView(live(room, SAMPLE_WALLETS.bea));
+    expect(view.actions.primary?.kind).toBe("approve");
+    expect(view.approval).not.toBeNull();
   });
 });
 

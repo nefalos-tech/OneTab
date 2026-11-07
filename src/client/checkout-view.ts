@@ -361,7 +361,7 @@ export function deriveReviewActions(
 export function termsOf(snapshot: RoomSnapshot, session: Session | null): ApprovalTerms | null {
   const { checkout, participants, attempt } = snapshot;
   if (attempt === null || (attempt.state !== "preparing" && attempt.state !== "signing")) return null;
-  if (session === null || participants.length !== checkout.payerCount) return null;
+  if (session === null || session.wallet === checkout.sellerWallet || participants.length !== checkout.payerCount) return null;
   if (!participants.some((p) => p.wallet === session.wallet) || attempt.signedWallets.includes(session.wallet)) return null;
   return {
     checkoutId: checkout.id,
@@ -654,7 +654,11 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
           },
   preparing: (c) => (c.role.kind === "signed_out" ? CONNECT : NONE),
   signing: (c) =>
-    c.role.kind === "signed_out" ? CONNECT : c.terms ? { primary: { kind: "approve", terms: c.terms }, secondary: [] } : NONE,
+    c.role.kind === "signed_out"
+      ? CONNECT
+      : isMember(c.role) && c.terms
+        ? { primary: { kind: "approve", terms: c.terms }, secondary: [] }
+        : NONE,
 };
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
@@ -677,15 +681,15 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
         : c.role.kind === "seller"
           ? WORDS.seller_no_spot
           : c.role.kind === "organizer"
-            ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
             : c.role.kind === "payer"
-              ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
+              ? `${c.me === "ready" ? WORDS.you_are_ready : "You joined."} Waiting for ${count(c.openSpots, "more payer")}.`
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
   full_not_ready: (c) =>
     isMember(c.role) && c.me !== "ready"
       ? "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."
       : isMember(c.role)
-        ? `You're ready. Waiting for ${count(c.notReady, "more payer")} to get ready.`
+        ? `${WORDS.you_are_ready} Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
           ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${SIGNED_OUT}`
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,

@@ -131,7 +131,7 @@ export function ActionGroup({
         <div className="flex flex-wrap items-center gap-3">
           {actions.secondary.map((a) => (
             <ActionControl
-              key={a.kind}
+              key={controlKey(a)}
               action={a}
               variant={a.kind === "back_to_checkout" ? "link" : "quiet"}
               busy={shownBusy}
@@ -156,6 +156,9 @@ export function ActionGroup({
     </div>
   );
 }
+
+/** I'm ready and Not ready yet are one toggle, so it keeps its button, and keyboard focus, when it flips. */
+const controlKey = (action: Action): string => (action.kind === "mark_not_ready" ? "mark_ready" : action.kind);
 
 function useFocusFallback(fallback: RefObject<HTMLElement | null> | undefined) {
   const root = useRef<HTMLDivElement>(null);

@@ -158,11 +158,13 @@ export type ActionKind = keyof typeof ACTIONS;
 
 export type ProblemWithWords =
   | Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">
-  | "approval_refused";
+  | "approval_refused"
+  | "room_changed_unread";
 
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
   room_changed: "The checkout moved on before this went through. It shows the latest now.",
+  room_changed_unread: "The checkout moved on before this went through. OneTab couldn't load the latest yet.",
   not_funded:
     "The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent.",
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
@@ -232,6 +234,8 @@ export const WORDS = {
   approve: "Approve",
   reject: "Reject",
   declined: "You declined this payment.",
+  seller_wallet: "seller wallet",
+  you_are_ready: "You're ready.",
   end_sign_in: "End sign-in",
 } as const;
 
