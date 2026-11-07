@@ -7,15 +7,38 @@ The app combines everyone's approved contribution into **one Solana transaction 
 
 The agreed stack is **Next.js App Router + React + TypeScript + Supabase Postgres**, with npm and Tailwind CSS. Frontend scaffolds one shared application. Backend and payment routes live in that same application.
 
-This is a desktop-only Solana Devnet prototype for a 24-hour, three-person hackathon build. The application is not scaffolded yet. The documents below are the implementation handoff, not evidence of a working payment system.
+This is a desktop-only Solana Devnet prototype for a 24-hour, three-person hackathon build. The app renders its three screens from sample data. Wallets, rooms and payments are not connected yet, so nothing in it is evidence of a working payment system.
 
-Read these before implementing a card:
+## Run OneTab locally
+
+You need Node.js 24.22.1, the version in [.nvmrc](.nvmrc). With nvm, select it first:
+
+```bash
+nvm use
+```
+
+Install the exact dependencies from the lockfile:
+
+```bash
+npm ci
+```
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open http://localhost:3000/samples to see every screen and state with sample data. [The development guide](docs/development.md) lists every script and environment variable.
+
+## Read before implementing a card
 
 1. [Product specification](spec.md) defines scope, payment rules and acceptance criteria.
 2. [Architecture](docs/architecture.md) defines the stack, module boundaries, file owners and payment flow.
 3. [Shared contracts](docs/contracts.md) defines API routes, data shapes, errors and atomic storage operations.
 4. [Development guide](docs/development.md) explains setup, environment variables, parallel work and evidence.
 5. [Card index](docs/implementation-map.md) links all 18 repository briefs and live GitHub issues.
+6. [Design system](docs/design-system.md) defines colors, type, components, states and words for every screen. [Design decisions](docs/design-decisions.md) explains why.
 
 [AGENTS.md](AGENTS.md) requires coding agents to install pstack when missing and load it before implementation. [The Kanban board](https://github.com/orgs/nefalos-tech/projects/10) owns task status.
 
@@ -25,7 +48,7 @@ Read these before implementing a card:
 | @kyusuku | Payments | [P1. Prove two browser-wallet approvals](docs/cards/P1.md) |
 | @SophiaChua | Backend and demo | [B1. Publish contracts, fixtures and schema](docs/cards/B1.md) |
 
-The [environment template](.env.example) contains no secrets. F1 publishes verified run/build commands when it creates the scaffold. P1 proves wallet and Solana package compatibility before those dependencies enter the shared app.
+The [environment template](.env.example) contains no secrets. P1 proves wallet and Solana package compatibility before those dependencies enter the shared app.
 
 ## How we use Solana
 
