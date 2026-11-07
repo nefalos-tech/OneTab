@@ -74,7 +74,11 @@ export type CheckoutApi = {
   create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
   setReady(id: CheckoutId, ready: boolean): Promise<Result<RoomSnapshot, RequestProblem>>;
-  startAttempt(id: CheckoutId): Promise<Result<AttemptSummary, RequestProblem>>;
+  /**
+   * Start sends a null retryOf, and Try again the attempt it replaces. A replay of either after a lost answer
+   * returns the attempt the first one made.
+   */
+  startAttempt(id: CheckoutId, retryOf: AttemptId | null): Promise<Result<AttemptSummary, RequestProblem>>;
   /** A payload that arrives but doesn't parse, or names another attempt, is a `mismatch`, never an outage. */
   signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem | "mismatch">>;
   uploadApproval(id: AttemptId, approval: PaymentApproval): Promise<Result<AttemptSummary, RequestProblem>>;
@@ -140,8 +144,8 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
       const reply = await send(fetchImpl, "PUT", `/api/checkouts/${id}/readiness`, { ready });
       return reply.kind === "data" ? roomOf(reply.data, id) : failureOf(reply);
     },
-    async startAttempt(id) {
-      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: null });
+    async startAttempt(id, retryOf) {
+      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: retryOf });
       return reply.kind === "data" ? startedAttempt(reply.data) : failureOf(reply);
     },
     async signingPayload(id) {

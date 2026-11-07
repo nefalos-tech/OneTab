@@ -110,7 +110,7 @@ describe.each(CASES)("honesty rules hold for $id", (c) => {
       c.persona.kind === "member" &&
       c.persona.slot === 0 &&
       attempt?.canRetry === true &&
-      (c.situation === "declined" || c.situation === "failed" || c.situation === "expired");
+      (c.situation === "failed" || c.situation === "expired");
     expect(result.actions.primary?.kind === "retry").toBe(allowed);
     for (const v of [room, result]) expect(v.actions.secondary.map((a) => a.kind)).not.toContain("retry");
   });
@@ -416,6 +416,53 @@ describe("a notice applies while its wallet is signed in and its action is offer
       expect(next.attempt.id).not.toBe(first.attempt!.id);
       expect(noticeApplies(rejected, { wallet: bea.wallet, actions: approve(next) })).toBe(false);
     });
+
+    it("from Try again lasts while Try again is for the same attempt, and ends once it is for a newer one", () => {
+      const organizerSees = (room: RoomSnapshot) =>
+        deriveResultView({ ...caseById("failed-not-sent as spot-1").state, snapshot: room, source: { kind: "live", links: checkoutLinks(room.checkout.id) } }).actions;
+      const failed = FIXTURES["failed-not-sent"].snapshot;
+      const newer = { ...failed, attempt: { ...failed.attempt!, id: FIXTURES["failed-on-chain"].snapshot.attempt!.id } };
+      const refused: Notice = { text: REQUEST_PROBLEMS.short_usdc, followUp: null, wallet: SAMPLE_WALLETS.organizer, raisedBy: organizerSees(failed).primary! };
+      expect(refused.raisedBy.kind).toBe("retry");
+      expect(noticeApplies(refused, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(failed) })).toBe(true);
+      expect(organizerSees(newer).primary?.kind).toBe("retry");
+      expect(noticeApplies(refused, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(newer) })).toBe(false);
+    });
+  });
+});
+
+describe("Try again is offered only when the server says the attempt is safely replaceable", () => {
+  const failed = caseById("failed-not-sent as spot-1").state;
+  const live = (changes: Partial<AttemptSummary>, wallet: Address | null = SAMPLE_WALLETS.organizer): CheckoutState => ({
+    snapshot: { ...failed.snapshot, attempt: { ...failed.snapshot.attempt!, ...changes } },
+    session: wallet === null ? null : { wallet, expiresAt: "2099-01-01T00:00:00.000Z" },
+    source: { kind: "live", links: checkoutLinks(failed.snapshot.checkout.id) },
+    page: NOTHING_HEARD,
+  });
+  const retryIn = (state: CheckoutState) =>
+    [deriveRoomView(state), deriveResultView(state)].flatMap((v) => [v.actions.primary, ...v.actions.secondary]).filter((a) => a?.kind === "retry");
+
+  it.each(["failed", "expired"] as const)("to the organizer of a %s attempt with canRetry, naming this checkout and that attempt", (state) => {
+    const attempt = failed.snapshot.attempt!;
+    expect(retryIn(live({ state, canRetry: true }))).toEqual([{ kind: "retry", checkoutId: failed.snapshot.checkout.id, retryOfAttemptId: attempt.id }]);
+  });
+
+  it.each([
+    ["a failed attempt without canRetry", { state: "failed", canRetry: false }],
+    ["a declined attempt that claims canRetry, which the schema forbids", { state: "declined", canRetry: true }],
+    ["an unresolved attempt that claims canRetry", { state: "unresolved", canRetry: true }],
+    ["a submitting attempt that claims canRetry", { state: "submitting", canRetry: true }],
+  ] as const)("never for %s", (_, changes) => {
+    expect(retryIn(live(changes))).toEqual([]);
+  });
+
+  it.each([
+    ["a payer", SAMPLE_WALLETS.bea],
+    ["the seller", SAMPLE_WALLETS.seller],
+    ["someone with the link", SAMPLE_WALLETS.outsider],
+    ["someone signed out", null],
+  ] as const)("never to %s", (_, wallet) => {
+    expect(retryIn(live({ state: "failed", canRetry: true }, wallet))).toEqual([]);
   });
 });
 
@@ -896,6 +943,16 @@ describe("every room the generator builds keeps the honesty rules", () => {
 
   it("never shows the server's message or explorer URL", () => {
     expect(breaking((b) => b.views.every((v) => !JSON.stringify([v.room, v.result]).includes(SENTINEL)))).toEqual([]);
+  });
+
+  it("offers Try again only to the organizer of a failed or expired attempt the server calls safe to replace, in an unpaid room", () => {
+    const allowed = (b: Built) => {
+      const a = b.snapshot.attempt;
+      const organizer = b.session?.wallet === b.snapshot.checkout.organizerWallet;
+      return organizer && b.snapshot.phase !== "paid" && a !== null && a.canRetry && (a.state === "failed" || a.state === "expired");
+    };
+    const retries = (v: Built["views"][number]) => [...offeredKinds(v.room), ...offeredKinds(v.result)].filter((k) => k === "retry").length;
+    expect(breaking((b) => b.views.every((v) => retries(v) === (allowed(b) ? 1 : 0)))).toEqual([]);
   });
 
   it("gives a reason exactly for a failed attempt, and mentions a paid fee only when it was sent", () => {

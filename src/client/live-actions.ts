@@ -1,7 +1,16 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
-import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
-import { checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
+import { ACTIONS, CAUSE_OF_CODE, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords } from "./catalog";
+import {
+  NOTHING_HEARD,
+  checkoutLinks,
+  situationOf,
+  type Action,
+  type ActionOf,
+  type ApprovalTerms,
+  type NotedCause,
+  type Replaceable,
+} from "./checkout-view";
 import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
@@ -52,7 +61,8 @@ export function roomTracker(show: (snapshot: RoomSnapshot) => void): Track {
 
 export type Scope = { readonly track: Track; readonly signer: PaymentSigner };
 
-type RoomContext = { readonly api: CheckoutApi; readonly track: Track };
+/** `note` writes this page's memory of a cause the room doesn't say. Only `startAttempt` calls it. */
+type RoomContext = { readonly api: CheckoutApi; readonly track: Track; readonly note: (noted: NotedCause) => void };
 /** Approve alone also reaches the wallet's signer and the payment check. */
 type ApproveContext = RoomContext & { readonly signer: PaymentSigner; readonly check: PaymentCheck };
 type Run<K extends LiveKind> = (action: ActionOf<K>, context: K extends "approve" ? ApproveContext : RoomContext) => Promise<Outcome>;
@@ -69,7 +79,8 @@ const RUN: { readonly [K in LiveKind]: Run<K> } = {
   join: ({ checkoutId }, c) => roomWrite(c, checkoutId, () => c.api.join(checkoutId)),
   mark_ready: ({ checkoutId }, c) => roomWrite(c, checkoutId, () => c.api.setReady(checkoutId, true)),
   mark_not_ready: ({ checkoutId }, c) => roomWrite(c, checkoutId, () => c.api.setReady(checkoutId, false)),
-  start_payment: ({ checkoutId }, c) => writeThenShowRoom(c, checkoutId, () => c.api.startAttempt(checkoutId)),
+  start_payment: ({ checkoutId }, c) => startAttempt(c, checkoutId, null),
+  retry: ({ checkoutId, retryOfAttemptId }, c) => startAttempt(c, checkoutId, retryOfAttemptId),
   approve: ({ terms }, c) => approve(terms, c),
   decline: async (action, c) => {
     const outcome = await writeThenShowRoom(c, action.checkoutId, () => c.api.decline(action.attemptId), DECLINED_UNSEEN);
@@ -102,6 +113,39 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
   }
   return outcomeOfWrite(c, terms.checkoutId, uploaded);
 }
+
+/**
+ * Start and Try again. A successful one leaves a preparing attempt, which the room owns, so the owner-change
+ * move takes every viewer there for fresh approvals.
+ *
+ * A wallet that can't fund the payment makes the server keep the attempt, failed, and answer 422 without its
+ * id. So the room is read again, and the cause is noted on the failed, never-sent attempt it shows, inside
+ * the tracked read and before the room shows: the first frame of the result screen already explains it.
+ */
+async function startAttempt(c: RoomContext, id: CheckoutId, retryOf: Replaceable | null): Promise<Outcome> {
+  const answer = await writeThenReadRoom(c, id, () => c.api.startAttempt(id, retryOf));
+  if (answer.ok || answer.failure === "unseen") return DONE;
+  if (!isFundingCause(answer.failure)) return settle(c, id, answer.failure);
+  const cause = answer.failure;
+  let noted = false;
+  await c.track("read", async () => {
+    const room = await c.api.readRoom(id);
+    const left = room.ok ? room.value.attempt : null;
+    if (left !== null && left.state === "failed" && left.transactionReference === null && left.id !== retryOf) {
+      c.note({ attemptId: left.id, cause });
+      noted = true;
+    }
+    return room;
+  });
+  return noted ? DONE : notice(cause);
+}
+
+const FUNDING: readonly (RequestProblem | "unseen")[] = [
+  CAUSE_OF_CODE.INSUFFICIENT_USDC,
+  CAUSE_OF_CODE.INSUFFICIENT_SOL,
+  CAUSE_OF_CODE.TOKEN_ACCOUNT_MISSING,
+];
+const isFundingCause = (problem: RequestProblem | "unseen"): problem is FundingCause => FUNDING.includes(problem);
 
 async function roomWrite(c: RoomContext, id: CheckoutId, write: () => Promise<Result<RoomSnapshot, RequestProblem>>): Promise<Outcome> {
   const answer = await c.track("write", write);
@@ -280,12 +324,38 @@ function watch(api: CheckoutApi, env: PollEnv, room: Watched, refreshOnce: Refre
   };
 }
 
+/** Causes this page heard, for `useSyncExternalStore`: `current` keeps its identity until a new note lands. */
+export type NotedCauses = {
+  subscribe(listener: () => void): () => void;
+  current(): readonly NotedCause[];
+};
+
 export type Live = {
   run(action: LiveAction, scope: Scope): Promise<Outcome>;
   watch(room: Watched): () => void;
+  readonly noted: NotedCauses;
 };
 
+/** Per page, beside the refresh lock, so a note outlives the move from room to result, and a reload clears it. */
+function notedMemory(): NotedCauses & { note(noted: NotedCause): void } {
+  let noted: readonly NotedCause[] = NOTHING_HEARD.noted;
+  const listeners = new Set<() => void>();
+  return {
+    note(next) {
+      if (noted.some((n) => n.attemptId === next.attemptId)) return;
+      noted = [...noted, next];
+      for (const listener of listeners) listener();
+    },
+    current: () => noted,
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
 export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment, env: PollEnv = browserPollEnv): Live {
+  const memory = notedMemory();
   let refreshing = false;
   const refreshOnce: RefreshOnce = (id) => {
     if (refreshing) return null;
@@ -295,8 +365,9 @@ export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment
     });
   };
   return {
-    run: (action, scope) => run(action, { ...scope, api, check }),
+    run: (action, scope) => run(action, { ...scope, api, check, note: memory.note }),
     watch: (room) => watch(api, env, room, refreshOnce),
+    noted: { subscribe: memory.subscribe, current: memory.current },
   };
 }
 

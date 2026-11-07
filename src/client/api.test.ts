@@ -233,7 +233,7 @@ describe("checkoutApi readiness and attempts", () => {
     json(200, { data: call.path.endsWith("/readiness") ? room : call.path.endsWith("/signing-payload") ? wire : attempt });
   const everyOperation = (api: ReturnType<typeof checkoutApi>) => [
     api.setReady(checkoutId, true),
-    api.startAttempt(checkoutId),
+    api.startAttempt(checkoutId, null),
     api.signingPayload(attemptId),
     api.uploadApproval(attemptId, approval),
     api.refreshAttempt(attemptId),
@@ -269,7 +269,18 @@ describe("checkoutApi readiness and attempts", () => {
     expect(await api(() => json(200, { data: other })).setReady(checkoutId, true)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: otherAttempt })).uploadApproval(attemptId, approval)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: room })).refreshAttempt(attemptId)).toEqual({ ok: false, failure: "unavailable" });
-    expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId)).toEqual({ ok: true, value: otherAttempt });
+    expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId, null)).toEqual({ ok: true, value: otherAttempt });
+  });
+
+  it("Start names no attempt to replace, and Try again names the one it replaces", async () => {
+    const { fetch, calls } = stubFetch(answerFor);
+    const api = checkoutApi(fetch);
+    await api.startAttempt(checkoutId, null);
+    await api.startAttempt(checkoutId, attemptId);
+    expect(calls.map((c) => [c.init.method, c.path, JSON.parse(String(c.init.body))])).toEqual([
+      ["POST", `/api/checkouts/${checkoutId}/attempts`, { retryOfAttemptId: null }],
+      ["POST", `/api/checkouts/${checkoutId}/attempts`, { retryOfAttemptId: attemptId }],
+    ]);
   });
 
   it.each<[string, unknown]>([

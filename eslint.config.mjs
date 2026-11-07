@@ -46,11 +46,17 @@ const PAYMENT_CHECK_MESSAGE =
   "Approvals run through live.run in @/client/live-actions, which checks the payment before any wallet prompt.";
 const NO_PAYMENT_CHECK = { regex: PAYMENT_CHECK_PATH, message: PAYMENT_CHECK_MESSAGE };
 const NO_DYNAMIC_PAYMENT_CHECK = {
-  "no-restricted-syntax": [
-    "error",
-    { selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`, message: PAYMENT_CHECK_MESSAGE },
-  ],
+  selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`,
+  message: PAYMENT_CHECK_MESSAGE,
 };
+/** Each brand is minted by one function in checkout-view.ts, after the check it stands for. */
+const BRANDS = "/^(Replaceable|VerifiedReceipt)$/";
+const NO_BRAND_CASTS = ["TSAsExpression", "TSTypeAssertion"].map((cast) => ({
+  selector: `${cast}[typeAnnotation.typeName.name=${BRANDS}]`,
+  message: "Only checkout-view.ts makes a Replaceable or VerifiedReceipt, through replaceable() and verifiedReceipt().",
+}));
+/** ESLint keeps only the last matching block's options for a rule, so each block that sets this lists every entry. */
+const restrictSyntax = (...entries) => ({ "no-restricted-syntax": ["error", ...NO_BRAND_CASTS, ...entries] });
 const NO_CHECK_FACTORY = {
   "no-restricted-imports": [
     "error",
@@ -113,7 +119,7 @@ export default defineConfig([
   globalIgnores([".next/**", ".agents/**", ".local-setup/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**", "spikes/payment-proof/**"]),
   {
     files: [`src/**/*.${CODE}`],
-    rules: { ...restrictServer(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT), ...NO_CHECK_FACTORY },
+    rules: { ...restrictServer(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT), ...NO_CHECK_FACTORY, ...restrictSyntax() },
   },
   {
     files: ["src/client/live-actions.ts", `src/**/*.test.${CODE}`],
@@ -125,12 +131,18 @@ export default defineConfig([
   },
   {
     files: [`src/components/**/*.${CODE}`],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK), ...NO_DYNAMIC_PAYMENT_CHECK },
+    rules: {
+      ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+    },
   },
   {
     files: [`src/app/**/*.${CODE}`],
     ignores: ["src/app/api/**"],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK), ...NO_DYNAMIC_PAYMENT_CHECK },
+    rules: {
+      ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+    },
   },
   {
     files: ["src/app/api/**/*.{ts,tsx}"],
@@ -149,6 +161,10 @@ export default defineConfig([
   {
     files: ["src/lib/wallet/live.ts"],
     rules: restrict(),
+  },
+  {
+    files: ["src/client/checkout-view.ts"],
+    rules: { "no-restricted-syntax": "off" },
   },
   {
     files: ["src/client/catalog.ts"],

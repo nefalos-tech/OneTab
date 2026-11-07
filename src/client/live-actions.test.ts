@@ -2,10 +2,10 @@ import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
-import { termsOf, type Action } from "./checkout-view";
-import type { ClientRequestId, RoomSnapshot, Session } from "./contracts";
+import { NOTHING_HEARD, checkoutLinks, deriveResultView, deriveRoomView, termsOf, type Action, type CheckoutState } from "./checkout-view";
+import type { AttemptId, ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
-import { FIXTURES } from "./fixtures";
+import { FIXTURES, sampleCheckoutState } from "./fixtures";
 import {
   browserPollEnv,
   isLiveAction,
@@ -101,6 +101,19 @@ const DECLINED_ELSEWHERE = FIXTURES.declined.snapshot.attempt!.id;
 const SIGNATURE = "c2lnbmVkIGJ5IGJlYQ==" as SignatureBase64;
 const APPROVE: Extract<LiveAction, { kind: "approve" }> = { kind: "approve", terms: TERMS };
 const DECLINE: Extract<LiveAction, { kind: "decline" }> = { kind: "decline", checkoutId: ROOM, attemptId: ATTEMPT };
+const FAILED = FIXTURES["failed-not-sent"].snapshot;
+const FAILED_ROOM = FAILED.checkout.id;
+const ORGANIZER_SEES = deriveResultView(sampleCheckoutState({ kind: "sample", fixture: "failed-not-sent", persona: { kind: "member", slot: 0 } }));
+const liveRoom = (snapshot: RoomSnapshot, session: Session | null): CheckoutState => ({
+  snapshot,
+  session,
+  source: { kind: "live", links: checkoutLinks(snapshot.checkout.id) },
+  page: NOTHING_HEARD,
+});
+const RETRY = ((offered) => {
+  if (offered?.kind !== "retry") throw new Error("The organizer of failed-not-sent isn't offered Try again");
+  return offered;
+})(ORGANIZER_SEES.actions.primary);
 const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } = {
   create_checkout: CREATE,
   join: JOIN,
@@ -109,6 +122,7 @@ const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } =
   start_payment: { kind: "start_payment", checkoutId: ID },
   approve: APPROVE,
   decline: DECLINE,
+  retry: RETRY,
 };
 
 function wallet(answer: Result<SignatureBase64, SignFailure>, current = () => true) {
@@ -212,7 +226,7 @@ describe("live actions", () => {
 
   it("is live exactly for the actions with a busy label, and runs each of them", async () => {
     expectTypeOf<LiveKind>().toEqualTypeOf<
-      "create_checkout" | "join" | "mark_ready" | "mark_not_ready" | "start_payment" | "approve" | "decline"
+      "create_checkout" | "join" | "mark_ready" | "mark_not_ready" | "start_payment" | "approve" | "decline" | "retry"
     >();
     for (const kind of Object.keys(ACTIONS) as ActionKind[]) {
       expect(isLiveAction({ kind } as Action), kind).toBe(kind in EXAMPLES);
@@ -309,6 +323,137 @@ describe("start payment", () => {
     expect(await liveActions(checkoutApi(fetch)).run(START, scope(track))).toEqual(said(cause));
     expect(requests(calls).at(-1)).toEqual(["GET", `/api/checkouts/${ROOM}`]);
     expect(shown).toEqual([SIGNING]);
+  });
+});
+
+describe("try again", () => {
+  const replaced = FAILED.attempt!.id;
+  const preparing: RoomSnapshot = { ...FAILED, phase: "paying", attempt: { ...FIXTURES.preparing.snapshot.attempt!, id: FIXTURES.signing.snapshot.attempt!.id } };
+  const signing: RoomSnapshot = { ...FAILED, phase: "paying", attempt: { ...FIXTURES.signing.snapshot.attempt!, signedWallets: [] } };
+  const startPath = `/api/checkouts/${FAILED_ROOM}/attempts`;
+
+  it("names the attempt it replaces, then shows the room read after it, and is done", async () => {
+    const { fetch, calls } = server(() => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(RETRY, scope(track))).toEqual({ kind: "done" });
+    expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
+      ["POST", startPath, { retryOfAttemptId: replaced }],
+      ["GET", `/api/checkouts/${FAILED_ROOM}`, null],
+    ]);
+    expect(shown).toEqual([preparing]);
+  });
+
+  it("a poll sent while it is in flight never shows, even when it answers last", async () => {
+    let answerRetry!: () => void;
+    let answerPoll!: () => void;
+    const { fetch } = server(
+      () => new Promise((resolve) => (answerRetry = () => resolve(json(201, { data: preparing.attempt })))),
+      () => new Promise((resolve) => (answerPoll = () => resolve(json(200, { data: FAILED })))),
+      () => json(200, { data: preparing }),
+    );
+    const { track, shown } = shownBy();
+    const retried = liveActions(checkoutApi(fetch)).run(RETRY, scope(track));
+    const poll = track("read", () => checkoutApi(fetch).readRoom(FAILED_ROOM));
+    answerRetry();
+    expect(await retried).toEqual({ kind: "done" });
+    answerPoll();
+    await poll;
+    expect(shown).toEqual([preparing]);
+  });
+
+  it("for an attempt already replaced, reads the room again and says it shows the latest", async () => {
+    const { fetch, calls } = server(() => json(409, errorBody("RETRY_BLOCKED")), () => json(200, { data: preparing }));
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(RETRY, scope(track))).toEqual(said("room_changed"));
+    expect(requests(calls)).toEqual([
+      ["POST", startPath],
+      ["GET", `/api/checkouts/${FAILED_ROOM}`],
+    ]);
+    expect(shown).toEqual([preparing]);
+  });
+
+  it("with no answer, says trying again is safe, and trying again sends the same request", async () => {
+    const { fetch, calls } = server(noAnswer, () => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
+    const live = liveActions(checkoutApi(fetch));
+    expect(await live.run(RETRY, scope())).toEqual(said("unavailable"));
+    expect(await live.run(RETRY, scope())).toEqual({ kind: "done" });
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ retryOfAttemptId: replaced }, { retryOfAttemptId: replaced }]);
+  });
+
+  it("leads every payer to Approve the new attempt, with no approval carried over", async () => {
+    const { fetch } = server(() => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
+    const { track, shown } = shownBy();
+    await liveActions(checkoutApi(fetch)).run(RETRY, scope(track));
+    expect(shown.map((room) => room.attempt?.id)).toEqual([signing.attempt!.id]);
+    for (const wallet of [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam]) {
+      const view = deriveRoomView(liveRoom(signing, { wallet, expiresAt: PAYER.expiresAt }));
+      expect(view.actions.primary, wallet).toMatchObject({ kind: "approve", terms: { attemptId: signing.attempt!.id } });
+      expect(view.tab.progress).toBe("0 of 3 approved");
+    }
+  });
+});
+
+describe("a funding refusal is noted on the failed attempt it left", () => {
+  const START: LiveAction = { kind: "start_payment", checkoutId: FAILED_ROOM };
+  const leftBehind = (id: AttemptId): RoomSnapshot => ({ ...FAILED, attempt: { ...FAILED.attempt!, id } });
+
+  function noting(...responses: (() => Response | Promise<Response>)[]) {
+    const { fetch, calls } = server(...responses);
+    const live = liveActions(checkoutApi(fetch));
+    const notedWhenShown: unknown[] = [];
+    const track = roomTracker(() => notedWhenShown.push(live.noted.current()));
+    return { live, calls, track, notedWhenShown };
+  }
+
+  it("after Start, the note names the failed attempt before the room shows it, and nothing more is said", async () => {
+    const { live, calls, track, notedWhenShown } = noting(() => json(422, errorBody("INSUFFICIENT_SOL")), () => json(200, { data: FAILED }));
+    expect(await live.run(START, scope(track))).toEqual({ kind: "done" });
+    expect(requests(calls)).toEqual([
+      ["POST", `/api/checkouts/${FAILED_ROOM}/attempts`],
+      ["GET", `/api/checkouts/${FAILED_ROOM}`],
+    ]);
+    const note = [{ attemptId: FAILED.attempt!.id, cause: "short_sol" }];
+    expect(notedWhenShown).toEqual([note]);
+    expect(live.noted.current()).toEqual(note);
+  });
+
+  it("after Try again, the note names the new failed attempt, never the replaced one", async () => {
+    const replacement = leftBehind(FIXTURES.signing.snapshot.attempt!.id);
+    const { live, track } = noting(() => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), () => json(200, { data: replacement }));
+    expect(await live.run(RETRY, scope(track))).toEqual({ kind: "done" });
+    expect(live.noted.current()).toEqual([{ attemptId: replacement.attempt!.id, cause: "no_token_account" }]);
+  });
+
+  it.each<[string, () => Response | Promise<Response>]>([
+    ["the room can't be read", () => json(503, errorBody("CONFIGURATION_UNAVAILABLE"))],
+    ["the room still shows the attempt being replaced", () => json(200, { data: FAILED })],
+    ["the room shows a sent attempt", () => json(200, { data: { ...FIXTURES["failed-on-chain"].snapshot, checkout: FAILED.checkout } })],
+    ["the room shows an attempt still collecting approvals", () => json(200, { data: { ...SIGNING, checkout: FAILED.checkout } })],
+  ])("when %s after Try again, notes nothing and says why in a notice", async (_, room) => {
+    const { live, track } = noting(() => json(422, errorBody("INSUFFICIENT_USDC")), room);
+    expect(await live.run(RETRY, scope(track))).toEqual(said("short_usdc"));
+    expect(live.noted.current()).toEqual([]);
+  });
+
+  it("keeps the first note for an attempt, and tells subscribers only about new ones", async () => {
+    const { live, track } = noting(
+      () => json(422, errorBody("INSUFFICIENT_SOL")),
+      () => json(200, { data: FAILED }),
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      () => json(200, { data: FAILED }),
+    );
+    let heard = 0;
+    const unsubscribe = live.noted.subscribe(() => heard++);
+    const before = live.noted.current();
+    expect(live.noted.current()).toBe(before);
+    await live.run(START, scope(track));
+    const first = live.noted.current();
+    expect(first).not.toBe(before);
+    await live.run(START, scope(track));
+    expect(live.noted.current()).toBe(first);
+    expect(first).toEqual([{ attemptId: FAILED.attempt!.id, cause: "short_sol" }]);
+    expect(heard).toBe(1);
+    unsubscribe();
   });
 });
 

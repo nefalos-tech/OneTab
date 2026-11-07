@@ -348,7 +348,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `start_payment` | Start payment | backend | button | Starting… |
 | `approve` | Approve in wallet | wallet | button | Approving… |
 | `decline` | Decline payment | backend | button | Declining… |
-| `retry` | Try again | backend | button |  |
+| `retry` | Try again | backend | button | Starting… |
 | `view_status` | View payment status | nothing | link |  |
 | `view_receipt` | View receipt | nothing | link |  |
 | `back_to_checkout` | Back to checkout | nothing | link |  |

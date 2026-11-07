@@ -145,7 +145,7 @@ export const ACTIONS = {
   start_payment: { label: "Start payment", needs: "backend", element: "button", busy: "Starting…" },
   approve: { label: "Approve in wallet", needs: "wallet", element: "button", busy: "Approving…" },
   decline: { label: "Decline payment", needs: "backend", element: "button", busy: "Declining…" },
-  retry: { label: "Try again", needs: "backend", element: "button" },
+  retry: { label: "Try again", needs: "backend", element: "button", busy: "Starting…" },
   view_status: { label: "View payment status", needs: "nothing", element: "link" },
   view_receipt: { label: "View receipt", needs: "nothing", element: "link" },
   back_to_checkout: { label: "Back to checkout", needs: "nothing", element: "link" },

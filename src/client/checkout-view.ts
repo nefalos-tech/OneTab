@@ -167,7 +167,7 @@ type ActionPayload = {
   readonly start_payment: { readonly checkoutId: CheckoutId };
   readonly approve: { readonly terms: ApprovalTerms };
   readonly decline: { readonly checkoutId: CheckoutId; readonly attemptId: AttemptId };
-  readonly retry: { readonly retryOfAttemptId: AttemptId };
+  readonly retry: { readonly checkoutId: CheckoutId; readonly retryOfAttemptId: Replaceable };
   readonly view_status: Href;
   readonly view_receipt: Href;
   readonly back_to_checkout: Href;
@@ -219,16 +219,37 @@ export function busyShown(running: ActionKind | null, prompting: AttemptId | nul
 }
 
 function attemptOf(action: Action): AttemptId | null {
-  if (action.kind === "approve") return action.terms.attemptId;
-  return action.kind === "decline" ? action.attemptId : null;
+  switch (action.kind) {
+    case "approve":
+      return action.terms.attemptId;
+    case "decline":
+      return action.attemptId;
+    case "retry":
+      return action.retryOfAttemptId;
+    default:
+      return null;
+  }
 }
 
 const offered = (actions: ActionsView): readonly Action[] =>
   [actions.primary, ...actions.secondary].filter((a): a is Action => a !== null);
 
+declare const replaceableBrand: unique symbol;
+
+/**
+ * An attempt the server says a new one may replace. Only `replaceable` makes one, so Try again can't name
+ * an attempt the room didn't call safe.
+ */
+export type Replaceable = AttemptId & { readonly [replaceableBrand]: true };
+
+/** Only a failed or expired attempt can be safely resolved, so `canRetry` on any other state is ignored. */
+function replaceable(attempt: AttemptSummary): Replaceable | null {
+  return attempt.canRetry && (attempt.state === "failed" || attempt.state === "expired") ? (attempt.id as Replaceable) : null;
+}
+
 export type Recovery =
   | { readonly kind: "on_hold" }
-  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: AttemptId }
+  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: Replaceable }
   | { readonly kind: "waiting_for_organizer" };
 
 /** Why a payment stopped. `from` is for tests and `data-reason-from`, never for words or actions. */
@@ -356,7 +377,14 @@ export function deriveResultView(state: CheckoutState): ResultView {
     status: statusOf(c, role, tab),
     tab,
     body,
-    actions: { ...resultActions(body, { signedOut: role.kind === "signed_out", links: state.source.links }), sample: sampleActions(state) },
+    actions: {
+      ...resultActions(body, {
+        checkoutId: state.snapshot.checkout.id,
+        signedOut: role.kind === "signed_out",
+        links: state.source.links,
+      }),
+      sample: sampleActions(state),
+    },
     connection: connectionOf(state.page),
   };
 }
@@ -578,10 +606,9 @@ function statusOf(c: Classified, role: ViewerRole, tab: TabView): StatusView {
 }
 
 function recoveryOf(attempt: AttemptSummary, role: ViewerRole): Recovery {
-  if (!attempt.canRetry) return { kind: "on_hold" };
-  return role.kind === "organizer"
-    ? { kind: "organizer_can_retry", retryOfAttemptId: attempt.id }
-    : { kind: "waiting_for_organizer" };
+  const id = replaceable(attempt);
+  if (id === null) return { kind: "on_hold" };
+  return role.kind === "organizer" ? { kind: "organizer_can_retry", retryOfAttemptId: id } : { kind: "waiting_for_organizer" };
 }
 
 /** `network` is null for sample data, which has no real transaction to link. */
@@ -661,7 +688,10 @@ function formatUtc(iso: string): string {
 }
 
 /** A signed-out payer who reloaded signs in from here, so the page can resume checking their payment. */
-function resultActions(body: ResultBody, c: { readonly signedOut: boolean; readonly links: ScreenLinks }): ActionPlan {
+function resultActions(
+  body: ResultBody,
+  c: { readonly checkoutId: CheckoutId; readonly signedOut: boolean; readonly links: ScreenLinks },
+): ActionPlan {
   const back = { kind: "back_to_checkout", href: c.links.room } as const;
   const connect = c.signedOut ? ({ kind: "connect_wallet" } as const) : null;
   switch (body.kind) {
@@ -674,7 +704,7 @@ function resultActions(body: ResultBody, c: { readonly signedOut: boolean; reado
       return {
         primary:
           body.recovery.kind === "organizer_can_retry"
-            ? { kind: "retry", retryOfAttemptId: body.recovery.retryOfAttemptId }
+            ? { kind: "retry", checkoutId: c.checkoutId, retryOfAttemptId: body.recovery.retryOfAttemptId }
             : connect,
         secondary: [back],
       };
