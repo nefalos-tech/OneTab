@@ -6,7 +6,7 @@ import { shortAddress } from "@/client/checkout-view";
 const AMOUNT_SIZE = {
   body: "whitespace-nowrap",
   title: "whitespace-nowrap text-title font-bold",
-  hero: "wrap-anywhere text-hero font-bold",
+  hero: "text-hero max-narrow:text-title font-bold",
 } as const;
 
 export function Amount({
@@ -20,8 +20,10 @@ export function Amount({
 }): ReactNode {
   return (
     <data value={value.units} data-amount="" className={`tabular-nums ${AMOUNT_SIZE[size]}`}>
-      {formatMoney(value)}{" "}
-      <span className={`text-body font-normal ${onBrand ? "text-on-brand-muted" : "text-muted"}`}>{WORDS.asset}</span>
+      <span className="whitespace-nowrap">{formatMoney(value)}</span>{" "}
+      <span className={`whitespace-nowrap text-body font-normal ${onBrand ? "text-on-brand-muted" : "text-muted"}`}>
+        {WORDS.asset}
+      </span>
     </data>
   );
 }

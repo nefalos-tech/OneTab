@@ -84,6 +84,8 @@
   /* The tab card only. Tinted with Deep Tide, never grey. */
   --shadow-tab: 0 16px 40px -20px rgb(1 61 90 / 0.55);
 
+  /* 360px. Below this width the hero amount takes the title size, so its digits fit on one line. */
+  --breakpoint-narrow: 22.5rem;
   /* 900px. Create and room use two columns at and above this width. */
   --breakpoint-wide: 56.25rem;
 
