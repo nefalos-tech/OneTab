@@ -18,9 +18,12 @@
     "check": "npm run lint && npm run typecheck && npm run design:check && npm test"
   },
   "dependencies": {
+    "@solana-program/token": "0.18.0",
+    "@solana/kit": "8.6.0",
     "next": "16.4.5",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",

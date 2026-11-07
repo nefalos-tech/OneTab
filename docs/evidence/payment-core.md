@@ -22,7 +22,7 @@ The caller must reserve and lease the attempt before building, then atomically f
 
 ## Local verification
 
-The root checks used Node 24.22.1 and the coordinator's uncommitted verification-only root dependency patch. Root lint, route type generation, TypeScript, design checks, and all 992 unit tests passed. The new P2 suites contain 46 tests.
+The root checks used Node 24.22.1 and the exact root dependency patch subsequently approved by the user for inclusion. Root lint, route type generation, TypeScript, design checks, and all 992 unit tests passed. The new P2 suites contain 46 tests. The coordinator also passed the production build and all 139 application browser tests.
 
 The spike used host Node 25.9.0. Its lint, TypeScript, Vite build, and all 65 tests passed. The existing P1 known-answer byte fixture still passed. The three associated account vectors in `spikes/payment-proof/evidence/devnet-20261107.json` matched the application derivation.
 
@@ -40,7 +40,7 @@ Loopback tests required the host's sandbox escalation because a standalone local
 
 ## Integration dependency
 
-Frontend owns the root manifest and lockfile. This P2 commit does not change them. The application requires the separately coordinated exact versions `@solana/kit@8.6.0`, `@solana-program/token@0.18.0`, and `zod@4.6.7`. Root verification is conditional on that patch. No root ESLint or TypeScript configuration change was needed.
+Frontend owns the root manifest and lockfile. The user approved including the tested two-file dependency patch in P2. It pins `@solana/kit@8.6.0`, `@solana-program/token@0.18.0`, and `zod@4.6.7` without changing any existing package version. No root ESLint or TypeScript configuration change was needed.
 
 The spike switches its own TypeScript resolution to ESNext with Bundler resolution so it can import the canonical files outside its local ESM package. Its source execution still uses `tsx`, and Vite still produces the browser build.
 
