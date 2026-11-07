@@ -17,6 +17,10 @@ export function looksLikeAddress(s: string): s is Address {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 export function isCheckoutId(s: string): s is CheckoutId {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 }
@@ -70,32 +74,38 @@ export type AttemptState =
   | "failed"
   | "expired";
 
-export type ErrorCode =
-  | "INVALID_INPUT"
-  | "INVALID_SIGNATURE"
-  | "MESSAGE_MISMATCH"
-  | "UNSUPPORTED_WALLET"
-  | "INVALID_PAYMENT"
-  | "UNAUTHENTICATED"
-  | "CHALLENGE_EXPIRED"
-  | "CHALLENGE_USED"
-  | "FORBIDDEN"
-  | "ORIGIN_MISMATCH"
-  | "CHECKOUT_NOT_FOUND"
-  | "ATTEMPT_NOT_FOUND"
-  | "ROOM_FULL"
-  | "ROOM_NOT_READY"
-  | "CHECKOUT_PAID"
-  | "ATTEMPT_NOT_SIGNABLE"
-  | "SIGNATURES_INCOMPLETE"
-  | "RETRY_BLOCKED"
-  | "IDEMPOTENCY_CONFLICT"
-  | "INSUFFICIENT_USDC"
-  | "INSUFFICIENT_SOL"
-  | "TOKEN_ACCOUNT_MISSING"
-  | "RATE_LIMITED"
-  | "CONFIGURATION_UNAVAILABLE"
-  | "RPC_UNAVAILABLE";
+export const ERROR_CODES = [
+  "INVALID_INPUT",
+  "INVALID_SIGNATURE",
+  "MESSAGE_MISMATCH",
+  "UNSUPPORTED_WALLET",
+  "INVALID_PAYMENT",
+  "UNAUTHENTICATED",
+  "CHALLENGE_EXPIRED",
+  "CHALLENGE_USED",
+  "FORBIDDEN",
+  "ORIGIN_MISMATCH",
+  "CHECKOUT_NOT_FOUND",
+  "ATTEMPT_NOT_FOUND",
+  "ROOM_FULL",
+  "ROOM_NOT_READY",
+  "CHECKOUT_PAID",
+  "ATTEMPT_NOT_SIGNABLE",
+  "SIGNATURES_INCOMPLETE",
+  "RETRY_BLOCKED",
+  "IDEMPOTENCY_CONFLICT",
+  "INSUFFICIENT_USDC",
+  "INSUFFICIENT_SOL",
+  "TOKEN_ACCOUNT_MISSING",
+  "RATE_LIMITED",
+  "CONFIGURATION_UNAVAILABLE",
+  "RPC_UNAVAILABLE",
+] as const;
+export type ErrorCode = (typeof ERROR_CODES)[number];
+
+export function isErrorCode(value: unknown): value is ErrorCode {
+  return (ERROR_CODES as readonly unknown[]).includes(value);
+}
 
 /** PROVISIONAL(B1): contracts.md leaves AttemptSummary.error open. Mirrors the error envelope. */
 export type AttemptError = { readonly code: ErrorCode; readonly message: string };
@@ -136,12 +146,6 @@ export type RoomSnapshot = {
   readonly phase: Phase;
   readonly attempt: AttemptSummary | null;
 };
-
-/** PROVISIONAL(B1): every JSON success body is `{ data }`. */
-export type DataEnvelope<T> = { readonly data: T };
-
-/** PROVISIONAL(B1): every JSON error body. */
-export type ErrorEnvelope = { readonly error: { readonly code: ErrorCode; readonly message: string } };
 
 /** PROVISIONAL(B1): POST /api/auth/challenge data. */
 export type AuthChallenge = { readonly challengeId: string; readonly messageBase64: string; readonly expiresAt: string };
