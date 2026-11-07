@@ -116,10 +116,8 @@ export type TabView = {
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
 
-/** What a payer checks before approving: the payment their wallet will show, in OneTab's words. */
 export type ApprovalView = {
   readonly share: Money;
-  /** In full, because the payer verifies it here. */
   readonly seller: Address;
   readonly total: Money;
   readonly network: string;
@@ -159,11 +157,6 @@ type ActionPayload = {
 export type ActionOf<K extends ActionKind> = { [P in K]: { readonly kind: P } & ActionPayload[P] }[K];
 export type Action = ActionOf<ActionKind>;
 
-/**
- * The payment a payer approves, exactly as their screen shows it. It draws the approval summary, and
- * payment-check compares the signing payload against it, so what the payer read is what the wallet signs.
- * The room has no token accounts, so neither do the terms.
- */
 export type ApprovalTerms = {
   readonly checkoutId: CheckoutId;
   readonly attemptId: AttemptId;
@@ -172,13 +165,9 @@ export type ApprovalTerms = {
   readonly tokenDecimals: number;
   readonly totalUnits: TokenUnits;
   readonly seller: Address;
-  /** The organizer, who pays the network fee. */
   readonly feePayer: Address;
-  /** Every share, in slot order. */
   readonly contributions: readonly { readonly slot: number; readonly wallet: Address; readonly amountUnits: TokenUnits }[];
-  /** The viewer, one of the contributions. */
   readonly payer: Address;
-  /** The attempt's expiry height, once the server has one. */
   readonly lastValidBlockHeight: bigint | null;
 };
 
@@ -236,7 +225,6 @@ export type RoomView = {
   readonly status: StatusView;
   readonly tab: TabView;
   readonly you: YouView | null;
-  /** Shown in place of `you` while the viewer has a payment to approve. */
   readonly approval: ApprovalView | null;
   readonly actions: ActionsView;
 };
@@ -353,10 +341,6 @@ export function deriveReviewActions(
   };
 }
 
-/**
- * The payment `session` is asked to approve: only while an attempt is preparing or open for approvals,
- * the viewer holds a spot and hasn't approved, and the frozen room is full.
- */
 export function termsOf(snapshot: RoomSnapshot, session: Session | null): ApprovalTerms | null {
   const { checkout, participants, attempt } = snapshot;
   if (attempt === null || (attempt.state !== "preparing" && attempt.state !== "signing")) return null;
@@ -416,7 +400,6 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
 }
 
-/** The screen that owns the room's current state, where its primary action lives. */
 export function ownerOf(snapshot: RoomSnapshot): Screen {
   return SITUATIONS[classify(snapshot).situation].owner;
 }

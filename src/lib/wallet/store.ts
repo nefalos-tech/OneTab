@@ -16,17 +16,7 @@ export type SessionStore = {
   subscribe(listener: () => void): () => void;
   send(intent: Intent): void;
   start(): () => void;
-  /**
-   * Asks the wallet to approve `payment` as the identity signed in at `gen`. The store holds the payment
-   * prompt because it lives in the root layout and so outlives a move between the room and the result:
-   * - not signed in at `gen` as `payment.account`: `stale`, and no prompt opens;
-   * - the same message already approved at `gen`: that approval again, with no prompt;
-   * - a payment prompt already open: `busy`, and no second prompt opens;
-   * - otherwise one prompt opens. An identity change or Cancel ends the wait at once with `stale` or
-   *   `rejected`, and the wallet's later answer is dropped. The prompt counts as open until the wallet answers.
-   */
   signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
-  /** True while the page waits for a payment prompt this store opened. A snapshot for useSyncExternalStore. */
   approving(): boolean;
   cancelPayment(): void;
 };

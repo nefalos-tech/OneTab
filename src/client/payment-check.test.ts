@@ -20,7 +20,6 @@ const withContributions = (change: (c: Contribution, slot: number) => Partial<Co
   withPayment({ contributions: payload.payment.contributions.map((c, slot) => ({ ...c, ...change(c, slot) })) });
 const [first, second] = payload.payment.contributions.map((c) => BigInt(c.amountUnits));
 
-/** The room and the payload agree on these, and the payment would still be wrong to approve. */
 function agreeing(change: (c: Contribution, slot: number) => Partial<Contribution>, patch: Partial<ApprovalTerms> = {}) {
   const tampered = withContributions(change);
   return [

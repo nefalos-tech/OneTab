@@ -156,7 +156,6 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
-/** `signed_out` and `stale` have no words, because the wallet status already says what happened. */
 export type ProblemWithWords = Exclude<RequestProblem | CheckFailure | SignFailure, "signed_out" | "stale">;
 
 export const REQUEST_PROBLEMS = {

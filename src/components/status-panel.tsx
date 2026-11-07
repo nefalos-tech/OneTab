@@ -84,7 +84,6 @@ export function StatusPanel({
   );
 }
 
-/** Above the action group, so the payer reads what they approve before Approve in wallet. */
 function ApprovalSummary({ approval }: { readonly approval: ApprovalView }): ReactNode {
   return (
     <div className="flex flex-col gap-4 border-l-4 border-accent pl-4">

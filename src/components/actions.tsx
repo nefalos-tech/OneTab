@@ -45,13 +45,10 @@ export function ActionGroup({
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
-  // A payment prompt opened on another page still holds this page's Approve.
   const shownBusy = busy ?? (approving && [actions.primary, ...actions.secondary].some((a) => a?.kind === "approve") ? "approve" : null);
 
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
-    // A follow-up runs under the notice that offered it, so its busy label shows there, and if it fails
-    // the notice keeps offering it.
     const offeredBy = notice?.followUp?.kind === action.kind ? notice : null;
     inFlight.current = true;
     if (offeredBy === null) setNotice(null);

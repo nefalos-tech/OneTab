@@ -13,12 +13,9 @@ import { createSessionStore, type SessionStore } from "@/lib/wallet/store";
 export type WalletSessionApi = {
   readonly view: WalletView;
   readonly session: Session | null;
-  /** Bound to this render's identity. Once that identity changes, it answers `stale` and opens no prompt. */
   readonly signer: PaymentSigner;
-  /** A payment prompt is open, perhaps opened from another page. */
   readonly approving: boolean;
   connect(): void;
-  /** Stops waiting for the open wallet prompt, for sign-in or a payment. */
   cancel(): void;
   disconnect(): void;
   expired(session: Session): void;

@@ -62,7 +62,6 @@ export const ROOMS = {
 
 const SCRIPTED_PREFIX = "5c5c5c5c-";
 
-/** A room that starts at the first of SCRIPT's steps and moves to the next on POST /__script/:id/step. */
 export const scriptedRoom = () => `${SCRIPTED_PREFIX}${randomUUID().slice(SCRIPTED_PREFIX.length)}`;
 export const nextStep = (id) => `${FAKE_API.rooms}/__script/${id}/step`;
 
@@ -84,7 +83,6 @@ const attempt = (id, state, approvals) => ({
   receipt: null,
 });
 
-/** From getting ready to sending the payment, one step per change a payer can see. */
 export const SCRIPT = [
   (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
   (id) => ({ ...party(id), phase: "ready", attempt: null }),
@@ -98,7 +96,6 @@ const json = (status, body) => ({ status, type: "application/json", body: JSON.s
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
 const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
-/** The same room a server read gets, for the browser's polls, which the read count leaves out. */
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
 function respond(dataset, { reads, steps }, method, path) {

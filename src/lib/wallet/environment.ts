@@ -31,25 +31,11 @@ export type WalletCapabilities = {
   readonly signTransaction: boolean;
 };
 
-/** One payer's approval of a payment: their wallet's own signature over the message `messageHash` names. */
 export type PaymentApproval = { readonly messageHash: MessageHash; readonly signature: SignatureBase64 };
 
-/**
- * Why a payment approval didn't happen.
- * - `rejected`: the wallet answered 4001, or the payer pressed Cancel. Nothing reaches the server.
- * - `stale`: the identity the signer was bound to stopped being current before the wallet answered.
- *   An identity change wins over any wallet answer, so nothing is uploaded.
- * - `busy`: a payment prompt is already open in this browser, so no second one opens.
- * - `failed`: anything else, including a wallet that returned a changed transaction.
- */
 export type SignFailure = "rejected" | "stale" | "busy" | "failed";
 
-/** Components get one from useWalletSession(). It is bound to the identity of the render that offered Approve. */
 export interface PaymentSigner {
-  /**
-   * Asks the wallet to approve `payment` without sending it. After a success, the same message returns
-   * the same approval with no prompt until the identity changes.
-   */
   sign(payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
 }
 

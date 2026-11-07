@@ -4,10 +4,6 @@ const sampleAccount = (word: string): string => `SAMPLE${word}`.padEnd(44, "1");
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text);
 const base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
 
-/**
- * A signing payload, as the wire sends it, for the attempt in `room`. Tests use it until Payments
- * publishes real fixtures. Its bytes are placeholders, so only the field checks can judge it.
- */
 export function wirePayloadFor(room: RoomSnapshot): Record<string, unknown> {
   const { checkout, participants, attempt } = room;
   if (attempt === null) throw new Error("A signing payload needs an attempt");

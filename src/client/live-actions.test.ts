@@ -108,7 +108,6 @@ const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } =
   decline: DECLINE,
 };
 
-/** Answers every prompt with `answer` and keeps each payment it was shown. */
 function wallet(answer: Result<SignatureBase64, SignFailure>) {
   const prompts: CheckedPayment[] = [];
   const signer: PaymentSigner = {
@@ -120,7 +119,6 @@ function wallet(answer: Result<SignatureBase64, SignFailure>) {
   return { prompts, signer };
 }
 
-/** Keeps the store's promise: the same message approved again comes back with no second prompt. */
 function rememberingWallet() {
   const prompts: CheckedPayment[] = [];
   const approvals = new Map<string, PaymentApproval>();

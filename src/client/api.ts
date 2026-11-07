@@ -58,11 +58,6 @@ export async function send(
 
 export type RoomReadProblem = "not_found" | "unavailable";
 
-/**
- * - `room_changed`: the room moved on before the request landed, such as an attempt freezing it or a
- *   payer no longer ready. The room on screen is out of date.
- * - `not_funded`: the payment can't be prepared until the wallets hold what it needs.
- */
 export type RequestProblem =
   | "signed_out"
   | "room_full"
@@ -78,10 +73,8 @@ export type CheckoutApi = {
   create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
   setReady(id: CheckoutId, ready: boolean): Promise<Result<RoomSnapshot, RequestProblem>>;
-  /** A start while an attempt is active answers that same attempt. */
   startAttempt(id: CheckoutId): Promise<Result<AttemptSummary, RequestProblem>>;
   signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem>>;
-  /** The same approval uploaded twice answers the same result. */
   uploadApproval(id: AttemptId, approval: PaymentApproval): Promise<Result<AttemptSummary, RequestProblem>>;
   refreshAttempt(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
   decline(id: AttemptId): Promise<Result<AttemptSummary, RequestProblem>>;
@@ -175,7 +168,6 @@ function roomOf(data: unknown, id: CheckoutId): Result<RoomSnapshot, "unavailabl
   return snapshot !== null && snapshot.checkout.id === id ? { ok: true, value: snapshot } : UNAVAILABLE;
 }
 
-/** `id` is the attempt the request named, or null for a start, which may answer any attempt. */
 function attemptOf(data: unknown, id: AttemptId | null): Result<AttemptSummary, "unavailable"> {
   const attempt = parseAttemptSummary(data);
   return attempt !== null && (id === null || attempt.id === id) ? { ok: true, value: attempt } : UNAVAILABLE;

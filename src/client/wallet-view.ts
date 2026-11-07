@@ -22,7 +22,6 @@ export type WalletView = {
   readonly connectAction: ConnectAction | null;
 };
 
-/** `approving` is true while the signed-in wallet has a payment prompt open. */
 export function deriveWalletView(state: SessionState, approving = false): WalletView {
   switch (state.kind) {
     case "signed_out": {

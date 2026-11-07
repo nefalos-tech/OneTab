@@ -7,10 +7,8 @@ export type Address = string & { readonly __brand: "Address" };
 /** The UUID of a real checkout, in lowercase. A `sample-<name>` route segment can never parse as one. */
 export type CheckoutId = string & { readonly __brand: "CheckoutId" };
 
-/** The UUID of a payment attempt, in lowercase. The only value that goes into an /api/attempts/... path. */
 export type AttemptId = string & { readonly __brand: "AttemptId" };
 
-/** Lowercase hex SHA-256 of a payment's exact message bytes. */
 export type MessageHash = string & { readonly __brand: "MessageHash" };
 
 export const U64_MAX = 18446744073709551615n;
@@ -161,7 +159,6 @@ export type AttemptSummary = {
   readonly state: AttemptState;
   readonly signedWallets: readonly Address[];
   readonly transactionReference: string | null;
-  /** A u64 decimal string. */
   readonly lastValidBlockHeight: string | null;
   readonly error: AttemptError | null;
   /** Server decision. The only input that can enable Try again. */
@@ -192,7 +189,6 @@ export type AuthChallenge = { readonly challengeId: string; readonly messageBase
 /** PROVISIONAL(B1): POST /api/auth/verify body. */
 export type AuthVerifyRequest = { readonly challengeId: string; readonly signatureBase64: string };
 
-/** GET /api/attempts/:attemptId/signing-payload, with its bytes and numbers decoded. */
 export type SigningPayload = {
   readonly attemptId: AttemptId;
   readonly checkoutId: CheckoutId;
@@ -208,7 +204,6 @@ export type SigningPayload = {
     readonly sellerWallet: Address;
     readonly sellerTokenAccount: Address;
     readonly feePayerWallet: Address;
-    /** One per payer, in slot order. */
     readonly contributions: readonly PaymentContribution[];
   };
 };
@@ -232,15 +227,10 @@ export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
   return { checkout, participants, phase: data.phase, attempt };
 }
 
-/** An attempt route's answer. It carries no payer count, so receipt slots are bounded by the largest checkout. */
 export function parseAttemptSummary(data: unknown): AttemptSummary | null {
   return parseAttempt(data, 3) ?? null;
 }
 
-/**
- * Checks the payload's shape only: ids, bytes that decode, the hash, addresses, u64 numbers, Devnet, and
- * two or three contributions in slot order. Whether it is the payment the screen showed is payment-check's job.
- */
 export function parseSigningPayload(data: unknown): SigningPayload | null {
   if (!isRecord(data) || !isRecord(data.payment)) return null;
   const { messageHash, blockhash, lastValidBlockHeight } = data;
@@ -370,7 +360,6 @@ function parsePaymentContribution(data: unknown): PaymentContribution | undefine
     : undefined;
 }
 
-/** Strict standard base64 with padding, as contracts.md sends bytes. Empty bytes are no payment. */
 function decodeBase64(text: string): Uint8Array | null {
   if (text === "" || text.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(text)) return null;
   return Uint8Array.from(atob(text), (char) => char.charCodeAt(0));
