@@ -33,7 +33,7 @@ The database is authoritative for membership, readiness, immutable attempt bytes
 | --- | --- |
 | Application | Next.js App Router, React and TypeScript with strict type checking |
 | Package manager | npm with one committed package-lock.json, owned by Frontend |
-| Styling | Tailwind CSS for the three desktop screens |
+| Styling | Tailwind CSS 4 with only the tokens in the [design system](design-system.md). Tailwind's default palette, scale, radii, shadows, breakpoints and widths are disabled |
 | API | Same-origin JSON Route Handlers under src/app/api/ |
 | Authentication | Wallet-signed challenge and opaque, short-lived session cookie |
 | Storage | Supabase Postgres, accessed through server-owned operations |
@@ -46,16 +46,20 @@ Solana Kit and Wallet Standard integration are the starting candidates from the 
 
 ## Module and file ownership
 
-Paths in this table are agreed destinations, not existing implementation files.
+F1 created the Frontend paths listed below, except the wallet paths that F2 creates. The other owners' paths are still agreed destinations.
 
 | Owner | Destination | Responsibility |
 | --- | --- | --- |
 | @Quantomz | src/app/page.tsx | Create checkout |
 | @Quantomz | src/app/checkouts/[id]/page.tsx | Shared checkout room |
 | @Quantomz | src/app/checkouts/[id]/result/page.tsx | Shared result and receipt |
-| @Quantomz | src/app/layout.tsx, src/app/globals.css, src/components/, src/client/ | Layout, screens, polling and API client |
-| @Quantomz | src/lib/wallet/, src/components/wallet/ | WalletBridge implementation and wallet controls |
-| @Quantomz | package.json, package-lock.json, tsconfig.json, next.config.*, eslint.config.*, postcss.config.* | One application scaffold and shared dependencies |
+| @Quantomz | src/app/layout.tsx, src/app/globals.css, src/app/not-found.tsx, src/app/error.tsx, src/components/, src/client/ | Layout, design tokens, screens, page states, polling and API client |
+| @Quantomz | src/app/samples/, src/client/fixtures.ts | The sample data index and the rules that select sample data |
+| @Quantomz | src/client/contracts.ts, src/client/fixture-data.ts | Interim copies of the contracts and sample snapshots. Deleted when B1 publishes src/contracts/ and src/fixtures/ |
+| @Quantomz | src/lib/wallet/, src/components/wallet/, src/components/viewer.tsx | Wallet session machine, WalletBridge and sign-in seams, sample wallet, wallet controls, and the component that gives screens the signed-in identity |
+| @Quantomz | package.json, package-lock.json, .nvmrc, tsconfig.json, next.config.ts, eslint.config.mjs, vitest.config.ts, playwright.config.ts | One application scaffold, shared dependencies and test configuration |
+| @Quantomz | scripts/, e2e/, .github/workflows/ci.yml | Design checks, browser tests and CI |
+| @Quantomz | docs/design-system.md, docs/design-decisions.md | The UI contract and its reasoning |
 | @SophiaChua | src/contracts/, src/fixtures/ | Shared types, runtime input schemas and fixture responses |
 | @SophiaChua | src/server/auth/, src/server/rooms/, src/server/db/, src/server/attempt-store/ | Sessions, room operations, database adapter and AttemptStore |
 | @SophiaChua | src/app/api/config/, src/app/api/auth/, src/app/api/checkouts/route.ts, src/app/api/checkouts/[id]/route.ts, its join/ and readiness/ children | Configuration, authentication and room endpoints |
@@ -67,7 +71,17 @@ Paths in this table are agreed destinations, not existing implementation files.
 
 Frontend ownership of src/app/ excludes API route files. The filesystem parameter [id] corresponds to checkoutId in the API contract. A lane asks the listed owner to change shared files. Backend exposes one session guard for both room and payment routes. Payment owners do not create a second authentication implementation.
 
-Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/. Server-only modules protect privileged configuration and database access. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
+Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/, and ESLint rejects such an import. Server-only modules protect privileged configuration and database access. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
+
+Pages get their data only through src/client/checkout-source.ts, the one module that reads `ONETAB_FIXTURES` or calls `notFound()`. For a live checkout it reads GET /api/checkouts/:checkoutId on the server from `ONETAB_API_ORIGIN`, else `APP_ORIGIN`, and never from the request's Host header. The checkout layout makes that read before the loading placeholder streams. Only the contract's `CHECKOUT_NOT_FOUND` returns a real 404, and any other failure, such as an outage or a route that isn't deployed yet, reaches the error page. React's `cache` gives the layout, the title and the page one read per request. A failed live room read happens twice, because Next renders the error page in a second pass whose `generateMetadata` reads again outside React's request cache. The create page reads GET /api/config the same way.
+
+Each screen is a pure function of one `CheckoutState`, which holds the room snapshot, the session and where the data came from. The network label comes from the snapshot. src/client/checkout-view.ts holds every rule about what a viewer sees. Pages render the screens through `Viewer` in src/components/viewer.tsx, which replaces the loaded session with the wallet's signed-in identity, so an account switch updates every screen without a reload. For a live checkout, `Viewer` also shows the newest room that a browser request returned. `roomTracker` in src/client/live-actions.ts is the only writer of that room. The last request sent wins, and a read sent while a write is in flight never shows. F4's poller joins `Viewer` through `live.refresh` with that tracker, so identity and polling meet in one component and the screens stay pure. It may move a viewer to a state's owner screen only when the polled state changes owner, never on first load. Until F4's poller reads on mount, browser Back can show a room as it loaded before a join, because Next restores the earlier page without a request.
+
+Every request to a contract route goes through `send` in src/client/api.ts, F2's sign-in client included. ESLint keeps components and pages from importing it. `ActionGroup` in src/components/actions.tsx starts every live call through `live.run` in src/client/live-actions.ts, and nothing else starts one. An action is live when `ACTIONS` in src/client/catalog.ts gives it a busy label, and the `RUN` table in live-actions.ts must then have a row for it. F3 adds create and join. F4 and F5 add readiness, start, approve and retry the same way.
+
+The wallet session lives in src/lib/wallet/. machine.ts is a pure state machine whose signed-in state holds exactly one account, so the identity always equals the wallet's current account or there is none. store.ts runs its effects and sends sign-in calls one at a time, because the browser has one session cookie. A wallet reaches the machine only through the `WalletBridge` and `SignInService` ports in environment.ts. sample.ts implements both for sample data, and live.ts calls B2's routes and holds the seam where P1's proven Wallet Standard adapter replaces the stand-in that reports sign-in as unavailable. ESLint keeps any future `@wallet-standard/*` import inside src/lib/wallet/.
+
+When P1 records its proven package set, the adapter that replaces the stand-in in live.ts follows P1's spike in `spikes/payment-proof/src/wallet.ts`. It discovers wallets with `getWallets()` and clears the connection when the wallet unregisters. It reports account changes from `standard:events`, including a change between the user's approval and the subscription. It checks before and after every prompt that the account is still the selected one, as P1's `assertCurrent` does. It maps only provider code 4001 to a rejection and every other provider error to a neutral failure, and it refuses a wallet without Devnet, message signing and transaction signing at connect.
 
 ## Checkout execution
 

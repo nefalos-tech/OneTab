@@ -91,6 +91,7 @@ Keep model IDs and reasoning effort in the separate fields the host accepts. If 
 - Payments supplies the dependency versions proven by the real-wallet experiment.
 - Keep implementation within the card's scope. Update the spec when an agreed product rule changes, and link the related card.
 - Keep architecture and contract documents consistent with implementation. Update both the repository card and live issue when task scope changes. The board remains authoritative for status.
+- Treat [the design system](docs/design-system.md) as the UI contract. A change to colors, type, spacing, components, states, copy or interaction updates that file in the same PR and adds a change-log row. Follow [Change the UI design](docs/development.md#change-the-ui-design). `npm run design:check` fails when the code and the document disagree.
 - Keep source code, migrations and evidence consistent. Do not mark a card Done until its completion check has passed.
 
 ## Git workflow
