@@ -65,14 +65,24 @@ The mint is fixed to `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, listed for 
 
 The coordinator observed the real Phantom extension registered on the local inspector, then observed a connection to public account `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU` after the user approved connection. The account advertised `solana:devnet` and `solana:signTransaction`. The page remained unprepared with approval and submission disabled. This proves discovery and connection only. The Chrome application version is `156.0.8078.80` from its installed application metadata.
 
-The user supplied distinct second-payer and seller public addresses. At finalized Devnet slot `519575487`, the connected first account had zero lamports and no account for the fixed USDC mint. A free test-SOL RPC request returned HTTP `410`, reporting that its faucet is closed. Web-faucet funding and real transaction approval remain pending. No real payment was submitted.
+The user created the accounts in Phantom and supplied distinct second-payer and seller public addresses. Circle's faucet subsequently funded all three ordinary Token Program USDC accounts. At finalized Devnet slot `519579807`, observed at `2026-11-07T07:08:43.809Z`, each account contained `20000000` integer units, or 20 test USDC. These are setup transfers, not a OneTab payment.
+
+| Role | Public wallet | Test-USDC account |
+| --- | --- | --- |
+| Organizer and payer zero | `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU` | `BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ` |
+| Payer one | `7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB` | `436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW` |
+| Seller | `3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1` | `FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv` |
+
+Organizer fee funding remains absent: its finalized balance was zero lamports at slot `519582223`, observed at `2026-11-07T07:18:23.572Z`. A free test-SOL RPC request returned HTTP `410`, reporting that its faucet is closed. Web-faucet SOL funding and real transaction approval remain pending. No real payment was prepared or submitted.
+
+The coordinator also checked the combined local revision `827361b51436e06a19922e1a5e4eb377e71692b6`, containing this implementation and P5/P6 preparation documents. Its spike files are identical to implementation revision `91e994586c170978c1fb065af85ef2a7c7e99bad`. Fresh offline installation, lint, full typecheck, build and all 34 tests passed. Chrome DevTools exercised the combined page's unprepared state, missing-wallet error, safe connection clearing, disabled payment controls and reload. That browser used a separate profile without Phantom, so this smoke test adds no wallet-signing evidence. Application requests returned 200; an incidental favicon request returned 401. No CI or deployed result is claimed.
 
 | Check | Observed result |
 | --- | --- |
 | Installed wallet and extension version | Not recorded by this implementation worker. |
 | Exact browser version and actual profile arrangement | Chrome `156.0.8078.80`, current profile selected by the user. Connected one real account. |
 | Actual runtime sign-only capability and legacy serialization support | Real account advertises sign-only. Actual legacy signing and return serialization remain untested. |
-| Two distinct funded payer accounts and a separate prepared seller account | Three public addresses available. Funding and prepared token accounts remain unverified. |
+| Two distinct funded payer accounts and a separate prepared seller account | Three ordinary initialized USDC accounts verified with 20 test USDC each. Organizer SOL fee funding remains absent. |
 | First actual wallet prompt and verified approval | Not run. |
 | First actual signature cannot complete payment | Local synthetic check passed. Real-wallet diagnostic not run. |
 | Second actual wallet prompt and matching message hash | Not run. |
