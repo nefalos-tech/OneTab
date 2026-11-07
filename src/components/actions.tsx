@@ -4,20 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createContext, use, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ACTIONS, WORDS } from "@/client/catalog";
-import type { Action, ActionsView } from "@/client/checkout-view";
+import { noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
 import { useWalletSession } from "./wallet/wallet-scope";
 
 export const RoomTrack = createContext<Track>(untracked);
-
-type Notice = {
-  readonly text: string;
-  readonly followUp: Action | null;
-  readonly wallet: string | null;
-  readonly raisedBy: Action["kind"];
-};
 
 export function ActionGroup({
   actions,
@@ -39,6 +32,8 @@ export function ActionGroup({
   const root = useRef<HTMLDivElement>(null);
   const focused = useRef<Element | null>(null);
   const wallet = session?.wallet ?? null;
+  // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
+  if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
   useLayoutEffect(() => {
     const lost = focused.current;
@@ -100,8 +95,6 @@ export function ActionGroup({
     }
   };
 
-  const offered = [actions.primary, ...actions.secondary].map((a) => a?.kind);
-  const shown = notice !== null && notice.wallet === wallet && offered.includes(notice.raisedBy) ? notice : null;
   const stubbed =
     actions.sample !== null &&
     [actions.primary, ...actions.secondary].some(
@@ -135,13 +128,13 @@ export function ActionGroup({
         </div>
       )}
       <div role="status" className="flex flex-col gap-1 text-small">
-        {shown ? (
+        {notice ? (
           <>
             <p className="flex items-start gap-2 font-semibold">
               <Icon name="info" />
-              {shown.text}
+              {notice.text}
             </p>
-            {shown.followUp && <ActionControl action={shown.followUp} variant="link" busy={busy} onRun={run} />}
+            {notice.followUp && <ActionControl action={notice.followUp} variant="link" busy={busy} onRun={run} />}
           </>
         ) : (
           stubbed && <p className="text-muted">{WORDS.sample_caption}</p>

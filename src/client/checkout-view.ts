@@ -151,6 +151,19 @@ export type ActionsView = {
   readonly sample: { readonly followUp: Action | null } | null;
 };
 
+/** What an action group says under its actions, for the wallet that ran the action that raised it. */
+export type Notice = {
+  readonly text: string;
+  readonly followUp: Action | null;
+  readonly wallet: Address | null;
+  readonly raisedBy: ActionKind;
+};
+
+export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
+  const offered = [now.actions.primary, ...now.actions.secondary];
+  return notice.wallet === now.wallet && offered.some((action) => action?.kind === notice.raisedBy);
+}
+
 export type Recovery =
   | { readonly kind: "on_hold" }
   | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: string }

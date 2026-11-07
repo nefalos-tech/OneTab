@@ -6,8 +6,11 @@ import {
   deriveResultView,
   deriveReviewActions,
   deriveRoomView,
+  noticeApplies,
+  type ActionsView,
   type CheckoutState,
   type ClientRequestId,
+  type Notice,
 } from "./checkout-view";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
@@ -257,5 +260,34 @@ describe("the create screen", () => {
     expect(view).toMatchObject({ kind: "form", sampleRoomHref: "/checkouts/sample-open-spots?as=spot-1" });
     expect(view.chrome.sample).not.toBeNull();
     expect(view.chrome.flow.map((s) => s.state)).toEqual(["current", "upcoming", "upcoming", "upcoming"]);
+  });
+});
+
+describe("a notice applies while its wallet is signed in and its action is offered", () => {
+  const offering = (primary: ActionsView["primary"], secondary: ActionsView["secondary"] = []): ActionsView => ({
+    primary,
+    secondary,
+    sample: null,
+  });
+  const join = offering({ kind: "join", checkoutId: FIXTURES["open-spots"].snapshot.checkout.id });
+  const notice: Notice = { text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: "join" };
+
+  it("applies to the wallet that raised it while the action is the primary or a secondary one", () => {
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: join })).toBe(true);
+    expect(noticeApplies({ ...notice, raisedBy: "edit_details" }, { wallet: SAMPLE_WALLETS.bea, actions: offering(null, [{ kind: "edit_details" }]) })).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    ["another wallet", SAMPLE_WALLETS.cam],
+    ["no wallet", null],
+  ])("ends when %s is signed in", (_, wallet) => {
+    expect(noticeApplies(notice, { wallet, actions: join })).toBe(false);
+  });
+
+  it("ends when its action is no longer offered", () => {
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering({ kind: "connect_wallet" }) })).toBe(false);
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering(null) })).toBe(false);
   });
 });
