@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
-import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
+import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords, type Screen } from "./catalog";
 import { NOTHING_HEARD, checkoutLinks, deriveResultView, deriveRoomView, termsOf, type Action, type CheckoutState } from "./checkout-view";
 import type { AttemptId, ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
@@ -10,8 +10,10 @@ import {
   browserPollEnv,
   isLiveAction,
   liveActions,
+  moveFor,
   pollPlan,
   untracked,
+  type Intent,
   type LiveAction,
   type LiveKind,
   type Outcome,
@@ -777,6 +779,21 @@ describe("decline", () => {
       ["GET", `/api/checkouts/${ROOM}`],
     ]);
     expect(shown).toEqual([]);
+  });
+});
+
+describe("where a shown room takes the viewer", () => {
+  it.each<[string, Screen, Intent, Screen, Screen | null, Screen | null]>([
+    ["Start's own room, failed, moves the organizer to the result", "result", "write", "room", null, "result"],
+    ["Try again's own room, preparing, moves the organizer back to the room", "room", "write", "result", "result", "room"],
+    ["a write's room the screen already owns stays put", "room", "write", "room", "room", null],
+    ["a polled failure moves a viewer who stood on the room", "result", "read", "room", "room", "result"],
+    ["a polled replacement moves a viewer who stood on the result", "room", "read", "result", "result", "room"],
+    ["a page opened after the room moved on stays put", "result", "read", "room", "result", null],
+    ["a client navigation's first read stays put, so Back never bounces", "result", "read", "room", null, null],
+    ["a polled room the screen already owns stays put", "result", "read", "result", "room", null],
+  ])("%s", (_, owner, intent, here, before, to) => {
+    expect(moveFor({ owner, intent }, here, before)).toBe(to);
   });
 });
 

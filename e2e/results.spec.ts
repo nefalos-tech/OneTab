@@ -195,3 +195,22 @@ test("a payment that fails before sending moves viewers to an honest result, and
   expect(replacement).toMatch(/^b7/);
   expect(replacement).not.toBe(failed);
 });
+
+test("a viewer who reloads the result during an outage is moved to the room once the replacement can be read", async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const id = failingRoom();
+  await stepTo(request, id, 2);
+  await page.goto(result(id));
+  const failed = await attemptShown(page);
+  await request.post(outage(id, true));
+  await page.reload();
+  expect(await attemptShown(page)).toBe(failed);
+  await expect(page.locator("[data-connection]")).toHaveText(WORDS.room_unreachable, { timeout: 5_000 });
+
+  await request.post(nextStep(id));
+  await request.post(outage(id, false));
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page).toHaveURL(room(id));
+  await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
+  expect(await attemptShown(page)).toMatch(/^b7/);
+});

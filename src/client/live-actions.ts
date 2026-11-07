@@ -1,6 +1,6 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
-import { ACTIONS, FUNDING_CAUSES, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords } from "./catalog";
+import { ACTIONS, FUNDING_CAUSES, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords, type Screen } from "./catalog";
 import { NOTHING_HEARD, checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms, type NotedCause } from "./checkout-view";
 import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
@@ -21,14 +21,15 @@ export type Outcome =
   | { readonly kind: "signed_out" }
   | { readonly kind: "notice"; readonly text: string; readonly followUp: Action | null; readonly about?: AttemptId };
 
-export type Track = <F extends string>(
-  intent: "read" | "write",
-  request: () => Promise<Result<RoomSnapshot, F>>,
-) => Promise<Result<RoomSnapshot, F>>;
+export type Intent = "read" | "write";
+
+export type Track = <F extends string>(intent: Intent, request: () => Promise<Result<RoomSnapshot, F>>) => Promise<Result<RoomSnapshot, F>>;
 
 export const untracked: Track = (_intent, request) => request();
 
-function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track {
+type Show = (snapshot: RoomSnapshot, intent: Intent) => void;
+
+function roomTracker(show: Show, reached: (answered: boolean) => void): Track {
   let sent = 0;
   let shown = 0;
   let reported = 0;
@@ -48,7 +49,7 @@ function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered:
       const current = !overlapsWrite && ticket > shown;
       if (answer.ok && current) {
         shown = ticket;
-        show(answer.value);
+        show(answer.value, intent);
       }
       if (current && ticket > reported && (answer.ok || intent === "read")) {
         reported = ticket;
@@ -223,6 +224,16 @@ function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnaps
   return c.track("read", () => c.api.readRoom(id));
 }
 
+/**
+ * The screen a shown room takes the viewer to, or null to stay. This page's own write moves the viewer to
+ * whichever screen owns its room. A polled room moves the viewer only when its owner changed from the one
+ * before, so a page opened on the other screen, or restored there by Back, stays put.
+ */
+export function moveFor(shown: { readonly owner: Screen; readonly intent: Intent }, here: Screen, before: Screen | null): Screen | null {
+  if (shown.owner === here) return null;
+  return shown.intent === "write" || (before !== null && shown.owner !== before) ? shown.owner : null;
+}
+
 export const POLL_MS = 2_000;
 export const MAX_BACKOFF_MS = 30_000;
 
@@ -324,7 +335,7 @@ export type NotedCauses = {
 export type Live = {
   run(action: LiveAction, scope: Scope): Promise<Outcome>;
   watch(room: Watched): () => void;
-  tracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track;
+  tracker(show: Show, reached: (answered: boolean) => void): Track;
   readonly noted: NotedCauses;
   readonly arrivals: Arrivals;
 };
@@ -393,9 +404,9 @@ export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment
     run: (action, scope) => run(action, { ...scope, api, check, expect: memory.expect }),
     watch: (room) => watch(api, env, room, refreshOnce),
     tracker: (show, reached) =>
-      roomTracker((snapshot) => {
+      roomTracker((snapshot, intent) => {
         memory.observe(snapshot);
-        show(snapshot);
+        show(snapshot, intent);
       }, reached),
     noted: { subscribe: memory.subscribe, current: memory.current },
     arrivals: arrivals(),
