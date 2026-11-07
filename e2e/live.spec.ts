@@ -1,9 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Page } from "@playwright/test";
+import { SITUATIONS } from "../src/client/catalog";
 import { shortAddress } from "../src/client/checkout-view";
 import { parseRoomSnapshot } from "../src/client/contracts";
 import { expect, test } from "./browser-api";
-import { FAKE_API, LIVE, ROOMS, WALLETS, freshCountedRoom } from "./fake-api.mjs";
+import { FAKE_API, LIVE, ROOMS, SCRIPT, WALLETS, freshCountedRoom, nextStep, scriptedRoom } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
@@ -28,6 +29,8 @@ async function readDetails(page: Page) {
 
 test("every fake room is a snapshot the contract allows", () => {
   for (const [id, snapshot] of Object.entries(ROOMS)) expect(parseRoomSnapshot(snapshot), id).not.toBeNull();
+  const id = scriptedRoom();
+  for (const [step, room] of SCRIPT.entries()) expect(parseRoomSnapshot(room(id)), `script step ${step}`).not.toBeNull();
 });
 
 test("a live room shows its seller, total, payers and every share to someone signed out", async ({ page }) => {
@@ -141,4 +144,73 @@ test("live create uses the server's configuration and asks to connect a wallet b
   await page.locator("[data-action='primary']").click();
   await expect(page.locator("[data-wallet-line]")).toHaveText("Sign-in isn't available right now. Try again in a moment.");
   await expect(page.getByRole("button", { name: "Create checkout" })).toHaveCount(0);
+});
+
+const label = (page: Page) => page.locator("[data-status-label]");
+const spotStatus = (page: Page, spot: number) => payer(page, spot).locator("[data-status]");
+const roomReads = (page: Page, id: string) => page.waitForRequest((r) => new URL(r.url()).pathname === `/api/checkouts/${id}`);
+
+test("three payers' screens agree on readiness and approvals at every step, and each moves to the result", async ({ page, browserApi, request }) => {
+  test.setTimeout(60_000);
+  const id = scriptedRoom();
+  const pages = [page, await browserApi.newPage(), await browserApi.newPage()];
+  for (const p of pages) await p.goto(room(id));
+  const steps = [
+    { label: SITUATIONS.full_not_ready.label, progress: "3 of 3 joined, 1 ready", spots: ["ready", "joined", "joined"] },
+    { label: SITUATIONS.ready.label, progress: "3 of 3 joined, 3 ready", spots: ["ready", "ready", "ready"] },
+    { label: SITUATIONS.preparing.label, progress: "0 of 3 approved", spots: ["ready", "ready", "ready"] },
+    { label: SITUATIONS.signing.label, progress: "1 of 3 approved", spots: ["approved", "ready", "ready"] },
+    { label: SITUATIONS.signing.label, progress: "2 of 3 approved", spots: ["approved", "approved", "ready"] },
+  ];
+  for (const [index, step] of steps.entries()) {
+    if (index > 0) await request.post(nextStep(id));
+    for (const p of pages) {
+      await expect(label(p)).toHaveText(step.label);
+      await expect(p.locator("[data-surface='brand']")).toContainText(step.progress);
+      for (const [slot, status] of step.spots.entries()) await expect(spotStatus(p, slot + 1)).toHaveAttribute("data-status", status);
+      await expect(p.getByRole("button", { name: "Start payment" })).toHaveCount(0);
+      await expect(p.getByRole("button", { name: "Approve in wallet" })).toHaveCount(0);
+    }
+  }
+  const approved = await spotStatus(page, 1).evaluate((el) => getComputedStyle(el).backgroundColor);
+  const ready = await spotStatus(page, 3).evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(approved, "Ready and Approved look different").not.toBe(ready);
+  await capture(page, "room-two-approved");
+
+  await request.post(nextStep(id));
+  for (const p of pages) {
+    await expect(p).toHaveURL(`${room(id)}/result`);
+    await expect(label(p)).toHaveText(SITUATIONS.submitting.label);
+  }
+});
+
+test("a page opened after the room moved on stays put, and Back after a move shows the current room without bouncing", async ({
+  page,
+  browserApi,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const id = scriptedRoom();
+  for (let step = 0; step < 4; step++) await request.post(nextStep(id));
+  const firstRead = roomReads(page, id);
+  await page.goto(room(id));
+  await (await firstRead).response();
+  await expect(label(page)).toHaveText(SITUATIONS.signing.label);
+  await request.post(nextStep(id));
+  await expect(page).toHaveURL(`${room(id)}/result`);
+
+  const later = await browserApi.newPage();
+  await later.goto(room(id));
+  await expect(later.locator("[data-situation]")).toHaveAttribute("data-situation", "submitting");
+  await roomReads(later, id);
+  await roomReads(later, id);
+  await expect(later).toHaveURL(room(id));
+  await expect(later.locator("[data-action='primary']")).toHaveText("View payment status");
+
+  await page.goBack();
+  await expect(page).toHaveURL(room(id));
+  await expect(page.locator("[data-situation]")).toHaveAttribute("data-situation", "submitting");
+  await roomReads(page, id);
+  await expect(page).toHaveURL(room(id));
+  await capture(page, "room-after-back");
 });

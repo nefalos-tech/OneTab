@@ -60,6 +60,40 @@ export const ROOMS = {
   },
 };
 
+const SCRIPTED_PREFIX = "5c5c5c5c-";
+
+/** A room that starts at the first of SCRIPT's steps and moves to the next on POST /__script/:id/step. */
+export const scriptedRoom = () => `${SCRIPTED_PREFIX}${randomUUID().slice(SCRIPTED_PREFIX.length)}`;
+export const nextStep = (id) => `${FAKE_API.rooms}/__script/${id}/step`;
+
+const PARTY = [WALLETS.ava, WALLETS.ben, WALLETS.cleo];
+
+const party = (id) => ({
+  checkout: checkout(id, { title: "Weekend cabin", organizerWallet: WALLETS.ava, totalUnits: "90000000", payerCount: 3 }),
+  participants: PARTY.map((wallet, slot) => ({ slot, wallet, shareUnits: "30000000", ready: true })),
+});
+
+const attempt = (id, state, approvals) => ({
+  id: `a7${id.slice(2)}`,
+  state,
+  signedWallets: PARTY.slice(0, approvals),
+  transactionReference: null,
+  lastValidBlockHeight: state === "preparing" ? null : "312345678",
+  error: null,
+  canRetry: false,
+  receipt: null,
+});
+
+/** From getting ready to sending the payment, one step per change a payer can see. */
+export const SCRIPT = [
+  (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
+  (id) => ({ ...party(id), phase: "ready", attempt: null }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", 0) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", 1) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", 2) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", 3) }),
+];
+
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
 const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
@@ -67,9 +101,15 @@ const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 /** The same room a server read gets, for the browser's polls, which the read count leaves out. */
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
-function respond(dataset, reads, method, path) {
+function respond(dataset, { reads, steps }, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
+  const advance = /^\/__script\/(5c5c5c5c-[0-9a-f-]{27})\/step$/.exec(path);
+  if (method === "POST" && advance) {
+    const step = Math.min((steps.get(advance[1]) ?? 0) + 1, SCRIPT.length - 1);
+    steps.set(advance[1], step);
+    return json(200, { step });
+  }
   if (method === "GET" && path === "/api/config") {
     return dataset === "rooms" ? json(200, { data: CONFIG }) : error(503, "CONFIGURATION_UNAVAILABLE");
   }
@@ -81,15 +121,16 @@ function respond(dataset, reads, method, path) {
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
+  if (dataset === "rooms" && id.startsWith(SCRIPTED_PREFIX)) return json(200, { data: SCRIPT[steps.get(id) ?? 0](id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }
 
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const reads = new Map();
+    const state = { reads: new Map(), steps: new Map() };
     createServer((req, res) => {
-      const { status, type, body } = respond(dataset, reads, req.method, new URL(req.url ?? "/", origin).pathname);
+      const { status, type, body } = respond(dataset, state, req.method, new URL(req.url ?? "/", origin).pathname);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
     }).listen(Number(new URL(origin).port));
   }
