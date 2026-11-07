@@ -42,7 +42,7 @@ export async function loadCheckout(props: CheckoutRouteProps): Promise<CheckoutS
   };
 }
 
-export async function requireCheckoutAddress(params: Promise<{ readonly id: string }>): Promise<void> {
+export async function requireCheckout(params: Promise<{ readonly id: string }>): Promise<void> {
   const [{ id }, fixturesOn] = await Promise.all([params, fixturesEnabled()]);
   const ref = parseCheckoutRef({ id, as: undefined, fixturesOn });
   if (ref === null) notFound();
