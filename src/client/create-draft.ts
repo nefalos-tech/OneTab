@@ -66,9 +66,7 @@ export function checkDraft(
   };
 }
 
-export function requestIds(
-  mint: () => ClientRequestId = () => crypto.randomUUID() as ClientRequestId,
-): (request: CreateRequest) => ClientRequestId {
+export function requestIds(mint: () => ClientRequestId = randomUuid): (request: CreateRequest) => ClientRequestId {
   const ids = new Map<string, ClientRequestId>();
   return (request) => {
     const key = JSON.stringify([request.title, request.sellerWallet, request.totalUnits, request.payerCount]);
@@ -76,6 +74,15 @@ export function requestIds(
     ids.set(key, id);
     return id;
   };
+}
+
+/** Not crypto.randomUUID, which exists only on secure origins, and a plain-http LAN address isn't one. */
+function randomUuid(): ClientRequestId {
+  const hex = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte, i) => {
+    const marked = i === 6 ? (byte & 0x0f) | 0x40 : i === 8 ? (byte & 0x3f) | 0x80 : byte;
+    return marked.toString(16).padStart(2, "0");
+  }).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as ClientRequestId;
 }
 
 export function previewTab(

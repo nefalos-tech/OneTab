@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { looksLikeAddress, type Address, type ClientRequestId } from "./contracts";
 import { checkDraft, requestIds, type DraftInput } from "./create-draft";
 import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
@@ -92,5 +92,25 @@ describe("requestIds gives each set of details one ID for the life of the form",
 
   it("mints UUIDs by default", () => {
     expect(requestIds()(request())).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  const cryptoWithoutRandomUuid = (getRandomValues: (bytes: Uint8Array) => Uint8Array) => {
+    vi.stubGlobal("crypto", { getRandomValues });
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+  };
+
+  it.each([
+    [0x00, "00000000-0000-4000-8000-000000000000"],
+    [0xff, "ffffffff-ffff-4fff-bfff-ffffffffffff"],
+  ])("mints a version 4 UUID from random bytes of %i where crypto has no randomUUID, as on a plain-http LAN address", (byte, uuid) => {
+    cryptoWithoutRandomUuid((bytes) => bytes.fill(byte));
+    expect(requestIds()(request())).toBe(uuid);
+  });
+
+  it("writes the random bytes in order", () => {
+    cryptoWithoutRandomUuid((bytes) => bytes.map((_, i) => i));
+    expect(requestIds()(request())).toBe("00010203-0405-4607-8809-0a0b0c0d0e0f");
   });
 });
