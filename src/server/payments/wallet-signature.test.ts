@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { serviceFixture } from "./test-fixtures";
 import { fromBase64, validateSigningPayload } from "../../lib/payments/signing-payload";
 import { extractPaymentSignature } from "../../lib/payments/wallet-signature";
+import { looksLikeAddress } from "../../client/contracts";
+import { createPaymentHandlers } from "./http";
 
 describe("validated browser signature extraction", () => {
   for (const count of [2, 3] satisfies (2 | 3)[]) {
@@ -18,9 +20,22 @@ describe("validated browser signature extraction", () => {
         const returned = getTransactionEncoder().encode({ ...transaction, signatures: {
           ...transaction.signatures, [expected.wallet]: signatureBytes(fromBase64(expected.signatureBase64)),
         } });
-        expect(await extractPaymentSignature({ validated, wallet: expected.wallet, transactionBytes: returned })).toEqual({
-          signerWallet: expected.wallet, messageHash: payload.messageHash, signatureBase64: expected.signatureBase64,
+        const upload = await extractPaymentSignature({ validated, wallet: expected.wallet, transactionBytes: returned });
+        expect(upload).toEqual({
+          messageHash: payload.messageHash, signatureBase64: expected.signatureBase64,
         });
+        const wallet = expected.wallet;
+        if (!looksLikeAddress(wallet)) throw new Error("Fixture wallet invalid");
+        const handlers = createPaymentHandlers({
+          requireSession: async () => ({ ok: true, value: { wallet, expiresAt: "2026-11-08T00:00:00Z" } }),
+          originAllowed: request => request.headers.get("origin") === "https://onetab.test",
+          service: () => f.service,
+        });
+        const response = await handlers.addSignature(new Request("https://onetab.test/api/payment", {
+          method: "POST", headers: { origin: "https://onetab.test" }, body: JSON.stringify(upload),
+        }), payload.attemptId);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ data: { signedWallets: expect.arrayContaining([wallet]) } });
       }
     });
   }
