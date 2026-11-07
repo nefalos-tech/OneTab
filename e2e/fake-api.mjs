@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
 export const FAKE_API = { empty: "http://localhost:3198", rooms: "http://localhost:3199" };
@@ -21,9 +22,13 @@ export const LIVE = {
   full: "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c02",
   outage: "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c03",
   noRoute: "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c04",
-  counted: "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c05",
   missing: "0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c06",
 };
+
+const COUNTED_PREFIX = "c0c0c0c0-";
+
+/** A room no earlier run has read, so a repeated or retried test counts its reads from zero. */
+export const freshCountedRoom = () => `${COUNTED_PREFIX}${randomUUID().slice(COUNTED_PREFIX.length)}`;
 
 const checkout = (id, fields) => ({
   id,
@@ -44,7 +49,6 @@ const cabin = (id) => ({
 
 export const ROOMS = {
   [LIVE.open]: cabin(LIVE.open),
-  [LIVE.counted]: cabin(LIVE.counted),
   [LIVE.full]: {
     checkout: checkout(LIVE.full, { title: "Concert tickets", organizerWallet: WALLETS.ben, totalUnits: "45000000", payerCount: 2 }),
     participants: [
@@ -73,6 +77,7 @@ function respond(dataset, reads, method, path) {
   reads.set(id, (reads.get(id) ?? 0) + 1);
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
+  if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }

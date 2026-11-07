@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Page } from "@playwright/test";
 import { shortAddress } from "../src/client/checkout-view";
 import { parseRoomSnapshot } from "../src/client/contracts";
-import { FAKE_API, LIVE, ROOMS, WALLETS } from "./fake-api.mjs";
+import { FAKE_API, LIVE, ROOMS, WALLETS, freshCountedRoom } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
@@ -79,9 +79,10 @@ test("an uppercase checkout ID opens the same room, and its links use the lowerc
 });
 
 test("the server reads a live room once per page load", async ({ page, request }) => {
-  await page.goto(room(LIVE.counted));
+  const id = freshCountedRoom();
+  await page.goto(room(id));
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Cabin groceries");
-  const reads = await (await request.get(`${FAKE_API.rooms}/__reads/${LIVE.counted}`)).json();
+  const reads = await (await request.get(`${FAKE_API.rooms}/__reads/${id}`)).json();
   expect(reads).toEqual({ count: 1 });
 });
 
