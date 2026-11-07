@@ -7,10 +7,6 @@ export async function readGlobalsCss() {
   return readFile(CSS_PATH, "utf8");
 }
 
-/**
- * Reads the first @theme block: `--name-*: initial;` resets, and every `--name: value;` declaration
- * with the one-line comment directly above it as its role.
- */
 export function readTheme(css) {
   const block = /@theme\s*\{([\s\S]*?)\n\}/.exec(css);
   if (!block) throw new Error("src/app/globals.css has no @theme block.");
@@ -35,7 +31,6 @@ export function readTheme(css) {
   return { tokens, resets };
 }
 
-/** Color tokens by short name: `ink`, `brand`, ... */
 export function colorTokens(tokens) {
   return new Map(
     tokens.filter((t) => t.name.startsWith("--color-")).map((t) => [t.name.slice("--color-".length), t.value]),

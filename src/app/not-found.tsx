@@ -3,7 +3,6 @@ import { ACTIONS, NETWORK_LABELS } from "@/client/catalog";
 import { BUTTON } from "@/components/button";
 import { SiteHeader } from "@/components/page-shell";
 
-/** Unknown checkouts, sample addresses while sample data is off, and viewers a sample can't have. */
 export default function NotFound() {
   return (
     <>

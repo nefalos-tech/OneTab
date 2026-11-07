@@ -10,10 +10,6 @@ const caseById = (id: string): FixtureCase => {
   return found;
 };
 
-/**
- * The oracle: the primary action per sample, viewer and screen, written from the design system and
- * the state matrix. Null means the state has no primary for that viewer.
- */
 const PRIMARY: readonly (readonly [caseId: string, room: ActionKind | null, result: ActionKind | null])[] = [
   ["open-spots as spot-1", "copy_link", "back_to_checkout"],
   ["open-spots as spot-2", "copy_link", "back_to_checkout"],

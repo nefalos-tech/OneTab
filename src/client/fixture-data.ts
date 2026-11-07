@@ -1,12 +1,3 @@
-/**
- * Interim sample snapshots until B1 publishes src/fixtures/. At the swap, fixtures.ts imports B1's
- * snapshots and this file is deleted.
- *
- * Each sample is a one-line spec. build() applies the contracts.md phase rule, the equal split with
- * its remainder, frozen readiness once an attempt exists, signer sets and receipts, so samples are
- * consistent by construction. Every address starts with SAMPLE and ends in four readable characters,
- * so a screenshot can't pass for a real wallet and the short form tells payers apart.
- */
 import {
   isAddress,
   isCheckoutId,
@@ -47,7 +38,6 @@ function sampleId(n: number, variant: "8" | "9"): CheckoutId {
   return s;
 }
 
-/** The labeled test configuration contracts.md asks fixture mode to supply. */
 export const SAMPLE_CONFIG: PublicConfig = {
   network: "devnet",
   mint: sampleAddress("testMint", "Usdc"),
@@ -59,7 +49,6 @@ export const SAMPLE_WALLETS = {
   organizer: sampleAddress("organizer", "org1"),
   bea: sampleAddress("payerBea", "Bea2"),
   cam: sampleAddress("payerCam", "Cam3"),
-  /** Signed in but holds no spot: a guest in an open room, a spectator otherwise. */
   outsider: sampleAddress("someoneWithTheLink", "Gst4"),
   seller: sampleAddress("se11er", "Se11"),
 } as const;
@@ -81,16 +70,13 @@ type Spots = "all" | readonly number[];
 
 type Spec = {
   readonly purchase: keyof typeof PURCHASES;
-  /** Spots filled from slot 0. An attempt fills every spot. */
   readonly joined?: number;
   readonly ready?: Spots;
   readonly attempt?: {
     readonly state: AttemptState;
     readonly approved?: Spots;
     readonly canRetry?: boolean;
-    /** Sets the transaction reference. */
     readonly sent?: boolean;
-    /** A finalized receipt. With state "confirmed" this makes the phase paid. */
     readonly receipt?: boolean;
     readonly error?: AttemptError;
   };

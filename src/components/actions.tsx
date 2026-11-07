@@ -9,11 +9,6 @@ import { Icon } from "./icon";
 
 type Notice = { readonly text: string; readonly followUp: Action | null };
 
-/**
- * Where actions meet behavior, and the only client component on the checkout screens. Labels come
- * from ACTIONS. In sample data an action that needs a wallet, the backend or the chain looks as it
- * will live and announces that nothing was sent. F3 to F5 add the live calls here and nowhere else.
- */
 export function ActionGroup({
   actions,
   onEditDetails,
@@ -21,7 +16,6 @@ export function ActionGroup({
 }: {
   readonly actions: ActionsView;
   readonly onEditDetails?: () => void;
-  /** Rendered after the primary action and before the quiet ones. */
   readonly children?: ReactNode;
 }): ReactNode {
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -51,7 +45,6 @@ export function ActionGroup({
         window.location.reload();
         return;
       default:
-        // F3 to F5 connect create, join, readiness, start, approve and retry here.
         setNotice({ text: `${ACTIONS[action.kind].label} ${WORDS.not_connected_yet} ${WORDS.nothing_sent}`, followUp: null });
     }
   };

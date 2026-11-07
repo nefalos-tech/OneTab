@@ -5,7 +5,6 @@ import { ActionGroup } from "./actions";
 import { Icon, type IconName } from "./icon";
 import { Amount } from "./values";
 
-/** Status colors only here, always with an icon and the label, so status never rests on color alone. */
 const TONE: { readonly [T in Tone]: string } = {
   neutral: "border border-line-strong text-ink",
   info: "bg-brand-soft text-ink",
@@ -14,7 +13,6 @@ const TONE: { readonly [T in Tone]: string } = {
   danger: "bg-danger-soft text-danger",
 };
 
-/** Work in progress spins; reduced motion turns the spinner into a static icon. */
 const ICON: { readonly [S in Situation]: IconName } = {
   open_spots: "clock",
   full_not_ready: "clock",
@@ -30,10 +28,6 @@ const ICON: { readonly [S in Situation]: IconName } = {
   paid: "check",
 };
 
-/**
- * The current state: label, one line on what happens next, the viewer's share and the actions.
- * `data-situation` ties a page to its sample in the e2e suite.
- */
 export function StatusPanel({
   status,
   you,
@@ -46,9 +40,7 @@ export function StatusPanel({
   readonly you: YouView | null;
   readonly actions: ActionsView;
   readonly heading: "h1" | "h2";
-  /** Why the payment stopped. Sits under the status line so it is read before any retry. */
   readonly reason?: string | null;
-  /** Shown between the primary action and the quiet ones, such as the receipt. */
   readonly children?: ReactNode;
 }): ReactNode {
   const Heading = heading;

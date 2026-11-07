@@ -1,8 +1,3 @@
-/**
- * Every state, step, action and fixed word the OneTab screens show. scripts/design-system.mjs loads
- * this file under plain Node to generate the States and Words tables in docs/design-system.md, so it
- * must have no runtime imports. `import type` is erased and safe.
- */
 import type { Network } from "./contracts";
 
 export type Screen = "room" | "result";
@@ -17,18 +12,13 @@ export const FLOW_STEPS = [
 export type FlowStepId = (typeof FLOW_STEPS)[number]["id"];
 
 type SituationMeta = {
-  /** The screen whose primary action moves this state forward. The other screen links to it. */
   readonly owner: Screen;
-  /** The current flow step. "complete" marks every step done and belongs to `paid` alone. */
   readonly step: FlowStepId | "complete";
   readonly tone: Tone;
-  /** Only `paid` may say Paid. */
   readonly label: string;
-  /** The server data that produces this state. Documentation only; checkout-view.ts classifies. */
   readonly when: string;
 };
 
-/** One row per state of the checkout. The viewer and canRetry refine a state; they never add one. */
 export const SITUATIONS = {
   open_spots: {
     owner: "room",
@@ -117,7 +107,6 @@ export const SITUATIONS = {
 } as const satisfies Record<string, SituationMeta>;
 export type Situation = keyof typeof SITUATIONS;
 
-/** Situations a screen owns. Tables keyed by these fail to compile when ownership moves. */
 export type OwnedBy<S extends Screen> = {
   [K in Situation]: (typeof SITUATIONS)[K]["owner"] extends S ? K : never;
 }[Situation];
@@ -135,12 +124,10 @@ export type SpotStatus = keyof typeof SPOT_STATUSES;
 
 type ActionMeta = {
   readonly label: string;
-  /** Anything but "nothing" sends nothing in sample data. "chain" covers links that only mean something for a real transaction. */
   readonly needs: "nothing" | "backend" | "wallet" | "chain";
   readonly element: "button" | "link" | "external_link";
 };
 
-/** Every button and link label. Buttons are verbs that say what happens. */
 export const ACTIONS = {
   review_checkout: { label: "Review checkout", needs: "nothing", element: "button" },
   edit_details: { label: "Edit details", needs: "nothing", element: "button" },

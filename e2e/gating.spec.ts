@@ -1,4 +1,3 @@
-// The same production build served with ONETAB_FIXTURES empty: sample data must be unreachable.
 import { expect, test } from "@playwright/test";
 import { FIXTURES, fixtureCases } from "../src/client/fixtures";
 

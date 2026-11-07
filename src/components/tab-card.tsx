@@ -4,7 +4,6 @@ import type { TabView } from "@/client/checkout-view";
 import { Icon } from "./icon";
 import { AddressText, Amount } from "./values";
 
-/** Segment looks from the design system's spot status table. Ready and Approved differ in fill, and each says its label. */
 const SEGMENT: { readonly [S in SpotStatus]: { readonly className: string; readonly check: boolean } } = {
   open: { className: "border-2 border-dashed border-white text-white", check: false },
   joined: { className: "bg-brand-soft text-ink", check: false },
@@ -12,10 +11,6 @@ const SEGMENT: { readonly [S in SpotStatus]: { readonly className: string; reado
   approved: { className: "bg-accent text-ink", check: true },
 };
 
-/**
- * The checkout at a glance and the one bold element on the page: Tide fill, title, total, seller,
- * and the split bar with one segment per spot. The only filled card and the only shadow.
- */
 export function TabCard({
   tab,
   heading,
@@ -23,11 +18,8 @@ export function TabCard({
   showShares = false,
 }: {
   readonly tab: TabView;
-  /** The room names the checkout in its h1; elsewhere the card is a section. */
   readonly heading: "h1" | "h2";
-  /** Whether the total is the screen's one hero amount. */
   readonly hero: boolean;
-  /** The create preview lists every share, so shares update while the total is typed. */
   readonly showShares?: boolean;
 }): ReactNode {
   const Heading = heading;

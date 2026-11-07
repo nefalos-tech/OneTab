@@ -5,7 +5,6 @@ import { WORDS } from "@/client/catalog";
 import { Icon } from "./icon";
 import { BUTTON } from "./button";
 
-/** Copies a full address or reference and confirms it in place. `name` completes the accessible name, such as "seller wallet". */
 export function CopyButton({ value, name }: { readonly value: string; readonly name: string }): ReactNode {
   const [note, setNote] = useState("");
   const copy = async () => {

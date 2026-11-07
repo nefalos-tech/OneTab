@@ -1,11 +1,5 @@
-// Keeps docs/design-system.md in step with the code. Zero dependencies.
-//
 //   node scripts/design-system.mjs           check: exit 1 on drift, a missing reset or role, a failing contrast pair or an arbitrary value
 //   node scripts/design-system.mjs --write   regenerate the generated regions in place, then run the same checks
-//
-//   src/app/globals.css @theme  -> tokens region (value, and the comment above it as the role)
-//   docs contrast region rows   -> contrast region (Foreground, Background, Minimum and Use are authored; Measured is computed)
-//   src/client/catalog.ts       -> states and words regions
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { registerHooks } from "node:module";
 import { relative } from "node:path";

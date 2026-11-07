@@ -1,7 +1,5 @@
 import { defineConfig } from "@playwright/test";
 
-// `npm run test:e2e` builds once, then serves that production build twice: with sample data on, and
-// with the flag empty, which must hide every sample like the production default.
 const SAMPLES_PORT = 3100;
 const GATED_PORT = 3101;
 

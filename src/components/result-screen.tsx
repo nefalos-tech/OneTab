@@ -7,7 +7,6 @@ import { StatusPanel } from "./status-panel";
 import { TabCard } from "./tab-card";
 import { AddressText, Amount } from "./values";
 
-/** The shared payment result and receipt. A pure function of CheckoutState, like RoomScreen. */
 export function ResultScreen({ state }: { readonly state: CheckoutState }): ReactNode {
   const view = deriveResultView(state);
   return (
@@ -28,7 +27,6 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
   );
 }
 
-/** One arm per body kind. The receipt can only render from `paid`, the only kind that carries one. */
 function ResultDetails({ body }: { readonly body: ResultBody }): ReactNode {
   switch (body.kind) {
     case "not_started":

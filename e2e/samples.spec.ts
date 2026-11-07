@@ -1,5 +1,3 @@
-// Production build served with ONETAB_FIXTURES=1. Every case comes from fixtureCases(), the registry
-// the app serves, so a new sample is tested without editing this file.
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { ACTIONS, SITUATIONS } from "../src/client/catalog";

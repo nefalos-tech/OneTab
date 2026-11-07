@@ -8,7 +8,6 @@ import { SiteHeader } from "@/components/page-shell";
 
 export const metadata: Metadata = { title: "Sample data | OneTab" };
 
-/** Every sample and every viewer it can be seen as. 404 unless sample data is on. */
 export default async function SamplesPage() {
   const entries = await loadSampleIndex();
   return (

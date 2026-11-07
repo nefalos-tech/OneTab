@@ -10,13 +10,11 @@ type Props = { readonly chrome: Chrome } & (
       readonly layout: "split";
       readonly main: ReactNode;
       readonly side: ReactNode;
-      /** Below `main` in the wide layout, but after `side` when stacked, so the side's action stays near the top. */
       readonly mainEnd?: ReactNode;
     }
   | { readonly layout: "single"; readonly children: ReactNode }
 );
 
-/** Header, flow steps, sample banner and the page layout. The only owner of page widths and the 900px stacking point. */
 export function PageShell(props: Props): ReactNode {
   const { chrome } = props;
   return (
@@ -41,7 +39,6 @@ export function PageShell(props: Props): ReactNode {
   );
 }
 
-/** The logo goes home on the left; the network and the wallet sit on the right. F2 replaces the wallet slot. */
 export function SiteHeader({
   networkLabel,
   viewerWallet,

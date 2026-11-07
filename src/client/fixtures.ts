@@ -1,29 +1,17 @@
-/**
- * Sample data: which samples exist, which viewers each can be seen as, and how a URL selects one.
- * No Next.js imports, so unit tests and the Playwright suite import it directly.
- *
- * - A UUID route segment is always a live checkout. `sample-<name>` is a sample, and only while
- *   samples are on. The two never overlap, so a real checkout ID cannot fall back to sample data.
- * - The viewer comes from `?as=` or the sample's default. A viewer the sample can't have is a 404.
- */
 import { isCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
 import { SITUATIONS, type Screen, type Situation } from "./catalog";
 import { checkoutLinks, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
 
-/** Who is looking at a sample. Turned into a Session, so sample and live views share one role derivation. */
 export type Persona =
   | { readonly kind: "member"; readonly slot: number }
   | { readonly kind: "outsider" }
   | { readonly kind: "signed_out" };
 
 type FixtureEntry = {
-  /** Shown in the sample banner and on /samples. */
   readonly label: string;
-  /** What this sample is meant to show. fixtures.test.ts holds it equal to the derived situation. */
   readonly situation: Situation;
   readonly snapshot: RoomSnapshot;
-  /** The most telling viewer for this state. */
   readonly defaultPersona: Persona;
 };
 
@@ -31,7 +19,6 @@ const ORGANIZER: Persona = { kind: "member", slot: 0 };
 const SPOT_2: Persona = { kind: "member", slot: 1 };
 const SPOT_3: Persona = { kind: "member", slot: 2 };
 
-/** The registry the app serves and the tests enumerate. Adding a row adds its pages and e2e cases. */
 export const FIXTURES = {
   "open-spots": {
     label: "Open spots",
@@ -117,7 +104,6 @@ const OPEN_ROOM: FixtureName = "open-spots";
 export type SampleRef = { readonly kind: "sample"; readonly fixture: FixtureName; readonly persona: Persona };
 export type CheckoutRef = SampleRef | { readonly kind: "live"; readonly checkoutId: CheckoutId };
 
-/** ONETAB_FIXTURES: "1" on, "0" off, unset or empty follows NODE_ENV (on only under `next dev`). Anything else throws. */
 export function parseFixtureFlag(flag: string | undefined, nodeEnv: string | undefined): boolean {
   if (flag === "1") return true;
   if (flag === "0") return false;
@@ -125,7 +111,6 @@ export function parseFixtureFlag(flag: string | undefined, nodeEnv: string | und
   throw new Error(`ONETAB_FIXTURES must be "1", "0" or unset. Got "${flag}".`);
 }
 
-/** The only way a URL picks its data. Returns null for anything that should 404. */
 export function parseCheckoutRef(input: {
   readonly id: string;
   readonly as: string | readonly string[] | undefined;
@@ -140,7 +125,6 @@ export function parseCheckoutRef(input: {
   return { kind: "sample", fixture: name, persona };
 }
 
-/** `?as=` value. Spots count from 1 on screen and in URLs; slots count from 0 on the wire. */
 export function personaParam(persona: Persona): string {
   switch (persona.kind) {
     case "member":
@@ -152,7 +136,6 @@ export function personaParam(persona: Persona): string {
   }
 }
 
-/** The CheckoutState a sample URL renders. The same shape the live path will build. */
 export function sampleCheckoutState(ref: SampleRef): CheckoutState {
   const entry = FIXTURES[ref.fixture];
   const { snapshot } = entry;
@@ -173,7 +156,6 @@ export function sampleCheckoutState(ref: SampleRef): CheckoutState {
   };
 }
 
-/** The create screen with sample data: the sample configuration and the sample organizer signed in. */
 export function sampleCreateState(): CreateState {
   return {
     config: SAMPLE_CONFIG,
@@ -185,15 +167,11 @@ export function sampleCreateState(): CreateState {
 export type FixtureCase = {
   readonly fixture: FixtureName;
   readonly persona: Persona;
-  /** Stable test title, such as "signing as spot-2". */
   readonly id: string;
-  /** The declared situation, the oracle for e2e assertions. */
   readonly situation: Situation;
-  /** Exactly what the page renders for this case, links included. */
   readonly state: CheckoutState;
 };
 
-/** Every (sample, viewer) pair. The unit tests and the e2e suite enumerate this, the registry the app serves. */
 export function fixtureCases(): readonly FixtureCase[] {
   return fixtureNames().flatMap((fixture) =>
     personasFor(FIXTURES[fixture].snapshot).map((persona) => ({
@@ -214,7 +192,6 @@ export type SampleIndexEntry = {
   readonly personas: readonly { readonly label: string; readonly links: ScreenLinks; readonly isDefault: boolean }[];
 };
 
-/** The /samples page: every sample, its owner screen and a link per viewer. */
 export function sampleIndex(): readonly SampleIndexEntry[] {
   return fixtureNames().map((fixture) => {
     const entry = FIXTURES[fixture];
@@ -240,7 +217,6 @@ function sampleLinks(fixture: FixtureName, persona: Persona): ScreenLinks {
   return checkoutLinks(`${SAMPLE_PREFIX}${fixture}`, `?as=${personaParam(persona)}`);
 }
 
-/** Every viewer a snapshot can have: each joined spot, someone with the link, and signed out. */
 function personasFor(snapshot: RoomSnapshot): readonly Persona[] {
   return [
     ...snapshot.participants.map((p): Persona => ({ kind: "member", slot: p.slot })),

@@ -23,7 +23,6 @@ type FormView = Extract<CreateView, { readonly kind: "form" }>;
 const EMPTY: DraftInput = { title: "", seller: "", total: "", payerCount: "2" };
 const FIELDS: readonly DraftField[] = ["title", "seller", "total", "payerCount"];
 
-/** Create checkout: details, then a review with every exact share, then Create checkout. */
 export function CreateScreen({ state }: { readonly state: CreateState }): ReactNode {
   const view = deriveCreateView(state);
   if (view.kind === "unavailable") {

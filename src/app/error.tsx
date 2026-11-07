@@ -5,7 +5,6 @@ import { ACTIONS, NETWORK_LABELS, WORDS } from "@/client/catalog";
 import { BUTTON } from "@/components/button";
 import { SiteHeader } from "@/components/page-shell";
 
-/** Unexpected errors: what failed, Try again, and a way home. */
 export default function ErrorPage({ retry }: { readonly error: unknown; readonly retry: () => void }) {
   return (
     <>

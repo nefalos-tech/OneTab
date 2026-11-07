@@ -1,7 +1,3 @@
-/**
- * Turns one CheckoutState into what a screen shows. Pure: no fetching, no routing, no React.
- * Every rule about what a viewer sees lives here or in catalog.ts; components decide nothing.
- */
 import type {
   Address,
   AttemptSummary,
@@ -26,9 +22,6 @@ import {
 } from "./catalog";
 import { splitEqually, type Money } from "./units";
 
-// ===================================================================== input
-
-/** Everything a checkout screen is a pure function of. F3 to F5 build the same value from the API. */
 export type CheckoutState = {
   readonly config: PublicConfig;
   readonly snapshot: RoomSnapshot;
@@ -36,7 +29,6 @@ export type CheckoutState = {
   readonly source: CheckoutSource;
 };
 
-/** How the state was addressed. Carries finished URLs, so nothing below builds a route. */
 export type CheckoutSource =
   | {
       readonly kind: "sample";
@@ -49,7 +41,6 @@ export type CheckoutSource =
 export type ScreenLinks = { readonly [S in Screen]: string };
 export type PersonaOption = { readonly label: string; readonly links: ScreenLinks; readonly current: boolean };
 
-/** `config: null` means payment configuration is unavailable, so nothing can be created. */
 export type CreateState = {
   readonly config: PublicConfig | null;
   readonly session: Session | null;
@@ -61,28 +52,21 @@ export type CreateState = {
 export const SAMPLES_PATH = "/samples";
 export const SAMPLE_CREATE_PATH = "/?sample";
 
-/** The one place that knows the checkout route shape. `segment` is a CheckoutId or `sample-<name>`. */
 export function checkoutLinks(segment: string, query = ""): ScreenLinks {
   return { room: `/checkouts/${segment}${query}`, result: `/checkouts/${segment}/result${query}` };
 }
 
-// ===================================================================== output
-
 export type ViewerRole =
   | { readonly kind: "organizer"; readonly slot: number }
   | { readonly kind: "payer"; readonly slot: number }
-  /** Signed in, holds no spot, and a spot is open. */
   | { readonly kind: "guest" }
-  /** Signed in, holds no spot, and nothing to join: a full room, or the seller's own wallet. */
   | { readonly kind: "spectator" }
   | { readonly kind: "signed_out" };
 
 export type Chrome = {
   readonly networkLabel: string;
-  /** Read-only until F2 replaces it with the wallet control. */
   readonly viewerWallet: Address | null;
   readonly flow: readonly FlowStepView[];
-  /** Non-null exactly when the source is sample data. */
   readonly sample: SampleBanner | null;
 };
 export type FlowStepView = {
@@ -100,11 +84,9 @@ export type StatusView = {
   readonly situation: Situation;
   readonly tone: Tone;
   readonly label: string;
-  /** What is happening and what happens next. */
   readonly line: string;
 };
 
-/** One entry per spot, open spots included. The split bar and the payer list both read this. */
 export type SpotView = {
   readonly slot: number;
   readonly wallet: Address | null;
@@ -116,10 +98,8 @@ export type SpotView = {
 export type TabView = {
   readonly title: string;
   readonly total: Money;
-  /** Null only in the create preview before a valid seller wallet is typed. */
   readonly seller: Address | null;
   readonly spots: readonly SpotView[];
-  /** "2 of 3 joined, 1 ready" before payment, "1 of 3 approved" after it starts. */
   readonly progress: string;
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
@@ -154,27 +134,19 @@ type ActionPayload = {
   readonly create_a_checkout: Href;
   readonly reload_page: NoPayload;
 };
-/** Labels and the sample rule come from ACTIONS; a kind added there fails here until it has a payload. */
 export type Action = { [K in ActionKind]: { readonly kind: K } & ActionPayload[K] }[ActionKind];
 
 export type ActionsView = {
-  /** At most one primary per screen state, by type. */
   readonly primary: Action | null;
   readonly secondary: readonly Action[];
-  /** Non-null in sample data, where actions that need a wallet, the backend or the chain send nothing. */
   readonly sample: { readonly followUp: Action | null } | null;
 };
 
-/** Whether a new payment can start after declined, failed or expired. Only canRetry produces the retry variant. */
 export type Recovery =
   | { readonly kind: "on_hold" }
   | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: string }
   | { readonly kind: "waiting_for_organizer" };
 
-/**
- * The result screen's body. Only `paid` carries a receipt, and only `needs_attention` carries a
- * Recovery, so `unresolved` can never offer a new payment.
- */
 export type ResultBody =
   | { readonly kind: "not_started" }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
@@ -197,9 +169,7 @@ export type ReceiptView = {
     readonly amount: Money;
     readonly isViewer: boolean;
   }[];
-  /** "Nov 7, 2026, 14:05 UTC". */
   readonly observedAt: string;
-  /** Server-supplied. The UI never builds an explorer URL. Null for sample data, which has no real transaction. */
   readonly explorerUrl: string | null;
 };
 
@@ -225,17 +195,13 @@ export type CreateView =
       readonly chrome: Chrome;
       readonly config: PublicConfig;
       readonly organizer: Address | null;
-      /** Non-null in sample data: where Create checkout leads instead of creating anything. */
       readonly sampleRoomHref: string | null;
     }
   | {
       readonly kind: "unavailable";
       readonly chrome: Chrome;
-      /** Non-null while sample data is on, so a teammate can still reach every screen. */
       readonly samples: { readonly indexHref: string; readonly createHref: string } | null;
     };
-
-// ===================================================================== public functions
 
 export function deriveRoomView(state: CheckoutState): RoomView {
   const c = classify(state.snapshot);
@@ -298,7 +264,6 @@ export function deriveCreateView(state: CreateState): CreateView {
   };
 }
 
-/** The review step's actions: Create checkout, with Edit details as the exit door. */
 export function deriveReviewActions(
   view: Extract<CreateView, { readonly kind: "form" }>,
   request: CreateRequest,
@@ -310,11 +275,8 @@ export function deriveReviewActions(
   };
 }
 
-// ===================================================================== classification
-
 type PaidAttempt = AttemptSummary & { readonly state: "confirmed"; readonly receipt: Receipt };
 
-/** The snapshot read once into a situation, carrying the narrowed attempt each situation needs. */
 type Classified =
   | { readonly situation: "open_spots" | "full_not_ready" | "ready"; readonly attempt: null }
   | {
@@ -323,7 +285,6 @@ type Classified =
     }
   | { readonly situation: "paid"; readonly attempt: PaidAttempt };
 
-/** Reads phase and attempt state and never infers them. Paid needs phase "paid" and a receipt. */
 function classify(snapshot: RoomSnapshot): Classified {
   const a = snapshot.attempt;
   if (a === null) {
@@ -371,7 +332,6 @@ function tabOf(snapshot: RoomSnapshot, role: ViewerRole): TabView {
   const { checkout } = snapshot;
   const money = (units: TokenUnits): Money => ({ units, decimals: checkout.tokenDecimals });
   const signed = new Set(snapshot.attempt?.signedWallets ?? []);
-  // PROVISIONAL(B1): open spots have no record, so their share repeats the server's split rule.
   const equal = splitEqually(checkout.totalUnits, checkout.payerCount);
   const viewerSlot = role.kind === "organizer" || role.kind === "payer" ? role.slot : null;
   const spots = equal.map((equalShare, slot): SpotView => {
@@ -404,7 +364,6 @@ type CopyContext = {
   readonly openSpots: number;
   readonly notReady: number;
   readonly approvals: { readonly done: number; readonly total: number };
-  /** Set for declined, failed and expired only. */
   readonly recovery: Recovery | null;
 };
 
@@ -543,8 +502,6 @@ function sampleActions(state: CheckoutState): ActionsView["sample"] {
   return state.source.kind === "sample" ? { followUp: null } : null;
 }
 
-// ===================================================================== tables
-
 type ActorContext = { readonly role: ViewerRole; readonly me: SpotStatus | null; readonly links: ScreenLinks };
 type ActionPlan = { readonly primary: Action | null; readonly secondary: readonly Action[] };
 
@@ -554,11 +511,6 @@ const isMember = (role: ViewerRole): boolean => role.kind === "organizer" || rol
 const readinessToggle = (me: SpotStatus | null): Action =>
   me === "ready" ? { kind: "mark_not_ready" } : { kind: "mark_ready" };
 
-/**
- * Room actions for the states the room owns. Result-owned states get one link to the result instead,
- * so this table cannot grow a payment action for them. A signed-out viewer may hold a spot, so every
- * room state asks them to connect.
- */
 const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => ActionPlan } = {
   open_spots: (c) =>
     c.role.kind === "signed_out"
@@ -605,10 +557,6 @@ const recoveryLine = (r: Recovery | null, onHold: string): string =>
       ? "The organizer can start a new payment, and everyone approves again."
       : onHold;
 
-/**
- * At most two short sentences per situation and viewer, held to the honesty rules by checkout-view.test.ts: only `paid`
- * says paid, declined never says revoked or canceled, and unresolved promises no new payment.
- */
 const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
   open_spots: (c) =>
     c.role.kind === "guest"

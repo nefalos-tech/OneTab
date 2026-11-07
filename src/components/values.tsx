@@ -8,7 +8,6 @@ const AMOUNT_SIZE = {
   hero: "text-hero font-bold",
 } as const;
 
-/** The only way to print an amount: tabular figures and the test USDC label, always together. */
 export function Amount({
   value,
   size = "body",
@@ -26,7 +25,6 @@ export function Amount({
   );
 }
 
-/** Wallets and transaction references in the mono face. The short form keeps the first and last four characters. */
 export function AddressText({ value, form }: { readonly value: string; readonly form: "short" | "full" }): ReactNode {
   return form === "short" ? (
     <span className="font-mono" title={value}>

@@ -3,7 +3,6 @@ import { SiteHeader } from "@/components/page-shell";
 
 const BLOCK = "rounded-control bg-brand-soft";
 
-/** Room-shaped placeholders, so nothing shifts when the checkout arrives. */
 export default function Loading() {
   return (
     <>

@@ -7,7 +7,6 @@ import { FIXTURES, fixtureCases, parseCheckoutRef, parseFixtureFlag, personaPara
 
 const ENTRIES = Object.entries(FIXTURES);
 
-/** contracts.md "Derive phase in this order", restated for fixture realism. The UI itself never derives phase. */
 function contractPhase(s: RoomSnapshot): Phase {
   const a = s.attempt;
   if (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized") return "paid";

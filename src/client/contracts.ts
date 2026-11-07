@@ -1,10 +1,3 @@
-/**
- * Interim mirror of docs/contracts.md until B1 publishes src/contracts/. At the swap, delete this
- * file and fixture-data.ts and re-point `./contracts` imports in src/client to `@/contracts`; the
- * compiler then lists every shape that differs. Fields contracts.md leaves open are marked
- * PROVISIONAL(B1). Components and pages cannot import this file (eslint.config.mjs).
- */
-
 /** Integer token units as a decimal string in the u64 range. */
 export type TokenUnits = string & { readonly __brand: "TokenUnits" };
 
@@ -20,7 +13,6 @@ export function isTokenUnits(s: string): s is TokenUnits {
   return /^(0|[1-9][0-9]*)$/.test(s) && BigInt(s) <= U64_MAX;
 }
 
-/** Display-grade check. The payment validator does the real one. */
 export function isAddress(s: string): s is Address {
   return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(s);
 }

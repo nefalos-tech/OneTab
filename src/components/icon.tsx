@@ -50,7 +50,6 @@ const PATHS: { readonly [N in IconName]: ReactNode } = {
   ),
 };
 
-/** Decorative and hidden from assistive technology. Every icon sits beside text that says the same thing. */
 export function Icon({ name, className = "size-5" }: { readonly name: IconName; readonly className?: string }): ReactNode {
   return (
     <svg

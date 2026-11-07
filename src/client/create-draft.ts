@@ -1,13 +1,8 @@
-/**
- * The create form's boundary: raw text in, a checked request with exact shares or plain-word field
- * errors out. F3 adds the POST, the clientRequestId and server errors, and sends `request` as is.
- */
 import { isAddress, type Address, type PayerCount, type PublicConfig, type TokenUnits } from "./contracts";
 import { WORDS } from "./catalog";
 import type { CreateRequest, TabView } from "./checkout-view";
 import { formatMoney, parseAmountInput, splitEqually, toTokenUnits, type AmountProblem, type Money } from "./units";
 
-/** Exactly what the inputs hold. Nothing here is trusted. */
 export type DraftInput = {
   readonly title: string;
   readonly seller: string;
@@ -19,7 +14,6 @@ export type DraftErrors = Readonly<Partial<Record<DraftField, string>>>;
 
 export type DraftReview = {
   readonly request: CreateRequest;
-  /** The tab card preview: spot 1 is the organizer, the rest are open, each with its exact share. */
   readonly tab: TabView;
 };
 
@@ -65,7 +59,6 @@ export function checkDraft(
   };
 }
 
-/** The live tab card beside the form. Shares update as the total is typed, before any check passes. */
 export function previewTab(
   input: DraftInput,
   ctx: { readonly config: PublicConfig; readonly organizer: Address | null },

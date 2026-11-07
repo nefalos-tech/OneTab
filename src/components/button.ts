@@ -1,7 +1,6 @@
 const BASE =
   "inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-5 py-2 font-semibold transition-colors duration-200";
 
-/** The three button looks in docs/design-system.md, plus the text link. Every target is at least 44px tall. */
 export const BUTTON = {
   primary: `${BASE} bg-brand text-white hover:bg-ink active:bg-ink`,
   quiet: `${BASE} border border-line-strong bg-white text-brand hover:bg-brand-soft active:bg-brand-soft`,

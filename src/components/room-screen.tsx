@@ -5,7 +5,6 @@ import { SpotList } from "./spot-list";
 import { StatusPanel } from "./status-panel";
 import { TabCard } from "./tab-card";
 
-/** The shared checkout room. A pure function of CheckoutState, so F4's polling client renders it unchanged. */
 export function RoomScreen({ state }: { readonly state: CheckoutState }): ReactNode {
   const view = deriveRoomView(state);
   return (

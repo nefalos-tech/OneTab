@@ -2,8 +2,6 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
 
-// Wire shapes and samples stay behind src/client, so B1's contracts and fixtures replace two interim
-// files without touching a component or page.
 const WIRE_AND_SAMPLES = [
   "@/client/contracts",
   "@/client/fixture-data",

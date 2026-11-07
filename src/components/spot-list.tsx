@@ -4,7 +4,6 @@ import type { SpotView } from "@/client/checkout-view";
 import { Icon } from "./icon";
 import { AddressText, Amount } from "./values";
 
-/** Chip looks match the split bar segments, so a status looks the same everywhere. */
 const CHIP: { readonly [S in SpotStatus]: { readonly className: string; readonly check: boolean } } = {
   open: { className: "border border-dashed border-line-strong text-muted", check: false },
   joined: { className: "bg-brand-soft text-ink", check: false },
@@ -12,7 +11,6 @@ const CHIP: { readonly [S in SpotStatus]: { readonly className: string; readonly
   approved: { className: "bg-accent text-ink", check: true },
 };
 
-/** Everyone's spot, wallet, exact share and status, with Organizer and You tags. Dividers only, no cards. */
 export function SpotList({ spots }: { readonly spots: readonly SpotView[] }): ReactNode {
   return (
     <section aria-labelledby="payers-title">

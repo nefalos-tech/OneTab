@@ -1,5 +1,3 @@
-// Scores accent candidates against the tokens in src/app/globals.css.
-//
 //   node scripts/palette-candidates.mjs                 the seven candidates in docs/design-decisions.md
 //   node scripts/palette-candidates.mjs "#FFD23F" ...   any #RRGGBB values
 import { colorTokens, contrastRatio, hexToRgb, markdownTable, readGlobalsCss, readTheme, toLinear } from "./design-tokens.mjs";
