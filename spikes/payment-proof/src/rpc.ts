@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { corePlanFromProofPlan, fromBase64, type FrozenPayment, type Submission } from './payment.js';
 import { ProofFailure } from './errors.js';
 import type { PaymentPlan } from '../../../src/lib/payments/payment-core.js';
-import { inspectFinalizedPayment, parseSignatureStatus } from './chain-inspection.js';
+import { inspectFinalizedPayment, parseSignatureStatus } from '../../../src/server/payments/chain-inspection.js';
 import { assertDevnet, checkPaymentFee, preparePayment } from '../../../src/server/payments/preflight.js';
 
 const integer = z.number().int().nonnegative().safe();

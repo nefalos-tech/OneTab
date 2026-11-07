@@ -4,7 +4,7 @@ This increment supplies reusable finalized-payment inspection for two or three p
 
 ## Trusted inputs and RPC evidence
 
-`spikes/payment-proof/src/chain-inspection.ts` exports two pure synchronous functions. `parseSignatureStatus` parses the whole one-reference status response. `inspectFinalizedPayment` compares finalized transaction evidence with a trusted payment plan, pinned message, stored signed bytes, and stored reference.
+`src/server/payments/chain-inspection.ts` exports two pure synchronous functions. The application promotion moved this implementation from the spike and updated every consumer. `parseSignatureStatus` parses the whole one-reference status response. `inspectFinalizedPayment` compares finalized transaction evidence with a trusted payment plan, pinned message, stored signed bytes, and stored reference.
 
 The caller supplies a plan created by P2 and a message previously inspected against independently expected payment details. The caller also verifies signatures before storing the submission. P4 checks the shape and identity of those signed bytes. Signature cryptography remains the caller's prerequisite.
 
@@ -63,6 +63,6 @@ This command uses only Devnet genesis, signature-status and transaction reads. I
 
 ## Integration limits
 
-This evidence covers local synthetic signatures, codecs, metadata inspection, the existing P1 adapter, and read-only revalidation of P1's real two-payer payment. B1 integration, authenticated routes, atomic application persistence, submission leases, retry decisions, new browser-wallet approval, and hosted three-payer Devnet execution remain pending. P4's full card acceptance still requires those integration checks.
+This historical evidence covers local synthetic signatures, codecs, metadata inspection, the existing P1 adapter, and read-only revalidation of P1's real two-payer payment. The later [application settlement evidence](payment-settlement.md) covers B1 contract integration, submission leases, and bounded reconciliation with fake storage and RPC. Real atomic application persistence, authenticated integration, new browser-wallet approval, and hosted three-payer Devnet execution require separate evidence.
 
 The inspector supplies no expiration, safe-retry, or replacement-payment decision. Existing P1 public chain evidence remains the source for its recorded Devnet experiment.

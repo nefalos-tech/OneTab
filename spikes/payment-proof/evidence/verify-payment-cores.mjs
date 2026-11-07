@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { getCompiledTransactionMessageDecoder, getTransactionDecoder } from '@solana/kit';
 import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessage } from '../../../src/lib/payments/payment-core.ts';
 import { assembleSignedPayment, verifyPayerSignature } from '../../../src/lib/payments/signature-core.ts';
-import { inspectFinalizedPayment, parseSignatureStatus } from '../src/chain-inspection.ts';
+import { inspectFinalizedPayment, parseSignatureStatus } from '../../../src/server/payments/chain-inspection.ts';
 
 const rpc = 'https://api.devnet.solana.com';
 const expected = Object.freeze({

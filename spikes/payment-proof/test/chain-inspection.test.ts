@@ -9,7 +9,7 @@ import {
 } from '../../../src/lib/payments/payment-core.js';
 import {
   inspectFinalizedPayment, parseSignatureStatus, type ExpectedSettlement, type SignatureStatus,
-} from '../src/chain-inspection.js';
+} from '../../../src/server/payments/chain-inspection.js';
 import { toBase64 } from '../src/payment.js';
 
 const key = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
