@@ -62,17 +62,20 @@ export type Participant = {
 };
 
 /** Server-derived. The UI reads it and never recomputes it. */
-export type Phase = "open" | "ready" | "paying" | "paid" | "needs_attention";
+export const PHASES = ["open", "ready", "paying", "paid", "needs_attention"] as const;
+export type Phase = (typeof PHASES)[number];
 
-export type AttemptState =
-  | "preparing"
-  | "signing"
-  | "submitting"
-  | "unresolved"
-  | "declined"
-  | "confirmed"
-  | "failed"
-  | "expired";
+export const ATTEMPT_STATES = [
+  "preparing",
+  "signing",
+  "submitting",
+  "unresolved",
+  "declined",
+  "confirmed",
+  "failed",
+  "expired",
+] as const;
+export type AttemptState = (typeof ATTEMPT_STATES)[number];
 
 export const ERROR_CODES = [
   "INVALID_INPUT",
@@ -104,7 +107,7 @@ export const ERROR_CODES = [
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
 export function isErrorCode(value: unknown): value is ErrorCode {
-  return (ERROR_CODES as readonly unknown[]).includes(value);
+  return isOneOf(value, ERROR_CODES);
 }
 
 /** PROVISIONAL(B1): contracts.md leaves AttemptSummary.error open. Mirrors the error envelope. */
@@ -152,3 +155,128 @@ export type AuthChallenge = { readonly challengeId: string; readonly messageBase
 
 /** PROVISIONAL(B1): POST /api/auth/verify body. */
 export type AuthVerifyRequest = { readonly challengeId: string; readonly signatureBase64: string };
+
+/**
+ * PROVISIONAL(B1): the boundary check for a room the server sent, until B1 publishes runtime schemas.
+ * It checks field types, branded strings, enums, a payer count of 2 or 3 and slots inside it, and returns
+ * a fresh object with only the contract's fields. It doesn't re-check server invariants such as shares
+ * summing to the total. deriveRoomView trusts its input, so a lane mismatch reads as an outage here
+ * instead of a crash inside the view.
+ */
+export function parseRoomSnapshot(data: unknown): RoomSnapshot | null {
+  if (!isRecord(data) || !isOneOf(data.phase, PHASES)) return null;
+  const checkout = parseCheckout(data.checkout);
+  if (checkout === undefined) return null;
+  const participants = listOf(data.participants, (p) => parseParticipant(p, checkout.payerCount));
+  const attempt = data.attempt === null ? null : parseAttempt(data.attempt, checkout.payerCount);
+  if (participants === undefined || attempt === undefined) return null;
+  return { checkout, participants, phase: data.phase, attempt };
+}
+
+/** PROVISIONAL(B1): GET /api/config data. */
+export function parsePublicConfig(data: unknown): PublicConfig | null {
+  if (!isRecord(data)) return null;
+  const { network, mint, tokenDecimals, confirmationTarget } = data;
+  return network === "devnet" && isAddress(mint) && isDecimals(tokenDecimals) && confirmationTarget === "finalized"
+    ? { network, mint, tokenDecimals, confirmationTarget }
+    : null;
+}
+
+// The parsers below return undefined when the data doesn't parse, because null is a valid attempt,
+// attempt error and receipt.
+
+function parseCheckout(data: unknown): Checkout | undefined {
+  if (!isRecord(data)) return undefined;
+  const { id, title, organizerWallet, sellerWallet, network, mint, tokenDecimals, totalUnits, payerCount, createdAt } = data;
+  return typeof id === "string" &&
+    isCheckoutId(id) &&
+    typeof title === "string" &&
+    isAddress(organizerWallet) &&
+    isAddress(sellerWallet) &&
+    network === "devnet" &&
+    isAddress(mint) &&
+    isDecimals(tokenDecimals) &&
+    isUnits(totalUnits) &&
+    (payerCount === 2 || payerCount === 3) &&
+    isTimestamp(createdAt)
+    ? { id, title, organizerWallet, sellerWallet, network, mint, tokenDecimals, totalUnits, payerCount, createdAt }
+    : undefined;
+}
+
+function parseParticipant(data: unknown, payerCount: PayerCount): Participant | undefined {
+  if (!isRecord(data)) return undefined;
+  const { slot, wallet, shareUnits, ready } = data;
+  return isSlot(slot, payerCount) && isAddress(wallet) && isUnits(shareUnits) && typeof ready === "boolean"
+    ? { slot, wallet, shareUnits, ready }
+    : undefined;
+}
+
+function parseAttempt(data: unknown, payerCount: PayerCount): AttemptSummary | undefined {
+  if (!isRecord(data)) return undefined;
+  const { id, state, transactionReference, lastValidBlockHeight, canRetry } = data;
+  const signedWallets = listOf(data.signedWallets, (w) => (isAddress(w) ? w : undefined));
+  const error = data.error === null ? null : parseAttemptError(data.error);
+  const receipt = data.receipt === null ? null : parseReceipt(data.receipt, payerCount);
+  return typeof id === "string" &&
+    isOneOf(state, ATTEMPT_STATES) &&
+    signedWallets !== undefined &&
+    isStringOrNull(transactionReference) &&
+    isStringOrNull(lastValidBlockHeight) &&
+    error !== undefined &&
+    typeof canRetry === "boolean" &&
+    receipt !== undefined
+    ? { id, state, signedWallets, transactionReference, lastValidBlockHeight, error, canRetry, receipt }
+    : undefined;
+}
+
+function parseAttemptError(data: unknown): AttemptError | undefined {
+  return isRecord(data) && isErrorCode(data.code) && typeof data.message === "string"
+    ? { code: data.code, message: data.message }
+    : undefined;
+}
+
+function parseReceipt(data: unknown, payerCount: PayerCount): Receipt | undefined {
+  if (!isRecord(data)) return undefined;
+  const { transactionReference, confirmationStatus, sellerWallet, totalUnits, observedAt, explorerUrl } = data;
+  const contributions = listOf(data.contributions, (c) => parseContribution(c, payerCount));
+  return typeof transactionReference === "string" &&
+    confirmationStatus === "finalized" &&
+    isAddress(sellerWallet) &&
+    isUnits(totalUnits) &&
+    contributions !== undefined &&
+    isTimestamp(observedAt) &&
+    typeof explorerUrl === "string"
+    ? { transactionReference, confirmationStatus, sellerWallet, totalUnits, contributions, observedAt, explorerUrl }
+    : undefined;
+}
+
+function parseContribution(data: unknown, payerCount: PayerCount): ReceiptContribution | undefined {
+  if (!isRecord(data)) return undefined;
+  const { slot, wallet, amountUnits } = data;
+  return isSlot(slot, payerCount) && isAddress(wallet) && isUnits(amountUnits) ? { slot, wallet, amountUnits } : undefined;
+}
+
+function listOf<T>(data: unknown, parse: (item: unknown) => T | undefined): readonly T[] | undefined {
+  if (!Array.isArray(data)) return undefined;
+  const items: T[] = [];
+  for (const item of data) {
+    const parsed = parse(item);
+    if (parsed === undefined) return undefined;
+    items.push(parsed);
+  }
+  return items;
+}
+
+function isOneOf<T extends string>(value: unknown, options: readonly T[]): value is T {
+  return (options as readonly unknown[]).includes(value);
+}
+
+const isAddress = (value: unknown): value is Address => typeof value === "string" && looksLikeAddress(value);
+const isUnits = (value: unknown): value is TokenUnits => typeof value === "string" && isTokenUnits(value);
+const isStringOrNull = (value: unknown): value is string | null => value === null || typeof value === "string";
+const isTimestamp = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
+const isSlot = (value: unknown, payerCount: PayerCount): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value < payerCount;
+/** A Solana mint stores its decimals in one byte. */
+const isDecimals = (value: unknown): value is number =>
+  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 255;

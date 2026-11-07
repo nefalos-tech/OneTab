@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ActionKind } from "./catalog";
-import { deriveCreateView, deriveResultView, deriveRoomView, type CheckoutState } from "./checkout-view";
+import { checkoutLinks, deriveCreateView, deriveResultView, deriveRoomView, type CheckoutState } from "./checkout-view";
 import { fixtureCases, sampleCreateState, type FixtureCase } from "./fixtures";
 
 const CASES = fixtureCases();
@@ -159,6 +159,29 @@ describe("contract-inconsistent snapshots stay honest", () => {
       href: attempt.receipt?.explorerUrl,
     });
     expect(deriveResultView(state).chrome.sample).toBeNull();
+  });
+});
+
+describe("a live room", () => {
+  const outsider = caseById("open-spots as outsider").state;
+  const live: CheckoutState = {
+    ...outsider,
+    source: { kind: "live", links: checkoutLinks(outsider.snapshot.checkout.id) },
+  };
+
+  it("offers Join with the checkout's own ID, so the action knows which checkout to join", () => {
+    expect(deriveRoomView(live).actions.primary).toEqual({ kind: "join", checkoutId: outsider.snapshot.checkout.id });
+  });
+
+  it("labels the network from the checkout itself", () => {
+    for (const view of [deriveRoomView(live), deriveResultView(live)]) {
+      expect(view.chrome.networkLabel).toBe("Test USDC on Solana Devnet");
+    }
+  });
+
+  it("links the room and the result with no query", () => {
+    const id = outsider.snapshot.checkout.id;
+    expect(deriveResultView(live).actions.primary).toEqual({ kind: "back_to_checkout", href: `/checkouts/${id}` });
   });
 });
 

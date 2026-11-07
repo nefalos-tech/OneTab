@@ -142,7 +142,6 @@ export function sampleCheckoutState(ref: SampleRef): CheckoutState {
   const { snapshot } = entry;
   const session = sessionFor(ref.persona, snapshot);
   return {
-    config: SAMPLE_CONFIG,
     snapshot,
     session,
     source: {
