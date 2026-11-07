@@ -55,3 +55,19 @@ node --import tsx test/invite-navigation.mjs --playwright-module ../../node_modu
 On Node 25.9.0, `npm run check` passes lint, typecheck, the Vite browser build, and all 65 tests. The existing invitation regression passes all eight cases in headless Chromium 153.0.8010.12 with a synthetic Wallet Standard provider. The HTTP tests and browser fixtures use loopback.
 
 These are local synthetic codec and cryptographic checks. Browser-wallet approval, chain execution, public deployment, B1 contracts, and persisted application attempts need separate evidence.
+
+## Combined verification
+
+The coordinator verified the core at `fdb75c2496f5445c64829a9c4d313b948d358b85`. The isolated checks passed lint, type checking, the Vite build and 65 Node tests. Chromium 153.0.8010.12 passed eight existing invitation cases and eight new bundled-core cases. The browser checks compare complete two-payer and three-payer bytes with Node and reject recomputed malicious messages. They load the bundle before testing rejection and prohibit external requests.
+
+The existing browser command runs both groups after `npm run check`.
+
+```sh
+node --import tsx test/invite-navigation.mjs --playwright-module ../../node_modules/playwright/index.mjs
+```
+
+After the merged F2 scaffold arrived at main `ea45d824c7cbc771e5b80d1162299d2334354005`, the coordinator integrated it. The root checks passed lint, types, design checks and 733 tests. The production build and all 127 desktop browser cases passed at `59e215e2fd7f6c73e342e167459a31931e8d0660`. The subsequent ancestry-only merge at `e01cd0c8b66f6d454280dd6e0cd5c195ca06bbb2` has an identical Git tree. Payment source and tests did not change in either scaffold merge.
+
+Independent review reproduced and caught an overflow exception in the P1 wire parser. A regression test failed before the fix, then passed after canonical amount validation guarded the numeric refinement. The reviewer independently passed 37 focused tests on the corrected artifact and reported no unresolved findings. The P1 evidence document and public chain artifacts remain unchanged.
+
+This evidence establishes local construction, validation, read-only preflight logic and browser portability. It does not complete the shared application integration or establish a real three-wallet payment. No new transaction was signed or sent.
