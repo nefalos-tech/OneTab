@@ -37,9 +37,14 @@ export type Track = <F extends string>(
 
 export const untracked: Track = (_intent, request) => request();
 
-export function roomTracker(show: (snapshot: RoomSnapshot) => void): Track {
+/**
+ * `reached` hears whether a read answered, only for a read sent after everything already shown or reported,
+ * so a stale answer can't say the page is back online, or offline, after a newer one.
+ */
+export function roomTracker(show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void): Track {
   let sent = 0;
   let shown = 0;
+  let reported = 0;
   let writesInFlight = 0;
   return async (intent, request) => {
     sent += 1;
@@ -48,9 +53,14 @@ export function roomTracker(show: (snapshot: RoomSnapshot) => void): Track {
     if (intent === "write") writesInFlight += 1;
     try {
       const answer = await request();
-      if (answer.ok && !straddlesWrite && ticket > shown) {
+      const current = !straddlesWrite && ticket > shown;
+      if (answer.ok && current) {
         shown = ticket;
         show(answer.value);
+      }
+      if (intent === "read" && current && ticket > reported) {
+        reported = ticket;
+        reached(answer.ok);
       }
       return answer;
     } finally {

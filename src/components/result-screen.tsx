@@ -18,6 +18,7 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
           actions={view.actions}
           heading="h1"
           reason={view.body.kind === "needs_attention" ? view.body.reason : null}
+          connection={view.connection}
         >
           <ResultDetails body={view.body} />
         </StatusPanel>

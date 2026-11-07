@@ -36,6 +36,7 @@ export function StatusPanel({
   actions,
   heading,
   reason = null,
+  connection,
   children,
 }: {
   readonly status: StatusView;
@@ -44,12 +45,18 @@ export function StatusPanel({
   readonly actions: ActionsView;
   readonly heading: "h1" | "h2";
   readonly reason?: Reason | null;
+  readonly connection: string | null;
   readonly children?: ReactNode;
 }): ReactNode {
   const Heading = heading;
   const line = useRef<HTMLParagraphElement>(null);
   return (
-    <section data-situation={status.situation} aria-labelledby="status-label" className="flex flex-col gap-4">
+    <section
+      data-situation={status.situation}
+      data-attempt={status.attempt ?? undefined}
+      aria-labelledby="status-label"
+      className="flex flex-col gap-4"
+    >
       <Heading
         id="status-label"
         className={`flex items-center gap-2 self-start rounded-control px-3 py-2 text-section font-bold ${TONE[status.tone]}`}
@@ -60,6 +67,12 @@ export function StatusPanel({
       <p ref={line} role="status" tabIndex={-1} data-status-line="" className="max-w-prose focus:outline-none">
         {status.line}
       </p>
+      {connection && (
+        <p data-connection="" className="flex items-start gap-2 text-small text-muted">
+          <Icon name="alert" />
+          {connection}
+        </p>
+      )}
       {reason && (
         <div data-status-reason="" data-reason-from={reason.from} className="flex max-w-prose flex-col gap-1 text-muted">
           <p>{reason.happened}</p>

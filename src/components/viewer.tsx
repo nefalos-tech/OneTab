@@ -3,9 +3,9 @@
 // across the client boundary.
 
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Screen as ScreenName } from "@/client/catalog";
-import { ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
+import { NOTHING_HEARD, ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
 import { live, roomTracker } from "@/client/live-actions";
 import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
@@ -33,7 +33,9 @@ export function Viewer(props: ViewerProps): ReactNode {
 
 function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly state: CheckoutState }): ReactNode {
   const [received, setReceived] = useState<CheckoutState["snapshot"] | null>(null);
-  const [track] = useState(() => roomTracker(setReceived));
+  const [roomUnreachable, setRoomUnreachable] = useState(false);
+  const [track] = useState(() => roomTracker(setReceived, (answered) => setRoomUnreachable(!answered)));
+  const noted = useSyncExternalStore(live.noted.subscribe, live.noted.current, () => NOTHING_HEARD.noted);
   const { session, expired } = useWalletSession();
   const router = useRouter();
   const snapshot = received ?? state.snapshot;
@@ -56,7 +58,7 @@ function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly
 
   return (
     <RoomTrack value={track}>
-      <Screen screen={screen} state={{ ...state, snapshot }} />
+      <Screen screen={screen} state={{ ...state, snapshot, page: { noted, roomUnreachable } }} />
     </RoomTrack>
   );
 }

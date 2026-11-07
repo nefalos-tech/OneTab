@@ -45,7 +45,7 @@ function server(...responses: (() => Response | Promise<Response>)[]): { readonl
 
 function shownBy(): { readonly track: Track; readonly shown: RoomSnapshot[] } {
   const shown: RoomSnapshot[] = [];
-  return { shown, track: roomTracker((snapshot) => shown.push(snapshot)) };
+  return { shown, track: roomTracker((snapshot) => shown.push(snapshot), () => {}) };
 }
 
 const NO_WALLET: PaymentSigner = {
@@ -401,7 +401,7 @@ describe("a funding refusal is noted on the failed attempt it left", () => {
     const { fetch, calls } = server(...responses);
     const live = liveActions(checkoutApi(fetch));
     const notedWhenShown: unknown[] = [];
-    const track = roomTracker(() => notedWhenShown.push(live.noted.current()));
+    const track = roomTracker(() => notedWhenShown.push(live.noted.current()), () => {});
     return { live, calls, track, notedWhenShown };
   }
 
@@ -727,7 +727,9 @@ describe("the poller", () => {
       calls.push(`${init.method} ${path}`);
       return respond(String(init.method), path);
     };
-    const { track, shown } = shownBy();
+    const shown: RoomSnapshot[] = [];
+    const reports: boolean[] = [];
+    const track = roomTracker((snapshot) => shown.push(snapshot), (answered) => reports.push(answered));
     const ended: Session[] = [];
     const room = { now: first };
     const stop = liveActions(checkoutApi(fetch), undefined, env).watch({
@@ -739,6 +741,7 @@ describe("the poller", () => {
     return {
       calls,
       shown,
+      reports,
       ended,
       stop,
       room,
@@ -801,6 +804,24 @@ describe("the poller", () => {
       await p.after(1);
       expect(p.calls, `a poll at ${wait} ms`).toHaveLength(before + 1);
     }
+  });
+
+  it("through an outage, keeps advancing the same attempt and says whether the room answered", async () => {
+    let down = true;
+    const p = polling(
+      (method) => (method === "POST" ? json(200, { data: SIGNING.attempt }) : down ? json(503, errorBody("CONFIGURATION_UNAVAILABLE")) : json(200, { data: SIGNING })),
+      { snapshot: SIGNING, session: PAYER },
+    );
+    await p.after(0);
+    expect(p.reports).toEqual([false]);
+    await p.after(4000);
+    expect(p.reports).toEqual([false, false]);
+    down = false;
+    p.resume();
+    await p.after(0);
+    expect(p.reports).toEqual([false, false, true]);
+    expect(p.calls).toEqual([read(SIGNING), refresh, read(SIGNING), refresh, read(SIGNING), refresh]);
+    expect(p.shown).toEqual([SIGNING]);
   });
 
   it("backs off when the server rate-limits a refresh", async () => {
@@ -956,11 +977,56 @@ function scenarios(): Request[][] {
 const SNAPSHOTS = [OPEN, FULL, FIXTURES.ready.snapshot];
 const label = (requests: Request[]) => requests.map((r) => `${r.intent} ${r.ok ? "ok" : "fails"}`).join(", ");
 
+describe("roomTracker's report of whether the room answered", () => {
+  const settle = <T,>() => {
+    let release!: (value: T) => void;
+    const promise = new Promise<T>((resolve) => (release = resolve));
+    return { promise, release };
+  };
+  const failed: Result<RoomSnapshot, "unavailable"> = { ok: false, failure: "unavailable" };
+
+  it("reports a failed read, then the next answered one", async () => {
+    const reports: boolean[] = [];
+    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    await track("read", async () => failed);
+    await track("read", async () => ({ ok: true, value: OPEN }));
+    expect(reports).toEqual([false, true]);
+  });
+
+  it("ignores a read that answers after a newer one, and writes", async () => {
+    const reports: boolean[] = [];
+    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    const older = settle<Result<RoomSnapshot, "unavailable">>();
+    const stale = track("read", () => older.promise);
+    await track("read", async () => ({ ok: true, value: OPEN }));
+    older.release(failed);
+    await stale;
+    await track("write", async () => failed);
+    expect(reports).toEqual([true]);
+  });
+
+  it("ignores a read sent while a write was in flight", async () => {
+    const reports: boolean[] = [];
+    const track = roomTracker(() => {}, (answered) => reports.push(answered));
+    const write = settle<Result<RoomSnapshot, "unavailable">>();
+    const writing = track("write", () => write.promise);
+    await track("read", async () => failed);
+    write.release({ ok: true, value: OPEN });
+    await writing;
+    expect(reports).toEqual([]);
+  });
+});
+
 describe("roomTracker, in every order of sends and answers", () => {
   it.each(scenarios().map((requests) => [label(requests), requests] as const))("%s", async (_, requests) => {
     for (const order of interleavings(requests.length)) {
       const shown: number[] = [];
-      const track = roomTracker((snapshot) => shown.push(SNAPSHOTS.indexOf(snapshot)));
+      const reports: [index: number, answered: boolean][] = [];
+      let answering = -1;
+      const track = roomTracker(
+        (snapshot) => shown.push(SNAPSHOTS.indexOf(snapshot)),
+        (answered) => reports.push([answering, answered]),
+      );
       const answers = requests.map((r, i): Result<RoomSnapshot, "unavailable"> =>
         r.ok ? { ok: true, value: SNAPSHOTS[i]! } : { ok: false, failure: "unavailable" },
       );
@@ -979,12 +1045,18 @@ describe("roomTracker, in every order of sends and answers", () => {
           continue;
         }
         const newestBefore = Math.max(-1, ...shown);
+        const reportsBefore = reports.length;
+        const newestKnown = Math.max(newestBefore, ...reports.map(([i]) => i));
+        answering = step.index;
         release[step.index]!();
         expect(await pending[step.index], where).toBe(answers[step.index]);
         writesOpen.delete(step.index);
         const shows = request.ok && !straddles.has(step.index) && step.index > newestBefore;
         expect(shown.at(-1) ?? -1, `${where}: answer ${step.index}`).toBe(shows ? step.index : newestBefore);
+        const reported = request.intent === "read" && !straddles.has(step.index) && step.index > newestKnown;
+        expect(reports.slice(reportsBefore), `${where}: reach of answer ${step.index}`).toEqual(reported ? [[step.index, request.ok]] : []);
       }
+      expect(reports.map(([i]) => i), `${where}: reports in send order`).toEqual(reports.map(([i]) => i).sort((a, b) => a - b));
       const eligible = requests.flatMap((r, i) => (r.ok && !straddles.has(i) ? [i] : []));
       expect(shown.at(-1) ?? -1, `${where}: last shown`).toBe(Math.max(-1, ...eligible));
       expect(shown, `${where}: never older after newer`).toEqual([...shown].sort((a, b) => a - b));
