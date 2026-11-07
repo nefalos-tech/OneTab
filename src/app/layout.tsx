@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from "next/font/google";
+import { LiveWalletProvider } from "@/components/wallet/wallet-scope";
 import "./globals.css";
 
 const sans = Atkinson_Hyperlegible_Next({ subsets: ["latin"], variable: "--font-atkinson-next", display: "swap" });
@@ -20,7 +21,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
-        {children}
+        <LiveWalletProvider>{children}</LiveWalletProvider>
       </body>
     </html>
   );

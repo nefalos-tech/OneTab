@@ -6,6 +6,7 @@ import { ACTIONS, WORDS } from "@/client/catalog";
 import type { Action, ActionsView } from "@/client/checkout-view";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
+import { useWalletSession } from "./wallet/wallet-scope";
 
 type Notice = { readonly text: string; readonly followUp: Action | null };
 
@@ -51,7 +52,9 @@ export function ActionGroup({
 
   const stubbed =
     actions.sample !== null &&
-    [actions.primary, ...actions.secondary].some((a) => a !== null && ACTIONS[a.kind].needs !== "nothing");
+    [actions.primary, ...actions.secondary].some(
+      (a) => a !== null && a.kind !== "connect_wallet" && ACTIONS[a.kind].needs !== "nothing",
+    );
   return (
     <div className="flex flex-col gap-4">
       {actions.primary && (
@@ -95,6 +98,7 @@ function ActionControl({
 }): ReactNode {
   const meta = ACTIONS[action.kind];
   const dataAction = variant === "primary" ? "primary" : "secondary";
+  if (action.kind === "connect_wallet") return <ConnectWallet variant={variant} dataAction={dataAction} />;
   if ("href" in action && meta.element === "external_link") {
     return (
       <a href={action.href} target="_blank" rel="noreferrer" data-action={dataAction} className={BUTTON[variant]}>
@@ -116,6 +120,40 @@ function ActionControl({
     <button type="button" data-action={dataAction} onClick={() => onRun(action)} className={BUTTON[variant]}>
       {action.kind === "copy_link" && <Icon name="copy" />}
       {meta.label}
+    </button>
+  );
+}
+
+function ConnectWallet({
+  variant,
+  dataAction,
+}: {
+  readonly variant: keyof typeof BUTTON;
+  readonly dataAction: "primary" | "secondary";
+}): ReactNode {
+  const { view, connect } = useWalletSession();
+  const action = view.connectAction;
+  if (action === null) return null;
+  if (action.kind === "get_phantom") {
+    return (
+      <a href={action.href} target="_blank" rel="noreferrer" data-action={dataAction} className={BUTTON[variant]}>
+        {action.label}
+        <Icon name="external" />
+        <span className="sr-only"> {WORDS.opens_new_tab}</span>
+      </a>
+    );
+  }
+  const busy = action.kind === "busy";
+  return (
+    <button
+      type="button"
+      data-action={dataAction}
+      aria-disabled={busy || undefined}
+      onClick={busy ? undefined : connect}
+      className={`${BUTTON[variant]} aria-disabled:cursor-progress`}
+    >
+      {busy && <Icon name="spinner" />}
+      {action.label}
     </button>
   );
 }
