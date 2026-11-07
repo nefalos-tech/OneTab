@@ -301,6 +301,7 @@ Page states that every screen handles:
 | Connecting | "Approve the connection in your wallet." | **Cancel** |
 | Signing in | "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money." | **Cancel** |
 | Checking sign-in | "Signing in…" | **Cancel** |
+| Approving | "Approve the payment in your wallet. It covers every share in one payment." | **Cancel** |
 | Signed in | None. The header shows the short address, and screen readers hear "Signed in as SAMP…Bea2." | Menu: **Copy address**, **Disconnect** |
 | No wallet found | "No Solana wallet found. Install Phantom, then reload this page." | **Get Phantom** |
 | Wrong network | "Your wallet isn't on Solana Devnet. Switch it to Devnet, then connect again." | **Connect wallet** |

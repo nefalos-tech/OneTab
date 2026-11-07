@@ -1,11 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Address, Session } from "@/client/contracts";
-import type { CheckedPayment } from "@/client/payment-check";
+import { termsOf } from "@/client/checkout-view";
+import { parseSigningPayload, type Address, type Session } from "@/client/contracts";
+import { SAMPLE_WALLETS } from "@/client/fixture-data";
+import { FIXTURES } from "@/client/fixtures";
+import { paymentCheck, type CheckedPayment } from "@/client/payment-check";
+import { wirePayloadFor } from "@/client/payment-fixture";
 import {
   authMessage,
+  type BridgeResult,
   type ChallengeId,
+  type PaymentApproval,
+  type Result,
   type ServiceResult,
   type SignatureBase64,
+  type SignFailure,
   type SignInService,
   type WalletBridge,
 } from "./environment";
@@ -231,5 +239,198 @@ describe("session store with the sample wallet", () => {
     const result = await env.environment.bridge.signPayment({ account: BEA } as CheckedPayment);
     expect(result).toEqual({ ok: false, failure: "failed" });
     expect(env.wallet.view().prompt).toBeNull();
+  });
+});
+
+describe("the payment prompt", () => {
+  const PAYER = SAMPLE_WALLETS.bea;
+  const OTHER = SAMPLE_WALLETS.cam;
+  const SESSION: Session = { wallet: PAYER, expiresAt: FAR_EXPIRY };
+  const APPROVED = "YXBwcm92ZWQ=" as SignatureBase64;
+  const room = FIXTURES.signing.snapshot;
+
+  async function payment(messageHash = "5a".repeat(32)): Promise<CheckedPayment> {
+    const terms = termsOf(room, SESSION)!;
+    const payload = parseSigningPayload({ ...wirePayloadFor(room), messageHash })!;
+    const checked = await paymentCheck(async () => "match")(payload, terms);
+    if (!checked.ok) throw new Error("The sample payment didn't pass the check");
+    return checked.value;
+  }
+
+  type WalletAnswer = "approves" | "rejects" | "fails" | "throws";
+  const ANSWERS: readonly WalletAnswer[] = ["approves", "rejects", "fails", "throws"];
+  const RESULT = {
+    approves: { ok: true, value: APPROVED },
+    rejects: { ok: false, failure: "rejected" },
+    fails: { ok: false, failure: "wrong_network" },
+  } as const satisfies Record<Exclude<WalletAnswer, "throws">, BridgeResult<SignatureBase64>>;
+  const OUTCOME = {
+    approves: "approved",
+    rejects: "rejected",
+    fails: "failed",
+    throws: "failed",
+  } as const satisfies Record<WalletAnswer, string>;
+
+  function signedIn() {
+    const prompts: { readonly payment: CheckedPayment; readonly answer: (a: WalletAnswer) => void }[] = [];
+    const world = scripted({
+      bridge: {
+        connect: async () => ({ ok: true, value: PAYER }),
+        signPayment: (p) =>
+          new Promise((resolve, reject) => {
+            prompts.push({ payment: p, answer: (a) => (a === "throws" ? reject(new Error("provider bug")) : resolve(RESULT[a])) });
+          }),
+      },
+      service: { verify: async () => ({ ok: true, value: SESSION }) },
+    });
+    const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
+    store.start();
+    const heard: boolean[] = [];
+    store.subscribe(() => heard.push(store.approving()));
+    return { store, world, prompts, heard, gen: store.getSnapshot().gen };
+  }
+
+  const outcomeOf = (result: Result<PaymentApproval, SignFailure>) =>
+    result.ok ? (result.value.signature === APPROVED ? "approved" : "wrong signature") : result.failure;
+
+  type Move = "switches account" | "disconnects" | "sign-in expires";
+  function move(world: ReturnType<typeof signedIn>, how: Move): void {
+    if (how === "switches account") world.world.switchTo(OTHER);
+    if (how === "disconnects") world.store.send({ type: "disconnect" });
+    if (how === "sign-in expires") world.store.send({ type: "expired", session: SESSION });
+  }
+
+  async function signInAgain({ store, world }: ReturnType<typeof signedIn>) {
+    const now = store.getSnapshot();
+    if (now.kind === "connected" && now.account !== PAYER) world.switchTo(PAYER);
+    store.send({ type: "connect" });
+    await settled();
+    expect(sessionOf(store.getSnapshot())).toEqual(SESSION);
+    return store.getSnapshot().gen;
+  }
+
+  describe.each(ANSWERS)("when the wallet %s", (walletAnswer) => {
+    it("with no account change, answers with it and holds the prompt until then", async () => {
+      const w = signedIn();
+      const pay = await payment();
+      const pending = w.store.signPayment(w.gen, pay);
+      expect(w.prompts.map((p) => p.payment)).toEqual([pay]);
+      expect(w.store.approving()).toBe(true);
+      w.prompts[0]!.answer(walletAnswer);
+      expect(outcomeOf(await pending)).toBe(OUTCOME[walletAnswer]);
+      expect(w.store.approving()).toBe(false);
+      expect(w.heard).toEqual([true, false]);
+
+      const again = w.store.signPayment(w.gen, pay);
+      if (walletAnswer === "approves") {
+        expect(outcomeOf(await again)).toBe("approved");
+        expect(w.prompts, "the same message is approved once").toHaveLength(1);
+      } else {
+        expect(w.prompts, "a refused or failed prompt can be tried again").toHaveLength(2);
+      }
+    });
+
+    describe.each<Move>(["switches account", "disconnects", "sign-in expires"])("and the payer %s", (how) => {
+      it("before the prompt, nothing opens", async () => {
+        const w = signedIn();
+        move(w, how);
+        expect(await w.store.signPayment(w.gen, await payment())).toEqual({ ok: false, failure: "stale" });
+        expect(w.prompts).toHaveLength(0);
+        expect(w.heard).not.toContain(true);
+      });
+
+      it("during the prompt, the wait ends at once and the answer is dropped", async () => {
+        const w = signedIn();
+        const pay = await payment();
+        const pending = w.store.signPayment(w.gen, pay);
+        move(w, how);
+        expect(await pending).toEqual({ ok: false, failure: "stale" });
+        expect(w.store.approving()).toBe(false);
+        w.prompts[0]!.answer(walletAnswer);
+        await settled();
+
+        const gen = await signInAgain(w);
+        void w.store.signPayment(gen, pay);
+        expect(w.prompts, "the dropped answer is never reused").toHaveLength(2);
+      });
+
+      it("after the answer, the old signer is stale and the new sign-in asks again", async () => {
+        const w = signedIn();
+        const pay = await payment();
+        const pending = w.store.signPayment(w.gen, pay);
+        w.prompts[0]!.answer(walletAnswer);
+        expect(outcomeOf(await pending)).toBe(OUTCOME[walletAnswer]);
+        move(w, how);
+        expect(await w.store.signPayment(w.gen, pay)).toEqual({ ok: false, failure: "stale" });
+
+        const gen = await signInAgain(w);
+        void w.store.signPayment(gen, pay);
+        expect(w.prompts, "an approval belongs to the sign-in that asked for it").toHaveLength(2);
+      });
+    });
+  });
+
+  it("a second call while the prompt is open is busy and opens nothing, and a later one asks again", async () => {
+    const w = signedIn();
+    const first = w.store.signPayment(w.gen, await payment());
+    expect(await w.store.signPayment(w.gen, await payment())).toEqual({ ok: false, failure: "busy" });
+    expect(await w.store.signPayment(w.gen, await payment("6b".repeat(32)))).toEqual({ ok: false, failure: "busy" });
+    expect(w.prompts).toHaveLength(1);
+    w.prompts[0]!.answer("approves");
+    expect(outcomeOf(await first)).toBe("approved");
+    void w.store.signPayment(w.gen, await payment("6b".repeat(32)));
+    expect(w.prompts, "another message asks again").toHaveLength(2);
+  });
+
+  it("Cancel ends the wait as a refusal, the wallet's prompt stays the only one until it answers, and its late approval is dropped", async () => {
+    const w = signedIn();
+    const pay = await payment();
+    const pending = w.store.signPayment(w.gen, pay);
+    w.store.cancelPayment();
+    expect(await pending).toEqual({ ok: false, failure: "rejected" });
+    expect(w.store.approving()).toBe(false);
+    expect(w.heard).toEqual([true, false]);
+    expect(await w.store.signPayment(w.gen, pay)).toEqual({ ok: false, failure: "busy" });
+
+    w.prompts[0]!.answer("approves");
+    await settled();
+    void w.store.signPayment(w.gen, pay);
+    expect(w.prompts, "the approval after Cancel isn't kept").toHaveLength(2);
+  });
+
+  it("Cancel with no payment prompt open changes nothing", () => {
+    const w = signedIn();
+    w.store.cancelPayment();
+    expect(w.heard).toEqual([]);
+    expect(sessionOf(w.store.getSnapshot())).toEqual(SESSION);
+  });
+
+  it("a wallet that throws, at once or later, reads as failed and frees the prompt", async () => {
+    for (const signPayment of [
+      () => {
+        throw new Error("provider bug");
+      },
+      () => Promise.reject(new Error("provider bug")),
+    ]) {
+      const world = scripted({ bridge: { signPayment }, service: { verify: async () => ({ ok: true, value: SESSION }) } });
+      const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
+      const gen = store.getSnapshot().gen;
+      expect(await store.signPayment(gen, await payment())).toEqual({ ok: false, failure: "failed" });
+      expect(store.approving()).toBe(false);
+      expect(await store.signPayment(gen, await payment()), "the prompt was freed").toEqual({ ok: false, failure: "failed" });
+    }
+  });
+
+  it("refuses a payment for another account than the one signed in, with no prompt", async () => {
+    const w = signedIn();
+    const theirs = { ...(await payment()), account: OTHER };
+    expect(await w.store.signPayment(w.gen, theirs)).toEqual({ ok: false, failure: "stale" });
+    expect(w.prompts).toHaveLength(0);
+  });
+
+  it("asks nothing of a wallet that isn't signed in", async () => {
+    const world = scripted({ bridge: { signPayment: () => Promise.reject(new Error("prompted")) } });
+    const store = createSessionStore(world.environment, initialState({ account: PAYER, session: null }));
+    expect(await store.signPayment(store.getSnapshot().gen, await payment())).toEqual({ ok: false, failure: "stale" });
   });
 });

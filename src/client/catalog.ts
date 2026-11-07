@@ -245,6 +245,11 @@ export const WALLET_WAITING = {
     line: "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.",
   },
   server: { state: "Checking sign-in", control: "Signing in…", line: "Signing in…" },
+  payment_prompt: {
+    state: "Approving",
+    control: "Approving…",
+    line: "Approve the payment in your wallet. It covers every share in one payment.",
+  },
 } as const satisfies Record<string, { readonly state: string; readonly control: string; readonly line: string }>;
 export type WalletWaiting = keyof typeof WALLET_WAITING;
 
