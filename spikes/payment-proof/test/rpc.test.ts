@@ -78,6 +78,74 @@ test('only finalized matching transaction metadata and exact token and fee delta
   assert.equal(JSON.stringify(observation).includes(f.submission.signedBase64), false);
 });
 
+test('the two-payer receipt retains its exact public shape and finalized RPC request', async () => {
+  const f = await observedFixture();
+  const observation = await f.rpc.observe(f.payment, f.submission);
+  assert.equal(observation.kind, 'finalized');
+  if (observation.kind !== 'finalized') throw new Error('Expected finalized fixture');
+  assert.deepEqual(observation.receipt, {
+    reference: f.submission.reference,
+    explorerUrl: `https://explorer.solana.com/tx/${f.submission.reference}?cluster=devnet`,
+    confirmationStatus: 'finalized', slot: 123, sellerWallet: f.plan.sellerWallet,
+    sellerIncrease: '4000001', payerDecreases: ['2000001', '2000000'], feeLamports: '10000',
+    observedAt: observation.receipt.observedAt,
+  });
+  assert.equal(new Date(observation.receipt.observedAt).toISOString(), observation.receipt.observedAt);
+  assert.deepEqual(f.rpc.calls.map(call => call.method), ['getGenesisHash', 'getSignatureStatuses', 'getTransaction']);
+  assert.deepEqual(f.rpc.calls.find(call => call.method === 'getSignatureStatuses')?.params,
+    [[f.submission.reference], { searchTransactionHistory: true }]);
+  assert.deepEqual(f.rpc.calls.find(call => call.method === 'getTransaction')?.params, [f.submission.reference, {
+    encoding: 'base64', commitment: 'finalized', maxSupportedTransactionVersion: 0,
+  }]);
+});
+
+test('truncated SOL balance arrays cannot hide missing account evidence', async () => {
+  const f = await observedFixture();
+  f.rpc.replies.getTransaction = { ...f.tx, meta: {
+    ...f.tx.meta, preBalances: [1000000], postBalances: [990000],
+  } };
+  assert.deepEqual(await f.rpc.observe(f.payment, f.submission), {
+    kind: 'unresolved', reason: 'fee_balance_evidence_mismatch',
+  });
+});
+
+test('an absent status err field cannot establish finalized failure', async () => {
+  const f = await observedFixture();
+  f.rpc.replies.getSignatureStatuses = { value: [{ confirmationStatus: 'finalized' }] };
+  assert.deepEqual(await f.rpc.observe(f.payment, f.submission), {
+    kind: 'unresolved', reason: 'rpc_observation_unavailable',
+  });
+  assert.equal(f.rpc.calls.some(call => call.method === 'getTransaction'), false);
+});
+
+test('conflicting finalized status and metadata outcomes remain unresolved', async () => {
+  const f = await observedFixture();
+  const error = { InstructionError: [1, 'Custom'] };
+  for (const [statusError, metadataError] of [[null, error], [error, null]]) {
+    f.rpc.replies.getSignatureStatuses = { value: [{ confirmationStatus: 'finalized', err: statusError }] };
+    f.rpc.replies.getTransaction = { ...f.tx, meta: { ...f.tx.meta, err: metadataError } };
+    assert.deepEqual(await f.rpc.observe(f.payment, f.submission), {
+      kind: 'unresolved', reason: 'transaction_identity_or_metadata_mismatch',
+    });
+  }
+});
+
+test('pending and earlier error statuses preserve height reasons and never fetch finalized metadata', async () => {
+  const f = await observedFixture();
+  for (const status of [null, { confirmationStatus: 'processed', err: 'InsufficientFundsForFee' },
+    { confirmationStatus: 'confirmed', err: { InstructionError: [1, 'Custom'] } }]) {
+    f.rpc.replies.getSignatureStatuses = { value: [status] };
+    for (const height of [100, 101]) {
+      f.rpc.replies.getBlockHeight = height;
+      assert.deepEqual(await f.rpc.observe(f.payment, f.submission), {
+        kind: 'unresolved', reason: height === 100 ? 'awaiting_finalized_evidence' : 'lifetime_exceeded_no_finalized_evidence',
+      });
+    }
+  }
+  assert.equal(f.rpc.calls.some(call => call.method === 'getTransaction'), false);
+  assert.equal(f.rpc.calls.filter(call => call.method === 'getBlockHeight').length, 6);
+});
+
 test('finalized execution failure is definitive while expiry without settlement evidence stays unresolved', async () => {
   const f = await observedFixture();
   f.rpc.replies.getSignatureStatuses = { value: [{ confirmationStatus: 'finalized', err: { InstructionError: [1, 'Custom'] } }] };

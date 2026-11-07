@@ -1,22 +1,12 @@
 import { z } from 'zod';
-import { getAddressDecoder, getCompiledTransactionMessageDecoder, getTransactionDecoder } from '@solana/kit';
+import { getAddressDecoder } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
-import { equalBytes, fromBase64, type FrozenPayment, type Submission } from './payment.js';
+import { corePlanFromProofPlan, fromBase64, type FrozenPayment, type Submission } from './payment.js';
 import { ProofFailure } from './errors.js';
 import type { PaymentPlan } from './payment-core.js';
+import { inspectFinalizedPayment, parseSignatureStatus } from './chain-inspection.js';
 
 const integer = z.number().int().nonnegative().safe();
-const tokenBalance = z.object({
-  accountIndex: integer, mint: z.string(), owner: z.string(),
-  uiTokenAmount: z.object({ amount: z.string().regex(/^[0-9]+$/), decimals: integer }),
-});
-const chainTransaction = z.object({
-  slot: integer, transaction: z.tuple([z.string(), z.literal('base64')]),
-  meta: z.object({
-    err: z.unknown().nullable(), fee: integer, preBalances: z.array(integer), postBalances: z.array(integer),
-    preTokenBalances: z.array(tokenBalance), postTokenBalances: z.array(tokenBalance),
-  }).nullable(),
-});
 export const receiptSchema = z.strictObject({
   reference: z.string(), explorerUrl: z.string(), confirmationStatus: z.literal('finalized'), slot: integer,
   sellerWallet: z.string(), sellerIncrease: z.string(), payerDecreases: z.tuple([z.string(), z.string()]),
@@ -132,49 +122,27 @@ export class DevnetRpc implements ProofRpc {
 
   async observe(payment: FrozenPayment, submission: Submission): Promise<Observation> {
     await this.assertDevnet();
-    const result = z.object({ value: z.tuple([z.object({
-      confirmationStatus: z.enum(['processed', 'confirmed', 'finalized']).nullable(), err: z.unknown().nullable(),
-    }).nullable()]) }).parse(await this.call('getSignatureStatuses', [[submission.reference], { searchTransactionHistory: true }]));
-    const status = result.value[0];
-    if (!status || status.confirmationStatus !== 'finalized') {
+    const status = parseSignatureStatus(await this.call('getSignatureStatuses', [[submission.reference], { searchTransactionHistory: true }]));
+    if (status.kind === 'unavailable') return { kind: 'unresolved', reason: 'rpc_observation_unavailable' };
+    if (status.kind === 'pending') {
       const expired = await this.height() > BigInt(payment.lastValidBlockHeight);
       return { kind: 'unresolved', reason: expired ? 'lifetime_exceeded_no_finalized_evidence' : 'awaiting_finalized_evidence' };
     }
     const resultTx = await this.call('getTransaction', [submission.reference, {
       encoding: 'base64', commitment: 'finalized', maxSupportedTransactionVersion: 0,
     }]);
-    if (resultTx === null) return { kind: 'unresolved', reason: 'finalized_metadata_unavailable' };
-    const tx = chainTransaction.parse(resultTx);
-    if (!equalBytes(fromBase64(tx.transaction[0]), fromBase64(submission.signedBase64)) || !tx.meta) {
-      return { kind: 'unresolved', reason: 'transaction_identity_or_metadata_mismatch' };
-    }
-    if (status.err !== null || tx.meta.err !== null) return { kind: 'failed', reason: 'finalized_execution_error' };
-    const message = getCompiledTransactionMessageDecoder().decode(getTransactionDecoder().decode(fromBase64(submission.signedBase64)).messageBytes);
-    if (message.version !== 'legacy') return { kind: 'unresolved', reason: 'transaction_identity_or_metadata_mismatch' };
-    const expected = [
-      ...payment.plan.contributions.map(payer => ({ wallet: payer.wallet, token: payer.sourceTokenAccount, delta: -BigInt(payer.units) })),
-      { wallet: payment.plan.sellerWallet, token: payment.plan.sellerTokenAccount, delta: BigInt(payment.plan.total) },
-    ];
-    for (const account of expected) {
-      const before = tx.meta.preTokenBalances.filter(balance => balance.owner === account.wallet && balance.mint === payment.plan.mint);
-      const after = tx.meta.postTokenBalances.filter(balance => balance.owner === account.wallet && balance.mint === payment.plan.mint);
-      if (before.length !== 1 || after.length !== 1 || !before[0] || !after[0]
-        || before[0].accountIndex !== after[0].accountIndex || message.staticAccounts[before[0].accountIndex] !== account.token || before[0].uiTokenAmount.decimals !== 6
-        || after[0].uiTokenAmount.decimals !== 6
-        || BigInt(after[0].uiTokenAmount.amount) - BigInt(before[0].uiTokenAmount.amount) !== account.delta) {
-        return { kind: 'unresolved', reason: 'token_balance_evidence_mismatch' };
-      }
-    }
-    const meta = tx.meta;
-    if (meta.preBalances.length !== meta.postBalances.length || meta.preBalances.length === 0
-      || !meta.preBalances.every((before, index) => before - (meta.postBalances[index] ?? -1) === (index === 0 ? meta.fee : 0))) {
-      return { kind: 'unresolved', reason: 'fee_balance_evidence_mismatch' };
-    }
+    const inspection = inspectFinalizedPayment({
+      plan: corePlanFromProofPlan(payment.plan), messageBytes: fromBase64(payment.messageBase64),
+      transactionBytes: fromBase64(submission.signedBase64), reference: submission.reference,
+    }, status, resultTx);
+    if (inspection.kind !== 'finalized') return inspection;
+    const evidence = inspection.evidence;
     return { kind: 'finalized', receipt: {
       reference: submission.reference, explorerUrl: `https://explorer.solana.com/tx/${submission.reference}?cluster=devnet`,
-      confirmationStatus: 'finalized', slot: tx.slot, sellerWallet: payment.plan.sellerWallet,
-      sellerIncrease: payment.plan.total, payerDecreases: [payment.plan.contributions[0].units, payment.plan.contributions[1].units],
-      feeLamports: String(meta.fee), observedAt: new Date().toISOString(),
+      confirmationStatus: 'finalized', slot: evidence.slot, sellerWallet: payment.plan.sellerWallet,
+      sellerIncrease: String(evidence.sellerIncrease),
+      payerDecreases: [String(evidence.payerDecreases[0]), String(evidence.payerDecreases[1])],
+      feeLamports: String(evidence.feeLamports), observedAt: new Date().toISOString(),
     } };
   }
 }
