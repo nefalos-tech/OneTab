@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
-import { ACTIONS, REQUEST_PROBLEMS, type ActionKind, type ProblemWithWords } from "./catalog";
+import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
 import { termsOf, type Action } from "./checkout-view";
 import type { ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
@@ -409,6 +409,17 @@ describe("decline", () => {
   it("with no answer, says trying again is safe", async () => {
     const { fetch } = server(noAnswer);
     expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope())).toEqual(said("unavailable"));
+  });
+
+  it("a decline that lands when the room can't be read says it went through, and offers nothing more", async () => {
+    const { fetch, calls } = server(() => json(200, { data: DECLINED.attempt }), noAnswer);
+    const { track, shown } = shownBy();
+    expect(await liveActions(checkoutApi(fetch)).run(DECLINE, scope(track))).toEqual({ kind: "noted", text: WORDS.declined });
+    expect(requests(calls)).toEqual([
+      ["POST", `/api/attempts/${ATTEMPT}/decline`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
+    expect(shown).toEqual([]);
   });
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, use, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
-import type { Session } from "@/client/checkout-view";
+import type { AttemptId, Session } from "@/client/checkout-view";
 import { deriveWalletView, type WalletView } from "@/client/wallet-view";
 import type { PaymentSigner } from "@/lib/wallet/environment";
 import { liveEnvironment } from "@/lib/wallet/live";
@@ -14,7 +14,8 @@ export type WalletSessionApi = {
   readonly view: WalletView;
   readonly session: Session | null;
   readonly signer: PaymentSigner;
-  readonly approving: boolean;
+  /** The attempt whose payment prompt this page is waiting on, or null. */
+  readonly approving: AttemptId | null;
   connect(): void;
   cancel(): void;
   disconnect(): void;
@@ -63,7 +64,7 @@ export function useWalletSession(): WalletSessionApi {
   const approving = useSyncExternalStore(store.subscribe, store.approving, store.approving);
   return useMemo(
     () => ({
-      view: deriveWalletView(state, approving),
+      view: deriveWalletView(state, approving !== null),
       session: sessionOf(state),
       signer: { sign: (payment) => store.signPayment(state.gen, payment) },
       approving,

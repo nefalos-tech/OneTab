@@ -13,8 +13,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ACTIONS, WORDS } from "@/client/catalog";
-import { noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
+import { ACTIONS, WORDS, type ActionKind } from "@/client/catalog";
+import { busyShown, noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
@@ -45,7 +45,7 @@ export function ActionGroup({
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
-  const shownBusy = busy ?? (approving && [actions.primary, ...actions.secondary].some((a) => a?.kind === "approve") ? "approve" : null);
+  const shownBusy = busyShown(busy, approving, actions);
 
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
@@ -65,6 +65,10 @@ export function ActionGroup({
         });
         return;
       case "done":
+        setNotice(null);
+        break;
+      case "noted":
+        setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action });
         break;
       case "signed_out":
         if (sentAs) expired(sentAs);
@@ -74,7 +78,7 @@ export function ActionGroup({
           text: outcome.text,
           followUp: outcome.followUp ?? offeredBy?.followUp ?? null,
           wallet: sentAs?.wallet ?? null,
-          raisedBy: offeredBy?.raisedBy ?? action.kind,
+          raisedBy: offeredBy?.raisedBy ?? action,
         });
         break;
     }
@@ -83,7 +87,7 @@ export function ActionGroup({
 
   const run = async (action: Action) => {
     if (inFlight.current) return;
-    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action.kind });
+    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action });
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`, actions.sample.followUp);
@@ -179,7 +183,7 @@ function ActionControl({
 }: {
   readonly action: Action;
   readonly variant: keyof typeof BUTTON;
-  readonly busy: LiveKind | null;
+  readonly busy: ActionKind | null;
   readonly onRun: (action: Action) => void;
 }): ReactNode {
   const meta = ACTIONS[action.kind];

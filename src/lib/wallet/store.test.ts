@@ -285,7 +285,7 @@ describe("the payment prompt", () => {
     });
     const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
     store.start();
-    const heard: boolean[] = [];
+    const heard: (string | null)[] = [];
     store.subscribe(() => heard.push(store.approving()));
     return { store, world, prompts, heard, gen: store.getSnapshot().gen };
   }
@@ -315,11 +315,11 @@ describe("the payment prompt", () => {
       const pay = await payment();
       const pending = w.store.signPayment(w.gen, pay);
       expect(w.prompts.map((p) => p.payment)).toEqual([pay]);
-      expect(w.store.approving()).toBe(true);
+      expect(w.store.approving(), "the page waits on the prompt for this attempt").toBe(pay.attemptId);
       w.prompts[0]!.answer(walletAnswer);
       expect(outcomeOf(await pending)).toBe(OUTCOME[walletAnswer]);
-      expect(w.store.approving()).toBe(false);
-      expect(w.heard).toEqual([true, false]);
+      expect(w.store.approving()).toBeNull();
+      expect(w.heard).toEqual([pay.attemptId, null]);
 
       const again = w.store.signPayment(w.gen, pay);
       if (walletAnswer === "approves") {
@@ -336,7 +336,7 @@ describe("the payment prompt", () => {
         move(w, how);
         expect(await w.store.signPayment(w.gen, await payment())).toEqual({ ok: false, failure: "stale" });
         expect(w.prompts).toHaveLength(0);
-        expect(w.heard).not.toContain(true);
+        expect(w.heard.filter((attempt) => attempt !== null), "the page never waited on a prompt").toEqual([]);
       });
 
       it("during the prompt, the wait ends at once and the answer is dropped", async () => {
@@ -345,7 +345,7 @@ describe("the payment prompt", () => {
         const pending = w.store.signPayment(w.gen, pay);
         move(w, how);
         expect(await pending).toEqual({ ok: false, failure: "stale" });
-        expect(w.store.approving()).toBe(false);
+        expect(w.store.approving()).toBeNull();
         w.prompts[0]!.answer(walletAnswer);
         await settled();
 
@@ -388,8 +388,8 @@ describe("the payment prompt", () => {
     const pending = w.store.signPayment(w.gen, pay);
     w.store.cancelPayment();
     expect(await pending).toEqual({ ok: false, failure: "rejected" });
-    expect(w.store.approving()).toBe(false);
-    expect(w.heard).toEqual([true, false]);
+    expect(w.store.approving()).toBeNull();
+    expect(w.heard).toEqual([pay.attemptId, null]);
     expect(await w.store.signPayment(w.gen, pay)).toEqual({ ok: false, failure: "busy" });
 
     w.prompts[0]!.answer("approves");
@@ -416,7 +416,7 @@ describe("the payment prompt", () => {
       const store = createSessionStore(world.environment, initialState({ account: PAYER, session: SESSION }));
       const gen = store.getSnapshot().gen;
       expect(await store.signPayment(gen, await payment())).toEqual({ ok: false, failure: "failed" });
-      expect(store.approving()).toBe(false);
+      expect(store.approving()).toBeNull();
       expect(await store.signPayment(gen, await payment()), "the prompt was freed").toEqual({ ok: false, failure: "failed" });
     }
   });

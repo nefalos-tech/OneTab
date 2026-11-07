@@ -1,6 +1,6 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
-import { ACTIONS, REQUEST_PROBLEMS, type ActionKind, type ProblemWithWords } from "./catalog";
+import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords } from "./catalog";
 import { checkoutLinks, type Action, type ActionOf, type ApprovalTerms } from "./checkout-view";
 import type { AttemptId, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
@@ -16,6 +16,7 @@ export function isLiveAction(action: Action): action is LiveAction {
 
 export type Outcome =
   | { readonly kind: "done" }
+  | { readonly kind: "noted"; readonly text: string }
   | { readonly kind: "open"; readonly href: string }
   | { readonly kind: "signed_out" }
   | { readonly kind: "notice"; readonly text: string; readonly followUp: Action | null };
@@ -55,6 +56,7 @@ type Context = Scope & { readonly api: CheckoutApi; readonly check: PaymentCheck
 type Run<K extends LiveKind> = (action: ActionOf<K>, context: Context) => Promise<Outcome>;
 
 const DONE: Outcome = { kind: "done" };
+const DECLINED_UNSEEN: Outcome = { kind: "noted", text: WORDS.declined };
 const SIGNED_OUT: Outcome = { kind: "signed_out" };
 
 const RUN: { readonly [K in LiveKind]: Run<K> } = {
@@ -67,7 +69,7 @@ const RUN: { readonly [K in LiveKind]: Run<K> } = {
   mark_not_ready: ({ checkoutId }, c) => roomWrite(c, checkoutId, () => c.api.setReady(checkoutId, false)),
   start_payment: ({ checkoutId }, c) => attemptWrite(c, checkoutId, () => c.api.startAttempt(checkoutId)),
   approve: ({ terms }, c) => approve(terms, c),
-  decline: ({ checkoutId, attemptId }, c) => attemptWrite(c, checkoutId, () => c.api.decline(attemptId)),
+  decline: ({ checkoutId, attemptId }, c) => attemptWrite(c, checkoutId, () => c.api.decline(attemptId), DECLINED_UNSEEN),
 };
 
 async function approve(terms: ApprovalTerms, c: Context): Promise<Outcome> {
@@ -88,14 +90,20 @@ async function roomWrite(c: Context, id: CheckoutId, write: () => Promise<Result
   return answer.ok ? DONE : settle(c, id, answer.failure);
 }
 
-async function attemptWrite(c: Context, id: CheckoutId, write: () => Promise<Result<unknown, RequestProblem>>): Promise<Outcome> {
+async function attemptWrite(
+  c: Context,
+  id: CheckoutId,
+  write: () => Promise<Result<unknown, RequestProblem>>,
+  landedUnseen: Outcome = DONE,
+): Promise<Outcome> {
   const answer = await c.track<RequestProblem | "unseen">("write", async () => {
     const wrote = await write();
     if (!wrote.ok) return wrote;
     const room = await c.api.readRoom(id);
     return room.ok ? room : { ok: false, failure: "unseen" };
   });
-  if (answer.ok || answer.failure === "unseen") return DONE;
+  if (answer.ok) return DONE;
+  if (answer.failure === "unseen") return landedUnseen;
   return settle(c, id, answer.failure);
 }
 

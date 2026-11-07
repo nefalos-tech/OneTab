@@ -227,6 +227,7 @@ export const WORDS = {
   sign_request_announcement: "Sample wallet: OneTab asks you to sign the sign-in message.",
   approve: "Approve",
   reject: "Reject",
+  declined: "You declined this payment.",
   end_sign_in: "End sign-in",
 } as const;
 

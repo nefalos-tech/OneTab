@@ -422,6 +422,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `sign_request_announcement` | Sample wallet: OneTab asks you to sign the sign-in message. |
 | `approve` | Approve |
 | `reject` | Reject |
+| `declined` | You declined this payment. |
 | `end_sign_in` | End sign-in |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
@@ -519,7 +520,7 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
-| 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, the payment prompt's status line with **Cancel**, notices for a payment that doesn't match, can't start or can't be checked yet, new status lines for getting ready and approving, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
+| 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, which lasts only while that attempt is on screen, a short note when a decline lands but the room can't be read, the payment prompt's status line with **Cancel**, **Approving…** only on the checkout the prompt is for, notices for a payment that doesn't match, can't start or can't be checked yet, new status lines for getting ready and approving, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
 | 2026-11-07 | Add the busy labels **Creating…** and **Joining…**, the request problem notices, the seller's status line, Connect wallet at the create review, outage words for creation unavailable, a title for the error page, and focus moves when an answer removes the focused control | F3 creates checkouts and joins rooms against the real routes. Each request outcome needs words and a next step, and creating needs a signed-in organizer | [F3](cards/F3.md), [#9](https://github.com/nefalos-tech/OneTab/issues/9) |
 | 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
 | 2026-11-07 | First version: palette, type, layout, components, states, copy and accessibility rules, with generated token, contrast, state and word tables | F2 to F6 need one design language before they build on the screens | [F1](cards/F1.md), [#7](https://github.com/nefalos-tech/OneTab/issues/7) |

@@ -6,6 +6,7 @@ import {
   deriveResultView,
   deriveReviewActions,
   deriveRoomView,
+  busyShown,
   noticeApplies,
   ownerOf,
   termsOf,
@@ -290,11 +291,11 @@ describe("a notice applies while its wallet is signed in and its action is offer
     sample: null,
   });
   const join = offering({ kind: "join", checkoutId: FIXTURES["open-spots"].snapshot.checkout.id });
-  const notice: Notice = { text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: "join" };
+  const notice: Notice = { text: "Wait a few seconds, then try again.", followUp: null, wallet: SAMPLE_WALLETS.bea, raisedBy: join.primary! };
 
   it("applies to the wallet that raised it while the action is the primary or a secondary one", () => {
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: join })).toBe(true);
-    expect(noticeApplies({ ...notice, raisedBy: "edit_details" }, { wallet: SAMPLE_WALLETS.bea, actions: offering(null, [{ kind: "edit_details" }]) })).toBe(
+    expect(noticeApplies({ ...notice, raisedBy: { kind: "edit_details" } }, { wallet: SAMPLE_WALLETS.bea, actions: offering(null, [{ kind: "edit_details" }]) })).toBe(
       true,
     );
   });
@@ -309,6 +310,48 @@ describe("a notice applies while its wallet is signed in and its action is offer
   it("ends when its action is no longer offered", () => {
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering({ kind: "connect_wallet" }) })).toBe(false);
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering(null) })).toBe(false);
+  });
+
+  describe("about an attempt", () => {
+    const bea = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
+    const first = FIXTURES.signing.snapshot;
+    const next = { ...first, attempt: { ...first.attempt!, id: FIXTURES["declined-on-hold"].snapshot.attempt!.id } };
+    const approve = (room: typeof first) => offering({ kind: "approve", terms: termsOf(room, bea)! });
+    const rejected: Notice = {
+      text: REQUEST_PROBLEMS.rejected,
+      followUp: { kind: "decline", checkoutId: first.checkout.id, attemptId: first.attempt!.id },
+      wallet: bea.wallet,
+      raisedBy: approve(first).primary!,
+    };
+
+    it("lasts while Approve is offered for the attempt the payer rejected", () => {
+      expect(noticeApplies(rejected, { wallet: bea.wallet, actions: approve(first) })).toBe(true);
+    });
+
+    it("ends, with its Decline, once the screen shows another attempt", () => {
+      expect(next.attempt.id).not.toBe(first.attempt!.id);
+      expect(noticeApplies(rejected, { wallet: bea.wallet, actions: approve(next) })).toBe(false);
+    });
+  });
+});
+
+describe("Approve shows as busy", () => {
+  const bea = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
+  const room = FIXTURES.signing.snapshot;
+  const actions: ActionsView = { primary: { kind: "approve", terms: termsOf(room, bea)! }, secondary: [], sample: null };
+  const other = FIXTURES["declined-on-hold"].snapshot.attempt!.id;
+
+  it("while this page waits on the wallet's prompt for the attempt Approve is for", () => {
+    expect(busyShown(null, room.attempt!.id, actions)).toBe("approve");
+  });
+
+  it("not while the prompt is for another checkout's attempt, nor with no prompt open", () => {
+    expect(busyShown(null, other, actions)).toBeNull();
+    expect(busyShown(null, null, actions)).toBeNull();
+  });
+
+  it("the action that is running is busy whatever the prompt", () => {
+    expect(busyShown("mark_ready", other, actions)).toBe("mark_ready");
   });
 });
 

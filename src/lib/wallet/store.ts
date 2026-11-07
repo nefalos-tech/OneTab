@@ -1,3 +1,4 @@
+import type { AttemptId } from "@/client/contracts";
 import type { CheckedPayment } from "@/client/payment-check";
 import type {
   BridgeResult,
@@ -17,7 +18,8 @@ export type SessionStore = {
   send(intent: Intent): void;
   start(): () => void;
   signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
-  approving(): boolean;
+  /** The attempt whose payment prompt this page is waiting on, or null. */
+  approving(): AttemptId | null;
   cancelPayment(): void;
 };
 
@@ -37,7 +39,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
   let signInCallsInOrder: Promise<unknown> = Promise.resolve();
   let expiryTimer: ReturnType<typeof setTimeout> | undefined;
   let paymentPromptOpen = false;
-  let waiting: { readonly gen: Gen; readonly end: (answer: Ended) => void } | null = null;
+  let waiting: { readonly gen: Gen; readonly attemptId: AttemptId; readonly end: (answer: Ended) => void } | null = null;
   let approved: { readonly gen: Gen; readonly approval: PaymentApproval } | null = null;
 
   function notify(): void {
@@ -72,6 +74,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     const ended = new Promise<Ended>((resolve) => {
       waiting = {
         gen,
+        attemptId: payment.attemptId,
         end: (answer) => {
           waiting = null;
           resolve(answer);
@@ -158,7 +161,7 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
       return env.bridge.onAccountChange((account) => dispatch({ type: "account_changed", account }));
     },
     signPayment,
-    approving: () => waiting !== null,
+    approving: () => waiting?.attemptId ?? null,
     cancelPayment() {
       if (waiting === null) return;
       waiting.end({ ok: false, failure: "rejected" });

@@ -13,7 +13,7 @@ import type {
   TokenUnits,
 } from "./contracts";
 
-export type { ClientRequestId, Session } from "./contracts";
+export type { AttemptId, ClientRequestId, Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
@@ -181,13 +181,29 @@ export type Notice = {
   readonly text: string;
   readonly followUp: Action | null;
   readonly wallet: Address | null;
-  readonly raisedBy: ActionKind;
+  readonly raisedBy: Action;
 };
 
+/** A notice lasts while its wallet is signed in and the action that raised it, for the same attempt, is offered. */
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
-  const offered = [now.actions.primary, ...now.actions.secondary];
-  return notice.wallet === now.wallet && offered.some((action) => action?.kind === notice.raisedBy);
+  const { kind } = notice.raisedBy;
+  const attempt = attemptOf(notice.raisedBy);
+  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === attempt);
 }
+
+/** Approve shows as busy while this page waits on the wallet's prompt for the attempt that Approve is for. */
+export function busyShown(running: ActionKind | null, prompting: AttemptId | null, actions: ActionsView): ActionKind | null {
+  if (running !== null) return running;
+  return offered(actions).some((a) => a.kind === "approve" && a.terms.attemptId === prompting) ? "approve" : null;
+}
+
+function attemptOf(action: Action): AttemptId | null {
+  if (action.kind === "approve") return action.terms.attemptId;
+  return action.kind === "decline" ? action.attemptId : null;
+}
+
+const offered = (actions: ActionsView): readonly Action[] =>
+  [actions.primary, ...actions.secondary].filter((a): a is Action => a !== null);
 
 export type Recovery =
   | { readonly kind: "on_hold" }
