@@ -36,6 +36,10 @@ const NO_WALLET_STANDARD = {
   group: WALLET_STANDARD,
   message: "Wallet packages stay in src/lib/wallet/, behind the WalletBridge seam in live.ts.",
 };
+const NO_API_CLIENT = {
+  group: ["@/client/api", "**/client/api"],
+  message: "Only src/client and the live sign-in client send requests. Components start them through @/client/live-actions, pages load through @/client/checkout-source.",
+};
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],
   message: "Components render views from @/client/checkout-view. Loading, wire types and samples stay in src/client.",
@@ -56,22 +60,30 @@ export default defineConfig([
   globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**"]),
   {
     files: ["src/**/*.{ts,tsx}"],
+    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT),
+  },
+  {
+    files: ["src/client/**/*.{ts,tsx}"],
     rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD),
   },
   {
     files: ["src/components/**/*.{ts,tsx}"],
-    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS),
+    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT),
   },
   {
     files: ["src/app/**/*.{ts,tsx}"],
-    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS),
+    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT),
   },
   {
     files: ["src/components/wallet/wallet-scope.tsx"],
-    rules: restrict(NO_WALLET_STANDARD, COMPONENT_INPUTS),
+    rules: restrict(NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT),
   },
   {
     files: ["src/lib/wallet/**/*.{ts,tsx}"],
+    rules: restrict(NO_API_CLIENT),
+  },
+  {
+    files: ["src/lib/wallet/live.ts"],
     rules: restrict(),
   },
   {

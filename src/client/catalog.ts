@@ -1,4 +1,5 @@
 import type { Problem } from "@/lib/wallet/machine";
+import type { RequestProblem } from "./api";
 import type { Network } from "./contracts";
 
 export type Screen = "room" | "result";
@@ -127,15 +128,16 @@ type ActionMeta = {
   readonly label: string;
   readonly needs: "nothing" | "backend" | "wallet" | "chain";
   readonly element: "button" | "link" | "external_link";
+  readonly busy?: string;
 };
 
 export const ACTIONS = {
   review_checkout: { label: "Review checkout", needs: "nothing", element: "button" },
   edit_details: { label: "Edit details", needs: "nothing", element: "button" },
-  create_checkout: { label: "Create checkout", needs: "backend", element: "button" },
+  create_checkout: { label: "Create checkout", needs: "backend", element: "button", busy: "Creating…" },
   copy_link: { label: "Copy link", needs: "nothing", element: "button" },
   connect_wallet: { label: "Connect wallet", needs: "wallet", element: "button" },
-  join: { label: "Join checkout", needs: "backend", element: "button" },
+  join: { label: "Join checkout", needs: "backend", element: "button", busy: "Joining…" },
   mark_ready: { label: "I'm ready", needs: "backend", element: "button" },
   mark_not_ready: { label: "Not ready yet", needs: "backend", element: "button" },
   start_payment: { label: "Start payment", needs: "backend", element: "button" },
@@ -150,6 +152,13 @@ export const ACTIONS = {
   reload_page: { label: "Try again", needs: "nothing", element: "button" },
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
+
+export const REQUEST_PROBLEMS = {
+  room_full: "Someone took the last spot first. This checkout is full.",
+  rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
+  refused: "OneTab couldn't accept this, so nothing changed. Reload the page and try again.",
+  unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",
+} as const satisfies Record<Exclude<RequestProblem, "signed_out">, string>;
 
 export const NETWORK_LABELS = { devnet: "Test USDC on Solana Devnet" } as const satisfies Record<Network, string>;
 
@@ -170,6 +179,7 @@ export const WORDS = {
   your_share: "Your share",
   payers: "Payers",
   seller: "Seller",
+  seller_no_spot: "You're the seller, so you don't take a spot.",
   spot: "Spot",
   total: "Total",
   link_copied: "Link copied.",
@@ -180,6 +190,7 @@ export const WORDS = {
   receipt: "Receipt",
   transaction_reference: "Transaction reference",
   finalized_at: "Final on",
+  creation_unavailable: "OneTab can't reach its payment service right now, so it can't create a checkout. Try again in a moment.",
   try_sample: "Try it with sample data",
   home: "Go to the start",
   steps: "Checkout steps",

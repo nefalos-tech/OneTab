@@ -1,9 +1,10 @@
+import { send, type FetchLike, type Reply } from "@/client/api";
 import {
+  isRecord,
   looksLikeAddress,
   type AuthChallenge,
   type AuthVerifyRequest,
   type ErrorCode,
-  type ErrorEnvelope,
   type Session,
 } from "@/client/contracts";
 import {
@@ -29,9 +30,8 @@ const unavailableBridge: WalletBridge = {
   onAccountChange: () => () => {},
 };
 
-export type FetchLike = (path: string, init: RequestInit) => Promise<Response>;
+export type { FetchLike };
 
-const AUTH_TIMEOUT_MS = 10_000;
 const SESSION_PATH = "/api/auth/session";
 const CHALLENGE_PATH = "/api/auth/challenge";
 const VERIFY_PATH = "/api/auth/verify";
@@ -44,59 +44,32 @@ const FAILURE_BY_CODE: Partial<Record<ErrorCode, ServiceFailure>> = {
 
 const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
 
-type Reply = { readonly status: number; readonly body: unknown };
-
 export function liveSignInService(fetchImpl: FetchLike): SignInService {
-  const send = async (method: "GET" | "POST" | "DELETE", path: string, body?: object): Promise<Reply | null> => {
-    try {
-      const response = await fetchImpl(path, {
-        method,
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: body ? { "content-type": "application/json" } : undefined,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: AbortSignal.timeout(AUTH_TIMEOUT_MS),
-      });
-      return { status: response.status, body: await response.json().catch(() => undefined) };
-    } catch {
-      return null;
-    }
-  };
-
   return {
     async readSession() {
-      const reply = await send("GET", SESSION_PATH);
-      if (reply?.status === 401) return { ok: true, value: null };
-      if (reply?.status !== 200) return failureOf(reply);
-      const data = dataOf(reply.body);
-      return data === null ? { ok: true, value: null } : parsed(parseSession(data));
+      const reply = await send(fetchImpl, "GET", SESSION_PATH);
+      if (reply.kind === "error" && reply.status === 401) return { ok: true, value: null };
+      if (reply.kind !== "data") return failureOf(reply);
+      return reply.data === null ? { ok: true, value: null } : parsed(parseSession(reply.data));
     },
     async requestChallenge(wallet) {
-      const reply = await send("POST", CHALLENGE_PATH, { wallet });
-      return reply?.status === 200 ? parsed(parseChallenge(dataOf(reply.body))) : failureOf(reply);
+      const reply = await send(fetchImpl, "POST", CHALLENGE_PATH, { wallet });
+      return reply.kind === "data" ? parsed(parseChallenge(reply.data)) : failureOf(reply);
     },
     async verify({ challengeId, signature }) {
       const request: AuthVerifyRequest = { challengeId, signatureBase64: signature };
-      const reply = await send("POST", VERIFY_PATH, request);
-      return reply?.status === 200 ? parsed(parseSession(dataOf(reply.body))) : failureOf(reply);
+      const reply = await send(fetchImpl, "POST", VERIFY_PATH, request);
+      return reply.kind === "data" ? parsed(parseSession(reply.data)) : failureOf(reply);
     },
     async endSession() {
-      await send("DELETE", SESSION_PATH);
+      await send(fetchImpl, "DELETE", SESSION_PATH);
     },
   };
 }
 
-function failureOf(reply: Reply | null): { readonly ok: false; readonly failure: ServiceFailure } {
-  const failure = isErrorEnvelope(reply?.body) ? FAILURE_BY_CODE[reply.body.error.code] : undefined;
+function failureOf(reply: Reply): { readonly ok: false; readonly failure: ServiceFailure } {
+  const failure = reply.kind === "error" && reply.code !== null ? FAILURE_BY_CODE[reply.code] : undefined;
   return { ok: false, failure: failure ?? "unavailable" };
-}
-
-function isErrorEnvelope(body: unknown): body is ErrorEnvelope {
-  return isRecord(body) && isRecord(body.error) && typeof body.error.code === "string";
-}
-
-function dataOf(body: unknown): unknown {
-  return isRecord(body) && "data" in body ? body.data : undefined;
 }
 
 function parsed<T>(value: T | null): ServiceResult<T> {
@@ -135,8 +108,4 @@ function fromBase64(text: string): Uint8Array | null {
   } catch {
     return null;
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

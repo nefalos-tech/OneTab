@@ -118,10 +118,14 @@ function renderStates({ SITUATIONS, SPOT_STATUSES }) {
   return `${situations}\n\n${spots}`;
 }
 
-function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS }) {
+function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS, REQUEST_PROBLEMS }) {
   const actions = markdownTable(
-    ["Action", "Label", "Needs", "Element"],
-    Object.entries(ACTIONS).map(([id, a]) => [code(id), a.label, a.needs, a.element]),
+    ["Action", "Label", "Needs", "Element", "Busy label"],
+    Object.entries(ACTIONS).map(([id, a]) => [code(id), a.label, a.needs, a.element, a.busy ?? ""]),
+  );
+  const problems = markdownTable(
+    ["Request problem", "Notice"],
+    Object.entries(REQUEST_PROBLEMS).map(([id, text]) => [code(id), text]),
   );
   const words = markdownTable(
     ["Word", "Text"],
@@ -131,7 +135,7 @@ function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS }) {
       [code("flow steps"), FLOW_STEPS.map((s) => s.label).join(", ")],
     ],
   );
-  return `${actions}\n\n${words}`;
+  return `${actions}\n\n${problems}\n\n${words}`;
 }
 
 function renderWallet({ ACTIONS, WALLET_FIXES, WALLET_PROBLEMS, WALLET_WAITING, WORDS }) {

@@ -1,4 +1,11 @@
-import { looksLikeAddress, type Address, type PayerCount, type PublicConfig, type TokenUnits } from "./contracts";
+import {
+  looksLikeAddress,
+  type Address,
+  type ClientRequestId,
+  type PayerCount,
+  type PublicConfig,
+  type TokenUnits,
+} from "./contracts";
 import { WORDS } from "./catalog";
 import type { CreateRequest, TabView } from "./checkout-view";
 import { formatMoney, parseAmountInput, splitEqually, toTokenUnits, type AmountProblem, type Money } from "./units";
@@ -57,6 +64,25 @@ export function checkDraft(
       tab: draftTab(title, amount.units, sellerWallet, payerCount, ctx),
     },
   };
+}
+
+export function requestIdPerDetails(mint: () => ClientRequestId = randomUuid): (request: CreateRequest) => ClientRequestId {
+  const ids = new Map<string, ClientRequestId>();
+  return (request) => {
+    const key = JSON.stringify([request.title, request.sellerWallet, request.totalUnits, request.payerCount]);
+    const id = ids.get(key) ?? mint();
+    ids.set(key, id);
+    return id;
+  };
+}
+
+/** Not crypto.randomUUID, which exists only on secure origins, and a plain-http LAN address isn't one. */
+function randomUuid(): ClientRequestId {
+  const hex = Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte, i) => {
+    const marked = i === 6 ? (byte & 0x0f) | 0x40 : i === 8 ? (byte & 0x3f) | 0x80 : byte;
+    return marked.toString(16).padStart(2, "0");
+  }).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}` as ClientRequestId;
 }
 
 export function previewTab(
