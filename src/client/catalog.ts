@@ -184,6 +184,7 @@ export const WORDS = {
   your_share: "Your share",
   payers: "Payers",
   seller: "Seller",
+  seller_no_spot: "You're the seller, so you don't take a spot.",
   spot: "Spot",
   total: "Total",
   link_copied: "Link copied.",

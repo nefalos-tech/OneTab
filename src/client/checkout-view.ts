@@ -16,6 +16,7 @@ import {
   FLOW_STEPS,
   NETWORK_LABELS,
   SITUATIONS,
+  WORDS,
   type ActionKind,
   type FlowStepId,
   type OwnedBy,
@@ -68,6 +69,7 @@ export function checkoutLinks(segment: CheckoutId | `sample-${string}`, query = 
 export type ViewerRole =
   | { readonly kind: "organizer"; readonly slot: number }
   | { readonly kind: "payer"; readonly slot: number }
+  | { readonly kind: "seller" }
   | { readonly kind: "guest" }
   | { readonly kind: "spectator" }
   | { readonly kind: "signed_out" };
@@ -326,13 +328,13 @@ function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation
 
 function roleOf(snapshot: RoomSnapshot, session: Session | null, situation: Situation): ViewerRole {
   if (session === null) return { kind: "signed_out" };
+  if (session.wallet === snapshot.checkout.sellerWallet) return { kind: "seller" };
   const spot = snapshot.participants.find((p) => p.wallet === session.wallet);
   if (spot) {
     return session.wallet === snapshot.checkout.organizerWallet
       ? { kind: "organizer", slot: spot.slot }
       : { kind: "payer", slot: spot.slot };
   }
-  if (session.wallet === snapshot.checkout.sellerWallet) return { kind: "spectator" };
   return situation === "open_spots" ? { kind: "guest" } : { kind: "spectator" };
 }
 
@@ -575,11 +577,13 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       ? "There's an open spot. Join to pay your share."
       : c.role.kind === "signed_out"
         ? "Sign in with your wallet to take an open spot."
-        : c.role.kind === "organizer"
-          ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
-          : c.role.kind === "payer"
-            ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
-            : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
+        : c.role.kind === "seller"
+          ? WORDS.seller_no_spot
+          : c.role.kind === "organizer"
+            ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            : c.role.kind === "payer"
+              ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
+              : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
   full_not_ready: (c) =>
     isMember(c.role) && c.me !== "ready"
       ? "Everyone has joined. Check your share, then tell the group you're ready."

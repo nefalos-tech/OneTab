@@ -194,6 +194,27 @@ describe("a live room", () => {
   });
 });
 
+describe("the seller", () => {
+  const asSeller = (id: string): CheckoutState => {
+    const { state } = caseById(id);
+    return { ...state, session: { wallet: state.snapshot.checkout.sellerWallet, expiresAt: "2099-01-01T00:00:00.000Z" } };
+  };
+
+  it("is told they don't take a spot, and gets no action, while spots are open", () => {
+    const room = deriveRoomView(asSeller("open-spots as outsider"));
+    expect(room.status.line).toBe("You're the seller, so you don't take a spot.");
+    expect(room.actions.primary).toBeNull();
+    expect(room.actions.secondary).toEqual([]);
+    expect(room.you).toBeNull();
+  });
+
+  it("reads like anyone else with the link once the room is full", () => {
+    const room = deriveRoomView(asSeller("full-not-ready as outsider"));
+    expect(room.status.line).toBe("This checkout is full. Waiting for 1 payer to get ready.");
+    expect(room.actions.primary).toBeNull();
+  });
+});
+
 describe("the create screen", () => {
   it("is unavailable without payment configuration and offers samples only while they are on", () => {
     const off = deriveCreateView({ config: null, session: null, source: { kind: "live", samplesOn: false } });
