@@ -152,7 +152,6 @@ export type ActionsView = {
   readonly sample: { readonly followUp: Action | null } | null;
 };
 
-/** What an action group says under its actions, for the wallet that ran the action that raised it. */
 export type Notice = {
   readonly text: string;
   readonly followUp: Action | null;
