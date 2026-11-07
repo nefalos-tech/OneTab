@@ -252,3 +252,32 @@ test('P1 wire adapter keeps two stable ordered slots and rejects supplied-share 
   ]) assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
   assert.equal(planSchema.safeParse({ ...plan, total: '1' }).success, false);
 });
+
+test('P1 adapters snapshot caller-owned envelopes and independent expectations before asynchronous hashing', async () => {
+  const expected = { ...P1_KNOWN_ANSWER, plan: planSchema.parse(P1_KNOWN_ANSWER.plan) };
+  const input = { id: expected.id, plan: planSchema.parse(expected.plan), blockhash: expected.blockhash,
+    lastValidBlockHeight: expected.lastValidBlockHeight };
+  const freezing = freezePayment(input);
+  input.id = '22222222-2222-4222-8222-222222222222';
+  input.blockhash = randomAddress();
+  input.lastValidBlockHeight = '999';
+  input.plan.sellerWallet = randomAddress();
+  assert.deepEqual(await freezing, expected);
+  const trusted = { plan: planSchema.parse(expected.plan), planHash: expected.planHash, messageHash: expected.messageHash };
+  const inspecting = inspectPayment(expected, trusted);
+  trusted.planHash = '0'.repeat(64);
+  trusted.messageHash = '1'.repeat(64);
+  trusted.plan.sellerWallet = randomAddress();
+  assert.deepEqual(await inspecting, expected);
+});
+
+test('P1 safeParse rejects malformed and overflowing canonical units without throwing', () => {
+  const plan = planSchema.parse(P1_KNOWN_ANSWER.plan);
+  for (const value of ['18446744073709551616', '1.0', '1e6', '-1', '01', 'invalid', '', '0', 1, null]) {
+    assert.equal(planSchema.safeParse({ ...plan, total: value }).success, false);
+    for (const slot of [0, 1]) {
+      const contributions = plan.contributions.map((payer, index) => index === slot ? { ...payer, units: value } : payer);
+      assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
+    }
+  }
+});

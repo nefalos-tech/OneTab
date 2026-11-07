@@ -27,6 +27,8 @@ export const planSchema = z.strictObject({
   total: positiveUnits, contributions: z.tuple([contributionSchema, contributionSchema]),
 }).superRefine((plan, ctx) => {
   const [first, second] = plan.contributions;
+  const amounts = [plan.total, first.units, second.units];
+  if (amounts.some(value => !positiveUnits.safeParse(value).success)) return;
   const total = BigInt(plan.total);
   const shares = total >= 2n ? equalShares(total, 2) : null;
   if (!shares || first.slot !== 0 || second.slot !== 1 || plan.feePayer !== first.wallet

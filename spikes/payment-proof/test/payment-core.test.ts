@@ -107,7 +107,11 @@ for (const count of [2, 3] satisfies (2 | 3)[]) {
       { ...message, header: { ...message.header, numSignerAccounts: count - 1 } },
       { ...message, lifetimeToken: key(51) },
       { ...message, instructions: [...message.instructions, limit] },
+      { ...message, instructions: [...message.instructions, price] },
       { ...message, instructions: message.instructions.slice(1) },
+      { ...message, instructions: [limit, ...message.instructions.slice(2)] },
+      { ...message, instructions: message.instructions.slice(2) },
+      { ...message, instructions: [limit, price, ...message.instructions.slice(2).reverse()] },
       { ...message, instructions: [price, limit, ...message.instructions.slice(2)] },
       { ...message, instructions: [...message.instructions].reverse() },
     ];
@@ -156,7 +160,8 @@ for (const count of [2, 3] satisfies (2 | 3)[]) {
       Uint8Array.of(count + 1, ...new Uint8Array((count + 1) * 64), ...candidate.messageBytes),
     ]) await assert.rejects(inspectPaymentMessage({ ...candidate, transactionBytes }, expected));
     const messageBytes = Uint8Array.of(...candidate.messageBytes, 0);
-    await assert.rejects(inspectPaymentMessage({ ...candidate, messageBytes, messageHash: await sha256(messageBytes) }, expected));
+    const trailing = { messageBytes, transactionBytes: Uint8Array.of(count, ...new Uint8Array(count * 64), ...messageBytes), messageHash: await sha256(messageBytes) };
+    await assert.rejects(inspectPaymentMessage(trailing, { ...expected, messageHash: trailing.messageHash }));
     await assert.rejects(inspectPaymentMessage(candidate, { ...expected, blockhash: blockhash(key(53)) }));
     await assert.rejects(inspectPaymentMessage(candidate, { ...expected, messageHash: '0'.repeat(64) }));
     await assert.rejects(inspectPaymentMessage({ ...candidate, messageHash: '0'.repeat(64) }, expected));
