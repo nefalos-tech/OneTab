@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { blockhash, getAddressDecoder, getTransactionDecoder, getTransactionEncoder, signatureBytes } from '@solana/kit';
 import { build } from 'vite';
-import { buildPaymentMessage, createPaymentPlan } from '../src/payment-core.ts';
-import { assembleSignedPayment } from '../src/signature-core.ts';
+import { buildPaymentMessage, createPaymentPlan } from '../../../src/lib/payments/payment-core.ts';
+import { assembleSignedPayment } from '../../../src/lib/payments/signature-core.ts';
 
 const syntheticAddress = value => getAddressDecoder().decode(new Uint8Array(32).fill(value));
 const wireMessage = message => ({ ...message,
@@ -20,8 +20,8 @@ export async function runSignatureCoreBrowserChecks({ chromium, browserExecutabl
     build: {
       write: false, target: 'es2023', minify: false,
       lib: { entry: {
-        'signature-core': fileURLToPath(new URL('../src/signature-core.ts', import.meta.url)),
-        'payment-core': fileURLToPath(new URL('../src/payment-core.ts', import.meta.url)),
+        'signature-core': fileURLToPath(new URL('../../../src/lib/payments/signature-core.ts', import.meta.url)),
+        'payment-core': fileURLToPath(new URL('../../../src/lib/payments/payment-core.ts', import.meta.url)),
       }, formats: ['es'], fileName: (_format, name) => `${name}.js` },
     },
   });

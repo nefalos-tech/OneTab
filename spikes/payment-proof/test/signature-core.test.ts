@@ -5,11 +5,11 @@ import {
   getCompiledTransactionMessageEncoder, getTransactionDecoder, getTransactionEncoder, signatureBytes,
   type Address, type ReadonlyUint8Array,
 } from '@solana/kit';
-import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessage } from '../src/payment-core.js';
+import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessage } from '../../../src/lib/payments/payment-core.js';
 import {
   assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
   type PayerSignature, type SignatureTarget,
-} from '../src/signature-core.js';
+} from '../../../src/lib/payments/signature-core.js';
 
 const syntheticAddress = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
 const lifetime = { blockhash: blockhash(syntheticAddress(30)), lastValidBlockHeight: 100n };

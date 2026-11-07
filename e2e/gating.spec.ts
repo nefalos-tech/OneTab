@@ -6,9 +6,9 @@ test("every sample address, /samples and /?sample return 404", async ({ request 
   for (const path of paths) expect((await request.get(path)).status(), path).toBe(404);
 });
 
-test("plain / says creation is unavailable and links no samples", async ({ page }) => {
+test("plain / is the live create form and links no samples", async ({ page }) => {
   expect((await page.goto("/"))?.status()).toBe(200);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Checkouts can't be created right now");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Split a purchase");
   await expect(page.getByRole("link", { name: /sample/i })).toHaveCount(0);
   await expect(page.getByText("Sample data")).toHaveCount(0);
 });

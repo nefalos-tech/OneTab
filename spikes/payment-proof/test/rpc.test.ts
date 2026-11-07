@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { DevnetRpc, RpcRejected } from '../src/rpc.js';
 import { blockhash, getAddressDecoder, getCompiledTransactionMessageDecoder, type ReadonlyUint8Array } from '@solana/kit';
 import { AccountState, getMintEncoder, getTokenEncoder, TOKEN_PROGRAM_ADDRESS, type TokenArgs } from '@solana-program/token';
-import { buildPaymentMessage, createPaymentPlan, type PaymentPlan } from '../src/payment-core.js';
+import { buildPaymentMessage, createPaymentPlan, type PaymentPlan } from '../../../src/lib/payments/payment-core.js';
 import { assembleSubmission, fromBase64, toBase64 } from '../src/payment.js';
 import { syntheticFixture } from './fixtures.js';
 

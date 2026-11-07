@@ -1,6 +1,6 @@
 # P2 local payment builder evidence
 
-This increment supplies one browser-safe payment core for two or three payers inside `spikes/payment-proof/`. It advances [P2](https://github.com/nefalos-tech/OneTab/issues/2). B1 integration and the three-wallet Devnet acceptance remain pending.
+This document records the initial [P2](https://github.com/nefalos-tech/OneTab/issues/2) extraction into `spikes/payment-proof/` and its historical verification. The [application integration evidence](payment-core.md) describes the subsequent move to `src/lib/payments/`, B1 payload validation, and shared server preflight. The evidence below retains its original revisions and limits. A real three-wallet payment remains separate acceptance work.
 
 ## Domain and byte validation
 

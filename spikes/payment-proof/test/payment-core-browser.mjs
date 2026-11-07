@@ -8,7 +8,8 @@ import {
   getTransactionDecoder, getTransactionEncoder, signatureBytes,
 } from '@solana/kit';
 import { build } from 'vite';
-import { buildPaymentMessage, createPaymentPlan } from '../src/payment-core.ts';
+import { buildPaymentMessage, createPaymentPlan } from '../../../src/lib/payments/payment-core.ts';
+import { paymentFixture, payloadForPlan } from '../../../src/lib/payments/test-fixtures.ts';
 
 const syntheticAddress = value => getAddressDecoder().decode(new Uint8Array(32).fill(value));
 const lifetime = { blockhash: blockhash(syntheticAddress(30)), lastValidBlockHeight: 100n };
@@ -44,8 +45,10 @@ export async function runPaymentCoreBrowserChecks({ chromium, browserExecutable 
     define: { 'process.env.NODE_ENV': '"production"' },
     build: {
       write: false, target: 'es2023', minify: false,
-      lib: { entry: fileURLToPath(new URL('../src/payment-core.ts', import.meta.url)),
-        formats: ['es'], fileName: () => 'payment-core.js' },
+      lib: { entry: {
+        'payment-core': fileURLToPath(new URL('../../../src/lib/payments/payment-core.ts', import.meta.url)),
+        'signing-payload': fileURLToPath(new URL('../../../src/lib/payments/signing-payload.ts', import.meta.url)),
+      }, formats: ['es'], fileName: (_format, name) => `${name}.js` },
     },
   });
   const bundles = Array.isArray(bundle) ? bundle : [bundle];
@@ -54,6 +57,7 @@ export async function runPaymentCoreBrowserChecks({ chromium, browserExecutable 
     `/${file.fileName}`, file.type === 'chunk' ? file.code : file.source,
   ]));
   assert.ok(assets.has('/payment-core.js'));
+  assert.ok(assets.has('/signing-payload.js'));
   assets.set('/', '<!doctype html><html><head><link rel="icon" href="data:,"></head><body></body></html>');
   const server = createServer((request, response) => {
     const path = new URL(request.url, 'http://127.0.0.1').pathname;
@@ -166,6 +170,67 @@ export async function runPaymentCoreBrowserChecks({ chromium, browserExecutable 
           }, { ...expected, plan });
         }, { input: wireInput(input), candidate: wireCandidate(malicious),
           expected: { blockhash: lifetime.blockhash, messageHash: malicious.messageHash } }));
+      });
+    }
+
+    for (const count of [2, 3]) {
+      const fixture = await paymentFixture(count);
+      await scenario(`browser validates the B1 ${count}-payer payload against independent room and config`, async () => {
+        const actual = await page.evaluate(async fixture => {
+          const validator = await import('/signing-payload.js');
+          const validated = await validator.validateSigningPayload(fixture);
+          return { transactionBase64: validator.toBase64(validated.message.transactionBytes),
+            messageBase64: validator.toBase64(validated.message.messageBytes), messageHash: validated.message.messageHash,
+            units: validated.plan.contributions.map(payer => String(payer.units)),
+            attemptId: validated.target.attemptId, lastValidBlockHeight: String(validated.target.lastValidBlockHeight) };
+        }, { payload: fixture.payload, room: fixture.room, config: fixture.config });
+        assert.deepEqual(actual, { transactionBase64: fixture.payload.transactionBase64,
+          messageBase64: fixture.payload.messageBase64, messageHash: fixture.payload.messageHash,
+          units: fixture.room.participants.map(payer => payer.shareUnits), attemptId: fixture.payload.attemptId,
+          lastValidBlockHeight: fixture.payload.lastValidBlockHeight });
+      });
+
+      const first = fixture.plan.contributions[0];
+      const second = fixture.plan.contributions[1];
+      const third = fixture.plan.contributions[2];
+      const changedFirst = { ...first, sourceTokenAccount: syntheticAddress(41) };
+      const foreign = createPaymentPlan({ totalUnits: fixture.plan.totalUnits,
+        sellerWallet: fixture.plan.sellerWallet, sellerTokenAccount: fixture.plan.sellerTokenAccount,
+        payers: third ? [changedFirst, second, third] : [changedFirst, second] });
+      const invalid = [
+        ['internally consistent foreign source account', { payload: await payloadForPlan(foreign) }],
+        ['foreign seller', { payload: { ...fixture.payload, payment: { ...fixture.payload.payment, sellerWallet: syntheticAddress(40) } } }],
+        ['stale attempt', { room: { ...fixture.room, attempt: { ...fixture.room.attempt, id: '00000000-0000-4000-8000-000000000003' } } }],
+        ['stale height', { room: { ...fixture.room, attempt: { ...fixture.room.attempt, lastValidBlockHeight: '101' } } }],
+        ['submitting attempt', { room: { ...fixture.room, attempt: { ...fixture.room.attempt, state: 'submitting' } } }],
+        ['unverified mint config', { config: { ...fixture.config, mint: syntheticAddress(40) } }],
+        ['noncanonical transaction base64', { payload: { ...fixture.payload, transactionBase64: fixture.payload.transactionBase64 + '\n' } }],
+        ['oversized transaction encoding', { payload: { ...fixture.payload, transactionBase64: 'A'.repeat(1648) } }],
+        ['reordered slots', { payload: { ...fixture.payload, payment: { ...fixture.payload.payment,
+          contributions: [...fixture.payload.payment.contributions].reverse() } } }],
+      ];
+      for (const [name, change] of invalid) {
+        await scenario(`browser rejects B1 ${count}-payer ${name}`, async () => {
+          await assert.rejects(page.evaluate(async input => {
+            const validator = await import('/signing-payload.js');
+            await validator.validateSigningPayload(input);
+          }, { payload: fixture.payload, room: fixture.room, config: fixture.config, ...change }));
+        });
+      }
+      await scenario(`browser B1 ${count}-payer validation snapshots inputs before asynchronous derivation`, async () => {
+        const actual = await page.evaluate(async input => {
+          const validator = await import('/signing-payload.js');
+          const pending = validator.validateSigningPayload(input);
+          input.payload.payment.contributions.reverse();
+          input.payload.messageHash = '0'.repeat(64);
+          input.room.checkout.totalUnits = '100';
+          input.room.participants.reverse();
+          input.room.attempt = null;
+          input.config.mint = input.room.checkout.sellerWallet;
+          const validated = await pending;
+          return validator.toBase64(validated.message.transactionBytes);
+        }, { payload: fixture.payload, room: fixture.room, config: fixture.config });
+        assert.equal(actual, fixture.payload.transactionBase64);
       });
     }
     assert.deepEqual(externalRequests, [], 'Browser checks must stay on the local asset server');

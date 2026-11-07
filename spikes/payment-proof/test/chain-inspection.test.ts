@@ -6,7 +6,7 @@ import {
 } from '@solana/kit';
 import {
   buildPaymentMessage, createPaymentPlan, inspectPaymentMessage, type PayerSource,
-} from '../src/payment-core.js';
+} from '../../../src/lib/payments/payment-core.js';
 import {
   inspectFinalizedPayment, parseSignatureStatus, type ExpectedSettlement, type SignatureStatus,
 } from '../src/chain-inspection.js';
