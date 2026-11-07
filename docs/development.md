@@ -44,16 +44,20 @@ F1 created the scaffold with create-next-app 16.4.5: Next.js 16.4.5, React 19.3.
 | `npm run lint` | Run ESLint, including the import boundaries between screens, sample data and server code |
 | `npm run typecheck` | Generate the route types, then check TypeScript without emitting files |
 | `npm test` | Run the Vitest unit tests |
-| `npm run test:e2e` | Build the app, serve it twice with sample data on and off, and run the Playwright suite with axe accessibility checks |
+| `npm run test:e2e` | Build the app, start a fake API, serve the app twice with sample data on and off, and run the Playwright suite with axe accessibility checks |
 | `npm run design:check` | Fail when the design system document and the code disagree |
 | `npm run design:write` | Regenerate the generated tables in the design system document |
 | `npm run check` | Run lint, typecheck, design:check and the unit tests, the same fast checks as CI |
 
 `npm run test:e2e` uses Chromium through Playwright. On a new machine, install it once with `npx playwright install chromium`. The suite saves a screenshot of every sample state in `test-results/screens/`.
 
+The server reads live checkouts itself, so `page.route` can't fake them. Instead, `e2e/fake-api.mjs` stands in for Backend's public read routes, and each app server reads it through `ONETAB_API_ORIGIN`. The samples server reads an empty fake on port 3198, which has no configuration and no checkouts. The gated server reads one on port 3199 with live rooms, an outage and a route that isn't deployed. The specs import the fake's rooms and IDs, so each value lives in one place. The suite needs ports 3100, 3101, 3198 and 3199 free.
+
 ## Configure local development
 
 The app needs no database, RPC or wallet to show its screens. `npm run dev` turns sample data on. Open http://localhost:3000/samples for a link to every sample state and viewer. Each sample has its own address, such as `/checkouts/sample-signing?as=spot-2`, and the create screen's sample mode is `/?sample`. A real checkout ID is a UUID, so it never shows sample data. A production build hides every sample address unless `ONETAB_FIXTURES=1` is set.
+
+To load a live checkout or the live create form, the server needs an origin to read the API from. Set `APP_ORIGIN=http://localhost:3000` in .env.local. Without an origin, every live checkout shows the error page, and the server log says which variable to set. Until Backend's routes exist, the e2e fake API serves live rooms instead. Start it with `node -e "import('./e2e/fake-api.mjs').then((api) => api.serve())"`, set `ONETAB_API_ORIGIN=http://localhost:3199`, and open `/checkouts/0b8f3c1e-7d2a-4c55-9f10-2a6b8e4d1c01`.
 
 After Backend provides configuration validation, copy [.env.example](../.env.example) to .env.local and fill values through the team's private credential channel. Never commit .env.local.
 
@@ -61,6 +65,7 @@ After Backend provides configuration validation, copy [.env.example](../.env.exa
 | --- | --- | --- |
 | ONETAB_FIXTURES | F1 | `1` shows sample data, `0` hides it. When unset, sample data shows only under `npm run dev`. Never set it on the hosted app |
 | APP_ORIGIN | B2 locally, B5 hosted | Exact allowed application origin for challenges and mutations |
+| ONETAB_API_ORIGIN | F3 locally, B5 hosted | Origin the server reads checkouts and configuration from when it renders a page. Defaults to APP_ORIGIN. Set it when the server can't reach its own public origin, or to point the e2e servers at the fake API |
 | SUPABASE_URL | B1/B5 | Development project's URL |
 | SUPABASE_SECRET_KEY | B1/B5 | Privileged server-only key for the selected Supabase project |
 | SOLANA_CLUSTER | P1 | Must remain devnet in this MVP |

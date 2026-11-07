@@ -216,7 +216,7 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
 | Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group |
-| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing |
+| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none |
 | Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. A sample receipt has no explorer link |
 | Notice | Inline message | Info, success, warning, danger. Icon plus text |
 
@@ -281,13 +281,14 @@ Page states that every screen handles:
 
 | State | What the viewer sees |
 | --- | --- |
-| Loading | The page layout with placeholder blocks. No layout shift when data arrives |
-| Not found | "We can't find this checkout." with **Create a checkout** |
-| Unexpected error | What failed, **Try again**, and a link home |
-| Creation unavailable | The create screen explains that checkouts can't be created right now |
+| Loading | The page layout with placeholder blocks. No layout shift when data arrives. A live checkout's first load waits for the server's read instead, so a missing checkout can still return a real 404 |
+| Not found | "We can't find this checkout." with **Create a checkout**. A live checkout shows it, with status 404, only when the server says `CHECKOUT_NOT_FOUND` |
+| Unexpected error | What failed, **Try again**, and a link home. A live checkout the server can't read, during an outage or before its route is deployed, shows this page with status 500 |
+| Creation unavailable | When GET /api/config fails, the create screen says checkouts can't be created right now and asks the viewer to try again in a moment |
 | Sample data | The sample banner on every screen |
-| Signed out | The room is readable. Actions ask the viewer to **Connect wallet** |
+| Signed out | The room is readable. Actions ask the viewer to **Connect wallet**. The create review offers **Connect wallet** in place of **Create checkout** |
 | Spectator | A full room is readable. The status says the checkout is full |
+| Seller | The room is readable, with no actions. While spots are open, the status says the seller doesn't take a spot |
 
 ### Wallet and sign-in states
 
@@ -466,6 +467,10 @@ To see any state, run `npm run dev` and open http://localhost:3000/samples. Ever
 | A button label or fixed word is wrong | `ACTIONS` and `WORDS` in `src/client/catalog.ts`. Run `npm run design:write` after the change |
 | A sample shows impossible data | Its spec in `src/client/fixture-data.ts`. `npm test` checks every sample against the contract rules |
 | A sample address returns 404 | Sample data is off, or the sample has no such viewer. Use `npm run dev`, or set `ONETAB_FIXTURES=1` for a production build |
+| Every live checkout shows the error page | The server has no API origin, or can't reach it. Set `APP_ORIGIN` or `ONETAB_API_ORIGIN`. The server log names the origin it tried, or says none is set |
+| A live checkout shows not found | Only the server's `CHECKOUT_NOT_FOUND` does that. Read GET /api/checkouts/:checkoutId on the API origin to check the ID |
+| A notice after Create checkout or Join checkout has the wrong words | `REQUEST_PROBLEMS` in `src/client/catalog.ts`, and `REQUEST_PROBLEM_BY_CODE` in `src/client/api.ts`, which maps each error code to a problem |
+| An older room replaces a newer one after a join | `roomTracker` in `src/client/live-actions.ts` decides which answer shows. `npm test` drives it through every order of sends and answers |
 | A color, size, radius or width does not apply | The class uses a Tailwind default or an arbitrary value, and neither compiles. Use a token from [Tokens](#tokens). `npm run design:check` names the file and line |
 | An amount shows the wrong digits | `src/client/units.ts` formats integer units with BigInt and never rounds |
 | A screen looks wrong for one state only | After `npm run test:e2e`, open its screenshot in `test-results/screens/` |
@@ -479,12 +484,14 @@ These files own the decisions behind every screen:
 
 | File | Owns |
 | --- | --- |
-| `src/client/checkout-source.ts` | Which data a page gets. The only reader of `ONETAB_FIXTURES` |
+| `src/client/checkout-source.ts` | Which data a page gets, including the server's read of a live checkout. The only reader of `ONETAB_FIXTURES` |
+| `src/client/api.ts` | Every request to a contract route, and which error code means which problem |
+| `src/client/live-actions.ts` | What each live action sends and does next, and which room answer a live checkout shows |
 | `src/client/fixtures.ts` | Sample addresses, viewers, and the registry that the tests enumerate |
 | `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |
 | `src/components/` | Rendering only. No state rules |
 | `scripts/design-system.mjs` | The design check and the generated tables in this document |
-| `src/components/viewer.tsx` | Gives every screen the wallet's signed-in identity. F4's poller joins it here |
+| `src/components/viewer.tsx` | Gives every screen the wallet's signed-in identity and, for a live checkout, the newest room. F4's poller joins it here |
 | `src/lib/wallet/` | The wallet session machine, its store, the live sign-in client, and the sample wallet |
 
 An unknown viewer, such as `?as=bogus`, shows the not-found page with HTTP status 200 instead of 404. The room's loading placeholder starts streaming before the page can reject the viewer, and layouts cannot read query strings.
@@ -495,5 +502,6 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
+| 2026-11-07 | Add the busy labels **Creating…** and **Joining…**, the request problem notices, the seller's status line, Connect wallet at the create review, outage words for creation unavailable, a title for the error page, and focus moves when an answer removes the focused control | F3 creates checkouts and joins rooms against the real routes. Each request outcome needs words and a next step, and creating needs a signed-in organizer | [F3](cards/F3.md), [#9](https://github.com/nefalos-tech/OneTab/issues/9), PR pending |
 | 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
 | 2026-11-07 | First version: palette, type, layout, components, states, copy and accessibility rules, with generated token, contrast, state and word tables | F2 to F6 need one design language before they build on the screens | [F1](cards/F1.md), [#7](https://github.com/nefalos-tech/OneTab/issues/7) |
