@@ -85,8 +85,17 @@ async function approve(terms: ApprovalTerms, c: Context): Promise<Outcome> {
       : notice(approval.failure);
   }
   const returned = await c.check.returned(checked.value, approval.value);
-  if (!returned.ok) return notice(returned.failure);
-  return attemptWrite(c, terms.checkoutId, () => c.api.uploadApproval(terms.attemptId, returned.value));
+  if (!returned.ok) {
+    c.signer.forget(approval.value);
+    return notice(returned.failure);
+  }
+  if (!c.signer.isCurrent(checked.value)) return DONE;
+  const uploaded = await writeThenReadRoom(c, terms.checkoutId, () => c.api.uploadApproval(terms.attemptId, returned.value));
+  if (!uploaded.ok && uploaded.failure === "refused") {
+    c.signer.forget(returned.value);
+    return notice("approval_refused");
+  }
+  return afterWrite(c, terms.checkoutId, uploaded);
 }
 
 async function roomWrite(c: Context, id: CheckoutId, write: () => Promise<Result<RoomSnapshot, RequestProblem>>): Promise<Outcome> {
@@ -100,12 +109,28 @@ async function attemptWrite(
   write: () => Promise<Result<unknown, RequestProblem>>,
   landedUnseen: Outcome = DONE,
 ): Promise<Outcome> {
-  const answer = await c.track<RequestProblem | "unseen">("write", async () => {
+  return afterWrite(c, id, await writeThenReadRoom(c, id, write), landedUnseen);
+}
+
+function writeThenReadRoom(
+  c: Context,
+  id: CheckoutId,
+  write: () => Promise<Result<unknown, RequestProblem>>,
+): Promise<Result<RoomSnapshot, RequestProblem | "unseen">> {
+  return c.track<RequestProblem | "unseen">("write", async () => {
     const wrote = await write();
     if (!wrote.ok) return wrote;
     const room = await c.api.readRoom(id);
     return room.ok ? room : { ok: false, failure: "unseen" };
   });
+}
+
+function afterWrite(
+  c: Context,
+  id: CheckoutId,
+  answer: Result<RoomSnapshot, RequestProblem | "unseen">,
+  landedUnseen: Outcome = DONE,
+): Promise<Outcome> | Outcome {
   if (answer.ok) return DONE;
   if (answer.failure === "unseen") return landedUnseen;
   return settle(c, id, answer.failure);

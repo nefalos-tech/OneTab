@@ -1,4 +1,4 @@
-import type { AttemptId } from "@/client/contracts";
+import type { Address, AttemptId } from "@/client/contracts";
 import type { CheckedPayment } from "@/client/payment-check";
 import type {
   BridgeResult,
@@ -18,6 +18,8 @@ export type SessionStore = {
   send(intent: Intent): void;
   start(): () => void;
   signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+  forgetApproval(gen: Gen, approval: PaymentApproval): void;
+  isCurrent(gen: Gen, account: Address): boolean;
   /** The attempt whose payment prompt this page is waiting on, or null. */
   approving(): AttemptId | null;
   cancelPayment(): void;
@@ -55,8 +57,12 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
     for (const effect of result.effects) run(effect, state.gen);
   }
 
+  function isCurrent(gen: Gen, account: Address): boolean {
+    return state.kind === "signed_in" && state.gen === gen && state.account === account;
+  }
+
   async function signPayment(gen: Gen, payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>> {
-    const current = () => state.kind === "signed_in" && state.gen === gen && state.account === payment.account;
+    const current = () => isCurrent(gen, payment.account);
     if (!current()) return STALE;
     if (approved?.gen === gen && approved.approval.messageHash === payment.messageHash) return { ok: true, value: approved.approval };
     if (paymentPromptOpen) return BUSY;
@@ -161,6 +167,12 @@ export function createSessionStore(env: WalletEnvironment, initial: SessionState
       return env.bridge.onAccountChange((account) => dispatch({ type: "account_changed", account }));
     },
     signPayment,
+    forgetApproval(gen, approval) {
+      if (approved?.gen === gen && approved.approval.messageHash === approval.messageHash && approved.approval.signature === approval.signature) {
+        approved = null;
+      }
+    },
+    isCurrent,
     approving: () => waiting?.attemptId ?? null,
     cancelPayment() {
       if (waiting === null) return;

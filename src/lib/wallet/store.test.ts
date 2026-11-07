@@ -421,6 +421,28 @@ describe("the payment prompt", () => {
     }
   });
 
+  it("forgets a kept approval when told, so the next call for that message asks the wallet again", async () => {
+    const w = signedIn();
+    const pay = await payment();
+    const first = w.store.signPayment(w.gen, pay);
+    w.prompts[0]!.answer("approves");
+    const approved = await first;
+    if (!approved.ok) throw new Error("The wallet approved");
+    w.store.forgetApproval(w.gen, { ...approved.value, signature: "b3RoZXI=" as SignatureBase64 });
+    expect(await w.store.signPayment(w.gen, pay), "another approval leaves the kept one").toEqual(approved);
+    w.store.forgetApproval(w.gen, approved.value);
+    void w.store.signPayment(w.gen, pay);
+    expect(w.prompts, "a forgotten approval is asked for again").toHaveLength(2);
+  });
+
+  it.each<Move>(["switches account", "disconnects", "sign-in expires"])("the sign-in is no longer current once the payer %s", async (how) => {
+    const w = signedIn();
+    expect(w.store.isCurrent(w.gen, PAYER)).toBe(true);
+    expect(w.store.isCurrent(w.gen, OTHER)).toBe(false);
+    move(w, how);
+    expect(w.store.isCurrent(w.gen, PAYER)).toBe(false);
+  });
+
   it("refuses a payment for another account than the one signed in, with no prompt", async () => {
     const w = signedIn();
     const theirs = { ...(await payment()), account: OTHER };

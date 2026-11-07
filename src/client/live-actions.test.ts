@@ -52,6 +52,8 @@ const NO_WALLET: PaymentSigner = {
   sign: () => {
     throw new Error("A wallet prompt opened");
   },
+  forget: () => {},
+  isCurrent: () => true,
 };
 const scope = (track: Track = untracked, signer: PaymentSigner = NO_WALLET): Scope => ({ track, signer });
 const said = (problem: ProblemWithWords, followUp: Action | null = null): Outcome => ({
@@ -109,13 +111,15 @@ const EXAMPLES: { readonly [K in LiveKind]: Extract<LiveAction, { kind: K }> } =
   decline: DECLINE,
 };
 
-function wallet(answer: Result<SignatureBase64, SignFailure>) {
+function wallet(answer: Result<SignatureBase64, SignFailure>, current = () => true) {
   const prompts: CheckedPayment[] = [];
   const signer: PaymentSigner = {
     sign: async (payment) => {
       prompts.push(payment);
       return answer.ok ? { ok: true, value: { messageHash: payment.messageHash, signature: answer.value } } : answer;
     },
+    forget: () => {},
+    isCurrent: () => current(),
   };
   return { prompts, signer };
 }
@@ -132,6 +136,10 @@ function rememberingWallet() {
       approvals.set(payment.messageHash, approval);
       return { ok: true, value: approval };
     },
+    forget: (approval) => {
+      if (approvals.get(approval.messageHash)?.signature === approval.signature) approvals.delete(approval.messageHash);
+    },
+    isCurrent: () => true,
   };
   return { prompts, signer };
 }
@@ -339,13 +347,14 @@ describe("approve", () => {
     expect(calls).toHaveLength(1);
   });
 
-  it("an approval that P3's check can't confirm uploads nothing and says so, with no Decline", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
-    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+  it("an approval that P3's check can't confirm uploads nothing, says so with no Decline, and isn't reused", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: WIRE }));
+    const { prompts, signer } = rememberingWallet();
     const live = liveActions(checkoutApi(fetch), paymentCheck(async () => "match", async () => "unsupported"));
     expect(await live.run(APPROVE, scope(untracked, signer))).toEqual(said("unchecked"));
-    expect(prompts).toHaveLength(1);
-    expect(requests(calls)).toEqual([["GET", `/api/attempts/${ATTEMPT}/signing-payload`]]);
+    expect(await live.run(APPROVE, scope(untracked, signer))).toEqual(said("unchecked"));
+    expect(prompts, "each Approve asked the wallet").toHaveLength(2);
+    expect(calls.filter((c) => c.path.endsWith("/signatures"))).toEqual([]);
   });
 
   it("an answer that arrives after the sign-in changed uploads nothing and says nothing", async () => {
@@ -398,12 +407,42 @@ describe("approve", () => {
     expect(shown).toEqual([DECLINED]);
   });
 
-  it("an approval the server refuses never says trying again is safe", async () => {
-    const { fetch } = server(() => json(200, { data: WIRE }), () => json(400, errorBody("INVALID_SIGNATURE")));
-    const { signer } = wallet({ ok: true, value: SIGNATURE });
-    const outcome = await approver(fetch).run(APPROVE, scope(untracked, signer));
-    expect(outcome).toEqual(said("refused"));
-    expect(outcome.kind === "notice" && outcome.text).not.toMatch(/trying again is safe/i);
+  it.each(["MESSAGE_MISMATCH", "INVALID_SIGNATURE", "INVALID_PAYMENT"])(
+    "an approval the server refuses with %s is dropped, so Approve again opens the wallet afresh",
+    async (code) => {
+      const { fetch, calls } = server(
+        () => json(200, { data: WIRE }),
+        () => json(400, errorBody(code)),
+        () => json(200, { data: WIRE }),
+        () => json(200, { data: APPROVED.attempt }),
+        () => json(200, { data: APPROVED }),
+      );
+      const { prompts, signer } = rememberingWallet();
+      const live = approver(fetch);
+      const refused = await live.run(APPROVE, scope(untracked, signer));
+      expect(refused).toEqual(said("approval_refused"));
+      expect(refused.kind === "notice" && refused.text).not.toMatch(/trying again is safe|reload/i);
+      expect(await live.run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
+      expect(prompts, "the second Approve asked the wallet again").toHaveLength(2);
+      expect(calls.filter((c) => c.path.endsWith("/signatures"))).toHaveLength(2);
+    },
+  );
+
+  it("an approval whose sign-in ended before the upload is stale: nothing is uploaded or said", async () => {
+    let signedIn = true;
+    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE }, () => signedIn);
+    const switchesDuringTheReturnCheck = paymentCheck(
+      async () => "match",
+      async () => {
+        signedIn = false;
+        return "match";
+      },
+    );
+    const live = liveActions(checkoutApi(fetch), switchesDuringTheReturnCheck);
+    expect(await live.run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
+    expect(prompts).toHaveLength(1);
+    expect(requests(calls)).toEqual([["GET", `/api/attempts/${ATTEMPT}/signing-payload`]]);
   });
 
   it("an ended sign-in at any step is signed_out", async () => {

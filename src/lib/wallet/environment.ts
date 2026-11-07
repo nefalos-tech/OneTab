@@ -37,6 +37,10 @@ export type SignFailure = "rejected" | "stale" | "busy" | "failed";
 
 export interface PaymentSigner {
   sign(payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+  /** Drops a kept approval that was refused, so the next `sign` for that message opens the wallet again. */
+  forget(approval: PaymentApproval): void;
+  /** Whether the sign-in that asked for this payment is still the page's. Checked right before the upload. */
+  isCurrent(payment: CheckedPayment): boolean;
 }
 
 /**

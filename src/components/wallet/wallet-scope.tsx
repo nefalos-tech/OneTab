@@ -66,7 +66,11 @@ export function useWalletSession(): WalletSessionApi {
     () => ({
       view: deriveWalletView(state, approving !== null),
       session: sessionOf(state),
-      signer: { sign: (payment) => store.signPayment(state.gen, payment) },
+      signer: {
+        sign: (payment) => store.signPayment(state.gen, payment),
+        forget: (approval) => store.forgetApproval(state.gen, approval),
+        isCurrent: (payment) => store.isCurrent(state.gen, payment.account),
+      },
       approving,
       connect: () => store.send({ type: "connect" }),
       cancel: () => {

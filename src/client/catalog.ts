@@ -156,7 +156,9 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionMeta>;
 export type ActionKind = keyof typeof ACTIONS;
 
-export type ProblemWithWords = Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">;
+export type ProblemWithWords =
+  | Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">
+  | "approval_refused";
 
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
@@ -172,6 +174,7 @@ export const REQUEST_PROBLEMS = {
   busy: "Your wallet already has an approval request open. Finish it there first.",
   failed: "Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again.",
   unchecked: "OneTab couldn't check the approval your wallet returned, so nothing was sent.",
+  approval_refused: "OneTab couldn't accept this approval, so nothing was sent. You can approve again.",
 } as const satisfies Record<ProblemWithWords, string>;
 
 export const NETWORK_LABELS = { devnet: "Test USDC on Solana Devnet" } as const satisfies Record<Network, string>;
