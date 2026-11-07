@@ -2,7 +2,7 @@
 
 This is the reference for how OneTab looks, reads and behaves. It covers the three desktop screens: create checkout, checkout room, and payment result. [Design decisions](design-decisions.md) explains why each rule exists.
 
-Every UI or UX change updates this file in the same pull request. Four regions below are generated from code, so they cannot drift. The tokens come from `src/app/globals.css`, contrast ratios are computed from those tokens, and the states and words come from `src/client/catalog.ts`. Run `npm run design:write` to regenerate them. `npm run design:check` fails when a region is stale, a token has no documented role, a contrast pair misses its minimum, or `src/` uses an off-system value such as `bg-[#fff]`. Write the rest of this file by hand, and add a line to the [change log](#change-log) for every change. The steps are in [Change the UI design](development.md#change-the-ui-design).
+Every UI or UX change updates this file in the same pull request. Five regions below are generated from code, so they cannot drift. The tokens come from `src/app/globals.css`, contrast ratios are computed from those tokens, and the states, words and wallet states come from `src/client/catalog.ts`. Run `npm run design:write` to regenerate them. `npm run design:check` fails when a region is stale, a token has no documented role, a contrast pair misses its minimum, or `src/` uses an off-system value such as `bg-[#fff]`. Write the rest of this file by hand, and add a line to the [change log](#change-log) for every change. The steps are in [Change the UI design](development.md#change-the-ui-design).
 
 ## Product frame
 
@@ -204,7 +204,7 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | --- | --- | --- |
 | Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet control. Layout is split (create, room) or single (result) |
 | Wallet control | Connect, sign in, and show who you are | A quiet **Connect wallet** button when signed out. A spinner and the current step while a wallet prompt is open, with **Cancel**. When signed in, a menu button with the wallet icon and the short address, holding **Copy address** and **Disconnect**. See [Wallet and sign-in states](#wallet-and-sign-in-states) |
-| Sample wallet | Stands in for a real wallet in sample data | An in-page panel styled like the sample banner and labeled "Sample wallet". It shows each wallet prompt with **Approve** and **Reject** and can switch between sample accounts. It never opens a real wallet or calls a real route |
+| Sample wallet | Stands in for a real wallet in sample data | Styled like the sample banner and labeled "Sample wallet". When idle it is one line with the selected account, **End sign-in** when it applies, and a **Switch account** disclosure. A pending wallet prompt expands it with **Approve** and **Reject** and is announced politely. Focus never moves on its own. It never opens a real wallet or calls a real route |
 | Flow steps | Where the viewer is in the flow | Each step is done, current, or upcoming. Current uses `aria-current="step"` |
 | Sample banner | Marks sample data | Visible whenever sample data is shown, with links to the other viewers of the same sample and to every sample |
 | Tab card | The checkout at a glance | Title, total, seller, split bar, counts. Tide fill, white text |
@@ -460,6 +460,11 @@ To see any state, run `npm run dev` and open http://localhost:3000/samples. Ever
 | A color, size, radius or width does not apply | The class uses a Tailwind default or an arbitrary value, and neither compiles. Use a token from [Tokens](#tokens). `npm run design:check` names the file and line |
 | An amount shows the wrong digits | `src/client/units.ts` formats integer units with BigInt and never rounds |
 | A screen looks wrong for one state only | After `npm run test:e2e`, open its screenshot in `test-results/screens/` |
+| Connect wallet, sign-in or the header control behaves wrongly | Every wallet state and transition is in `src/lib/wallet/machine.ts`. `src/client/wallet-view.ts` turns a state into what the header, the status line and the room's inline action show |
+| A wallet message or fix is wrong | The wallet tables in `src/client/catalog.ts`. Run `npm run design:write` after the change |
+| An account switch or a late wallet answer misbehaves | `npm test` runs the exhaustive test in `src/lib/wallet/machine.test.ts`, which drives every short sequence of wallet events |
+| Sign-in calls reach the server in the wrong order | `src/lib/wallet/store.ts` runs every effect and sends sign-in calls one at a time |
+| The sample wallet misbehaves | `src/lib/wallet/sample.ts` holds the sample wallet and sign-in service. `src/components/wallet/sample-wallet-panel.tsx` draws it |
 
 These files own the decisions behind every screen:
 
@@ -470,6 +475,8 @@ These files own the decisions behind every screen:
 | `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |
 | `src/components/` | Rendering only. No state rules |
 | `scripts/design-system.mjs` | The design check and the generated tables in this document |
+| `src/components/viewer.tsx` | Gives every screen the wallet's signed-in identity. F4's poller joins it here |
+| `src/lib/wallet/` | The wallet session machine, its store, the live sign-in client, and the sample wallet |
 
 An unknown viewer, such as `?as=bogus`, shows the not-found page with HTTP status 200 instead of 404. The room's loading placeholder starts streaming before the page can reject the viewer, and layouts cannot read query strings.
 

@@ -87,8 +87,8 @@ Keep experiment dependencies under spikes/payment-proof/ until integration. Do n
 
 [The design system](design-system.md) is the UI contract. To change a color, size, component, state, word or interaction:
 
-1. Make the change in code. Tokens live only in the `@theme` block of `src/app/globals.css`, each with a one-line role comment above it. States, button labels and fixed words live only in `src/client/catalog.ts`.
-2. Run `npm run design:write`. It regenerates the token, contrast, state and word tables in `docs/design-system.md`.
+1. Make the change in code. Tokens live only in the `@theme` block of `src/app/globals.css`, each with a one-line role comment above it. States, button labels, wallet messages and fixed words live only in `src/client/catalog.ts`.
+2. Run `npm run design:write`. It regenerates the token, contrast, state, word and wallet tables in `docs/design-system.md`.
 3. Update the hand-written sections of `docs/design-system.md` that the change affects, such as rules, layouts, components and the glossary. To add a contrast pair, add a row to the contrast table with its foreground, background, minimum and use, then run `npm run design:write` again.
 4. If the reason behind a rule changed, update [design decisions](design-decisions.md).
 5. Add a row to the design system's change log with the date, the change, the reason and the PR.
