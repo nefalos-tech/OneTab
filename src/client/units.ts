@@ -4,7 +4,7 @@ import { isTokenUnits, U64_MAX, type PayerCount, type TokenUnits } from "./contr
 /** An amount the UI can print. Decimals always come from the snapshot or the public config. */
 export type Money = { readonly units: TokenUnits; readonly decimals: number };
 
-function toTokenUnits(n: bigint): TokenUnits {
+export function toTokenUnits(n: bigint): TokenUnits {
   const s = n.toString();
   if (!isTokenUnits(s)) throw new RangeError(`${s} is outside the token unit range.`);
   return s;
