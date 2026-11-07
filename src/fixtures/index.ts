@@ -19,7 +19,7 @@ const fixtureAddresses = {
     "11111111111111111111111111111117",
     "11111111111111111111111111111118",
     "11111111111111111111111111111119",
-  ],
+  ] as const,
 } as const;
 
 export const fixtureConfig = {
@@ -47,6 +47,10 @@ const participants = [
   { slot: 0, wallet: fixtureAddresses.organizer, shareUnits: "2000000", ready: true },
   { slot: 1, wallet: fixtureAddresses.payer2, shareUnits: "2000000", ready: true },
   { slot: 2, wallet: fixtureAddresses.payer3, shareUnits: "2000000", ready: true },
+] as const satisfies [
+  RoomSnapshot["participants"][number],
+  RoomSnapshot["participants"][number],
+  RoomSnapshot["participants"][number],
 ];
 const attemptId = "00000000-0000-4000-8000-000000000002";
 const fixtureTransactionReference = "2".repeat(87);
