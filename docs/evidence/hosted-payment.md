@@ -2,9 +2,15 @@
 
 Prepare the [P6 evidence](../cards/P6.md) for one hosted checkout of 6 test USDC, paid by three distinct wallets at 2 test USDC each. The seller must be separate from every payer. The organizer pays the network fee in SOL.
 
-This document is preparation only. P6 execution is BLOCKED on [P5](../cards/P5.md), [F6](../cards/F6.md), and [B5](../cards/B5.md). No hosted URL is available in the frozen run record. No hosted test, wallet approval, or payment has run for this report. Deployment is not authorized by this preparation task.
+P6 is incomplete. Its hosted acceptance remains **NOT RUN** and depends on [P5](../cards/P5.md), [F6](../cards/F6.md), and [B5](../cards/B5.md). No public app URL or deployed revision has been verified for P6. No P6 hosted wallet approval, three-payer payment, refreshed receipt comparison, or rejection rehearsal has run. This documentation task does not authorize deployment.
 
-Follow the [specification](../../spec.md#acceptance-criteria), [payment contracts](../contracts.md), and [development guide](../development.md). Keep every result below as NOT RUN until direct evidence supports an update. A local test, fixture receipt, or proposed URL does not satisfy P6.
+The refresh starts from main `8179b47`, which includes P1 and P2. The inspected P3 application revision is `d8ba143a2578edec4628de2952cfaff7c8a1fc39`. The combined P3 and P4 revision is `0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d`. P3 subsequently merged as `639a27600497f78c814fa60ad182581c5024a8ab`. The later P4 head `3ffde1173f1e676ed0394f3a2c5cd74c4cb4d1e8` has the identical Git tree as tested revision `0d1124b`. These identify local implementations and do not identify a hosted deployment.
+
+The combined revision passed the coordinator's root check with 1,064 tests, spike check with 92 tests, production build with 139 app browser cases, and 58 payment-browser cases. The task-local `onetab-run-20261107/p3-p4-import-*.log` files record those runs. Root checks used Node `24.22.1`, and spike checks used Node `25.9.0`. The payment-browser run used Chromium `153.0.8010.12`. These are local fixture results, including synthetic two- and three-payer composition with a fake store and RPC. A separate `p4-built-route-evidence.json` records 17 passing guard checks against the local production build at `2026-11-07T17:03:00.267759Z`. Those checks reached origin, session, method, and configuration guards without a real database or wallet. None of these runs establishes P5 integrated acceptance or P6 hosted acceptance.
+
+[B4](../cards/B4.md) has not supplied the durable application store and lifecycle adapter. At the inspected combined revision, production payment routes return `CONFIGURATION_UNAVAILABLE` without those ports. F4 and F5 are not in the merged baseline for this record. Their wallet-approval and recovery integration still require evidence before F6 can validate the complete desktop flow. See the pinned [P3 application contract](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-service.md) and [P4 settlement evidence](https://github.com/nefalos-tech/OneTab/blob/0d1124b6d6984d0f5a3c22c2d4da49ad9ba7654d/docs/evidence/payment-settlement.md).
+
+Follow the [specification](../../spec.md#acceptance-criteria), [payment contracts](../contracts.md), and [development guide](../development.md). Keep the hosted-run forms below as NOT RUN until direct evidence supports an update. A local test, fixture receipt, or proposed URL does not satisfy P6.
 
 ## Check the prerequisites
 
@@ -16,6 +22,32 @@ Before the hosted run, obtain these handoffs from their owners.
 - [P1](../cards/P1.md) supplies the proven wallet, package versions, Devnet mint, and prepared token-account setup.
 
 Stop if those handoffs do not describe the artifact under test. Record differences before proceeding. Deployment and infrastructure changes remain with their owners and require their authorization.
+
+## Check the prepared profiles and public identities
+
+The coordinator's preparation record reports three existing Chrome profiles. The user supplied a third payer's public address for one additional profile and confirmed that two profiles currently select the organizer's account. Select the second payer's account in the remaining profile, then verify each profile's public address before running P6. A shared wallet username does not establish a distinct payer. Keep profile names, email addresses, and browser account details out of the payment evidence.
+
+[P1's historical proof](payment-proof.md) used two distinct Phantom accounts in one Chrome profile. It recorded Chrome `155.0.8059.41`, Phantom `26.38.1`, Devnet mint `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`, and six token decimals. These are the versions and identities from that run. Recheck each P6 profile before treating them as the current setup.
+
+| Intended role | Public wallet and source | P6 preparation status |
+| --- | --- | --- |
+| Organizer and first payer | `6bYQRpZ13aBZrYrgFtZEnePh5ADuY4KGdW6a2Hsmf8oU`, recorded in P1 | Profile binding and hosted approval remain unverified. The public balance read is below. |
+| Second payer | `7dmYC9Ca4DdFEfQ9D5B6pQPmsgnHMU3qM5eaRNgpv7VB`, recorded in P1 | The remaining profile still needs to select and verify this payer account instead of the organizer account. |
+| Third payer | `FWbFcw1P4sAGa7BQP9nenzXPmcySA5WRFrSSjaPYuNdp`, supplied by the user | Distinct from the other three listed addresses. The public read found no token account for the configured mint. Account preparation and funding remain incomplete. |
+| Separate seller | `3uTY8tDn8N2yLh13bg53SHAHYzp4ZG2ConFVztiNVdW1`, recorded in P1 | Reverify its receiving account and separation from all three selected payers. |
+
+The coordinator's read-only Devnet snapshot is `onetab-run-20261107/wallet-balance-20261108.json`. Its actual UTC observation time is `2026-11-07T17:02:23.430640Z`. It records the Devnet genesis and the P1 mint. Both `getBalance` and `getTokenAccountsByOwner` used `finalized` commitment. Token amounts below use six-decimal integer units.
+
+| Public role | Token amount and account | SOL lamports | Recorded slot |
+| --- | --- | --- | --- |
+| Organizer | `18000000` in `BvEVznZ4KqQmgmWPWZ3NDmfkcKEWQzobhtVKkTie7xKZ` | `499990000` | `519728656` |
+| Second payer | `18000000` in `436apUGAkZ2aEqjFCRw46ywFXzhq2DHcScax9gpXgETW` | `0` | `519728660` |
+| Third payer | No token account returned for the configured mint | `0` | `519728664` |
+| Seller | `24000000` in `FKaacyjitxPgjQ8mKY5AStxeBRLu7qKRxDiUySQWsedv` | `0` | `519728669` |
+
+The third payer needs a prepared account with at least `2000000` units for the planned share. These reads establish a preparation shortage. They do not establish profile ownership or the complete token-account checks required before signing. This finalized preparation snapshot is not a payment baseline. Take a fresh baseline after account preparation and funding.
+
+P1's four-USDC transaction and its later read-only revalidation remain historical two-payer evidence. They do not satisfy the six-USDC hosted run below.
 
 ## Record the artifact and participants
 
@@ -119,4 +151,4 @@ Review every attachment before handoff. Exclude private keys, seed phrases, sess
 | Outstanding limitations and unresolved discrepancies | NOT RUN |
 | P6 hosted acceptance result | NOT RUN |
 
-Keep P6 incomplete until its hosted acceptance evidence exists. This checklist does not authorize deployment, merging, recording publication, or submission.
+Keep P6 incomplete until its hosted acceptance evidence exists. This checklist does not authorize deployment, recording publication, or submission.
