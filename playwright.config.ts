@@ -14,7 +14,7 @@ export default defineConfig({
   use: { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 },
   projects: [
     { name: "samples", testMatch: ["samples.spec.ts", "wallet.spec.ts"], use: { baseURL: `http://localhost:${SAMPLES_PORT}` } },
-    { name: "gating", testMatch: ["gating.spec.ts", "live.spec.ts"], use: { baseURL: `http://localhost:${GATED_PORT}` } },
+    { name: "gating", testMatch: ["gating.spec.ts", "live.spec.ts", "results.spec.ts"], use: { baseURL: `http://localhost:${GATED_PORT}` } },
   ],
   webServer: [
     {

@@ -72,7 +72,7 @@ const party = (id) => ({
   participants: PARTY.map((wallet, slot) => ({ slot, wallet, shareUnits: "30000000", ready: true })),
 });
 
-const attempt = (id, state, signedWallets) => ({
+const attempt = (id, state, signedWallets, fields = {}) => ({
   id: `a7${id.slice(2)}`,
   state,
   signedWallets,
@@ -81,6 +81,24 @@ const attempt = (id, state, signedWallets) => ({
   error: null,
   canRetry: false,
   receipt: null,
+  ...fields,
+});
+
+export const REFERENCE = "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
+
+/** b3_rooms.sql sends this for every recorded error. */
+const MASKED = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
+
+const sent = (fields = {}) => ({ transactionReference: REFERENCE, ...fields });
+
+const receipt = () => ({
+  transactionReference: REFERENCE,
+  confirmationStatus: "finalized",
+  sellerWallet: WALLETS.shop,
+  totalUnits: "90000000",
+  contributions: PARTY.map((wallet, slot) => ({ slot, wallet, amountUnits: "30000000" })),
+  observedAt: "2026-11-07T12:00:00.000Z",
+  explorerUrl: `https://explorer.solana.com/tx/${REFERENCE}?cluster=devnet`,
 });
 
 export const SCRIPT = [
@@ -90,7 +108,34 @@ export const SCRIPT = [
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo]) }),
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo, WALLETS.ava]) }),
   (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent()) }),
+  (id) => ({ ...party(id), phase: "needs_attention", attempt: attempt(id, "unresolved", PARTY, sent({ error: MASKED })) }),
+  // A refresh after the lease ends re-claims the send, which writes submitting again over unresolved.
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent({ error: MASKED })) }),
+  (id) => ({ ...party(id), phase: "paid", attempt: attempt(id, "confirmed", PARTY, sent({ receipt: receipt() })) }),
 ];
+
+const FAILING_PREFIX = "fa11fa11-";
+
+/** A room whose payment fails before it is sent, then is replaced by the organizer elsewhere. */
+export const failingRoom = () => `${FAILING_PREFIX}${randomUUID().slice(FAILING_PREFIX.length)}`;
+
+export const FAIL_SCRIPT = [
+  (id) => ({ ...party(id), phase: "ready", attempt: null }),
+  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
+  (id) => ({
+    ...party(id),
+    phase: "needs_attention",
+    attempt: attempt(id, "failed", [], { lastValidBlockHeight: null, error: MASKED, canRetry: true }),
+  }),
+  (id) => ({ ...party(id), phase: "paying", attempt: { ...attempt(id, "preparing", []), id: `b7${id.slice(2)}` } }),
+];
+
+const SCRIPTS = { [SCRIPTED_PREFIX]: SCRIPT, [FAILING_PREFIX]: FAIL_SCRIPT };
+const scriptOf = (id) => Object.entries(SCRIPTS).find(([prefix]) => id.startsWith(prefix))?.[1];
+
+/** While on, the browser's reads of that room answer 503. The server's own reads, and the script's steps, go on. */
+export const outage = (id, on) => `${FAKE_API.rooms}/__script/${id}/outage/${on ? "on" : "off"}`;
 
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
@@ -98,13 +143,20 @@ const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
-function respond(dataset, { reads, steps }, method, path) {
+function respond(dataset, { reads, steps, outages }, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
-  const advance = /^\/__script\/(5c5c5c5c-[0-9a-f-]{27})\/step$/.exec(path);
-  if (method === "POST" && advance) {
-    const step = Math.min((steps.get(advance[1]) ?? 0) + 1, SCRIPT.length - 1);
-    steps.set(advance[1], step);
+  const control = /^\/__script\/([0-9a-f-]{36})\/(step|outage\/on|outage\/off)$/.exec(path);
+  const scripted = control && scriptOf(control[1]);
+  if (method === "POST" && scripted) {
+    const [, id, command] = control;
+    if (command !== "step") {
+      if (command === "outage/on") outages.add(id);
+      else outages.delete(id);
+      return json(200, { outage: outages.has(id) });
+    }
+    const step = Math.min((steps.get(id) ?? 0) + 1, scripted.length - 1);
+    steps.set(id, step);
     return json(200, { step });
   }
   if (method === "GET" && path === "/api/config") {
@@ -118,14 +170,16 @@ function respond(dataset, { reads, steps }, method, path) {
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
-  if (dataset === "rooms" && id.startsWith(SCRIPTED_PREFIX)) return json(200, { data: SCRIPT[steps.get(id) ?? 0](id) });
+  if (room[1] === "__rooms" && outages.has(id)) return error(503, "CONFIGURATION_UNAVAILABLE");
+  const script = dataset === "rooms" ? scriptOf(id) : undefined;
+  if (script) return json(200, { data: script[steps.get(id) ?? 0](id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }
 
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const state = { reads: new Map(), steps: new Map() };
+    const state = { reads: new Map(), steps: new Map(), outages: new Set() };
     createServer((req, res) => {
       const { status, type, body } = respond(dataset, state, req.method, new URL(req.url ?? "/", origin).pathname);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
