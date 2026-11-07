@@ -1,11 +1,11 @@
 import { address } from "@solana/kit";
-import type { AttemptSummary, ErrorCode, PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index.js";
-import { verifyPayerSignature } from "../../lib/payments/signature-core.js";
-import { fromBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload.js";
-import type { AttemptStore, StoredAttempt } from "../attempt-store/index.js";
-import { buildSigningPayload } from "./build-attempt.js";
-import { observedPaymentError, PaymentFailure, paymentFailure } from "./errors.js";
-import type { PaymentRpc } from "./preflight.js";
+import type { AttemptSummary, ErrorCode, PublicConfig, RoomSnapshot, SigningPayload } from "../../contracts/index";
+import { verifyPayerSignature } from "../../lib/payments/signature-core";
+import { fromBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload";
+import type { AttemptStore, StoredAttempt } from "../attempt-store/index";
+import { buildSigningPayload } from "./build-attempt";
+import { observedPaymentError, PaymentFailure, paymentFailure } from "./errors";
+import type { PaymentRpc } from "./preflight";
 
 export interface PaymentLifecycle {
   declineAttempt(input: { attemptId: string; signerWallet: string }): Promise<StoredAttempt>;

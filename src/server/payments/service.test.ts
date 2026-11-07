@@ -1,10 +1,10 @@
 import { getAddressDecoder } from "@solana/kit";
 import { describe, expect, it } from "vitest";
-import type { AttemptState } from "../../contracts/index.js";
-import { fromBase64 } from "../../lib/payments/signing-payload.js";
-import { PaymentFailure } from "./errors.js";
-import { createPaymentService, projectAttempt } from "./service.js";
-import { serviceFixture } from "./test-fixtures.js";
+import type { AttemptState } from "../../contracts/index";
+import { fromBase64 } from "../../lib/payments/signing-payload";
+import { PaymentFailure } from "./errors";
+import { createPaymentService, projectAttempt } from "./service";
+import { serviceFixture } from "./test-fixtures";
 
 const foreignWallet = getAddressDecoder().decode(new Uint8Array(32).fill(80));
 

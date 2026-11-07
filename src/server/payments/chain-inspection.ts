@@ -3,7 +3,7 @@ import {
   getTransactionDecoder, getTransactionEncoder, type ReadonlyUint8Array,
 } from '@solana/kit';
 import { z } from 'zod';
-import { equalBytes, type PaymentPlan, type Payers } from '../../lib/payments/payment-core.js';
+import { equalBytes, type PaymentPlan, type Payers } from '../../lib/payments/payment-core';
 
 const integer = z.number().int().nonnegative().safe();
 const executionError = z.unknown().refine(value => value !== undefined, 'RPC err must be explicitly present');

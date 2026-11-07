@@ -1,4 +1,4 @@
-import { inspectFinalizedPayment, type ExpectedSettlement, type SettlementEvidence } from "./chain-inspection.js";
+import { inspectFinalizedPayment, type ExpectedSettlement, type SettlementEvidence } from "./chain-inspection";
 
 export type BackendAssurance = "unverified" | "coherent_backend_and_retention_established";
 export type KnownSubmission = ExpectedSettlement & Readonly<{ lastValidBlockHeight: bigint }>;

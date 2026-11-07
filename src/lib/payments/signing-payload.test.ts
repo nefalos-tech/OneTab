@@ -4,10 +4,10 @@ import {
   getTransactionDecoder,
 } from "@solana/kit";
 import { findAssociatedTokenPda, getTransferCheckedInstructionDataDecoder, TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import type { RoomSnapshot, SigningPayload } from "../../contracts/index.js";
-import { createPaymentPlan, DEVNET_USDC, sha256 } from "./payment-core.js";
-import { createCheckoutPaymentPlan, fromBase64, toBase64, validateFrozenSigningPayload, validateSigningPayload } from "./signing-payload.js";
-import { config, key, paymentFixture, payloadForPlan } from "./test-fixtures.js";
+import type { RoomSnapshot, SigningPayload } from "../../contracts/index";
+import { createPaymentPlan, DEVNET_USDC, sha256 } from "./payment-core";
+import { createCheckoutPaymentPlan, fromBase64, toBase64, validateFrozenSigningPayload, validateSigningPayload } from "./signing-payload";
+import { config, key, paymentFixture, payloadForPlan } from "./test-fixtures";
 
 describe("B1 signing payload validation", () => {
   for (const count of [2, 3] satisfies (2 | 3)[]) {

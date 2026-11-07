@@ -1,12 +1,12 @@
 import { address } from "@solana/kit";
-import type { Checkout, PublicConfig, Receipt } from "../../contracts/index.js";
-import { assembleSignedPayment } from "../../lib/payments/signature-core.js";
-import { fromBase64, toBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload.js";
-import type { AttemptStore, StoredAttempt } from "../attempt-store/index.js";
-import { PaymentFailure } from "./errors.js";
-import type { PaymentRpc } from "./preflight.js";
-import { decideReconciliation, type BackendAssurance, type KnownSubmission } from "./reconciliation.js";
-import { observePayment, sendPayment } from "./rpc.js";
+import type { Checkout, PublicConfig, Receipt } from "../../contracts/index";
+import { assembleSignedPayment } from "../../lib/payments/signature-core";
+import { fromBase64, toBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload";
+import type { AttemptStore, StoredAttempt } from "../attempt-store/index";
+import { PaymentFailure } from "./errors";
+import type { PaymentRpc } from "./preflight";
+import { decideReconciliation, type BackendAssurance, type KnownSubmission } from "./reconciliation";
+import { observePayment, sendPayment } from "./rpc";
 
 export type PaymentProgressDependencies = Readonly<{
   store: AttemptStore; readCheckout: (checkoutId: string) => Promise<Checkout | null>;

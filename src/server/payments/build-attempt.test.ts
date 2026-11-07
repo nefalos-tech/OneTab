@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { AccountState, getMintEncoder, getTokenEncoder, TOKEN_PROGRAM_ADDRESS, type TokenArgs } from "@solana-program/token";
 import type { ReadonlyUint8Array } from "@solana/kit";
-import { fromBase64, toBase64, validateSigningPayload } from "../../lib/payments/signing-payload.js";
-import { key, paymentFixture } from "../../lib/payments/test-fixtures.js";
-import { buildSigningPayload } from "./build-attempt.js";
-import { DEVNET_GENESIS_HASH, type PaymentRpc } from "./preflight.js";
+import { fromBase64, toBase64, validateSigningPayload } from "../../lib/payments/signing-payload";
+import { key, paymentFixture } from "../../lib/payments/test-fixtures";
+import { buildSigningPayload } from "./build-attempt";
+import { DEVNET_GENESIS_HASH, type PaymentRpc } from "./preflight";
 
 function encodedAccount(data: ReadonlyUint8Array) {
   return { value: { owner: TOKEN_PROGRAM_ADDRESS, executable: false, data: [toBase64(data), "base64"] } };

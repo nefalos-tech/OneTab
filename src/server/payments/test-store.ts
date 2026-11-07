@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { RoomSnapshot } from "../../contracts/index.js";
-import type { AttemptStore, Lease, StoredAttempt } from "../attempt-store/index.js";
-import { PaymentFailure } from "./errors.js";
-import { projectAttempt, type PaymentLifecycle } from "./service.js";
+import type { RoomSnapshot } from "../../contracts/index";
+import type { AttemptStore, Lease, StoredAttempt } from "../attempt-store/index";
+import { PaymentFailure } from "./errors";
+import { projectAttempt, type PaymentLifecycle } from "./service";
 
 export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
   readonly attempts = new Map<string, StoredAttempt>();

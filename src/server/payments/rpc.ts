@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { PaymentFailure } from "./errors.js";
-import { assertDevnet, type PaymentRpc } from "./preflight.js";
+import { PaymentFailure } from "./errors";
+import { assertDevnet, type PaymentRpc } from "./preflight";
 import {
   decideReconciliation, type BackendAssurance, type ChainObservation, type KnownSubmission,
-} from "./reconciliation.js";
+} from "./reconciliation";
 
 const integer = z.number().int().nonnegative().safe();
 const epoch = z.object({ absoluteSlot: integer, blockHeight: integer });

@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { AuthResult, WalletSession } from "../auth/service.js";
-import { paymentFailure, publicPaymentError, PaymentFailure } from "./errors.js";
-import type { PaymentService } from "./service.js";
+import type { AuthResult, WalletSession } from "../auth/service";
+import { paymentFailure, publicPaymentError, PaymentFailure } from "./errors";
+import type { PaymentService } from "./service";
 
 const uuid = z.uuid().transform(value => value.toLowerCase());
 const preparation = z.strictObject({ retryOfAttemptId: uuid.nullable().optional().default(null) });

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import type { StoredAttempt } from "../attempt-store/index.js";
-import type { PaymentRpc } from "./preflight.js";
-import { DEVNET_GENESIS_HASH } from "./preflight.js";
-import { createPaymentProgress } from "./settlement.js";
-import { settlementFixture, submissionStore } from "./settlement-fixture.js";
-import { toBase64 } from "../../lib/payments/signing-payload.js";
+import type { StoredAttempt } from "../attempt-store/index";
+import type { PaymentRpc } from "./preflight";
+import { DEVNET_GENESIS_HASH } from "./preflight";
+import { createPaymentProgress } from "./settlement";
+import { settlementFixture, submissionStore } from "./settlement-fixture";
+import { toBase64 } from "../../lib/payments/signing-payload";
 
 function deferred() {
   let resolve!: () => void;

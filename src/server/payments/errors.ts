@@ -1,5 +1,5 @@
-import type { ApiError, ErrorCode } from "../../contracts/index.js";
-import { PaymentPreflightFailure } from "./preflight.js";
+import type { ApiError, ErrorCode } from "../../contracts/index";
+import { PaymentPreflightFailure } from "./preflight";
 
 const failures = {
   INVALID_INPUT: [400, "The request is invalid."],

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { DEVNET_GENESIS_HASH as DEVNET_GENESIS } from "./preflight.js";
-import { createPaymentRpc, observePayment, parseChainStatus } from "./rpc.js";
-import { settlementFixture } from "./settlement-fixture.js";
+import { DEVNET_GENESIS_HASH as DEVNET_GENESIS } from "./preflight";
+import { createPaymentRpc, observePayment, parseChainStatus } from "./rpc";
+import { settlementFixture } from "./settlement-fixture";
 
 const absent = (slot = 1001) => ({ context: { slot }, value: [null] });
 

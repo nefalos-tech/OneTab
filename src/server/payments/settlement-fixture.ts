@@ -1,8 +1,8 @@
 import { getAddressDecoder, getCompiledTransactionMessageDecoder } from "@solana/kit";
-import type { AttemptStore, StoredAttempt } from "../attempt-store/index.js";
-import { assembleSignedPayment } from "../../lib/payments/signature-core.js";
-import { createCheckoutPaymentPlan, fromBase64, toBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload.js";
-import { config, paymentFixture, payloadForPlan } from "../../lib/payments/test-fixtures.js";
+import type { AttemptStore, StoredAttempt } from "../attempt-store/index";
+import { assembleSignedPayment } from "../../lib/payments/signature-core";
+import { createCheckoutPaymentPlan, fromBase64, toBase64, validateFrozenSigningPayload } from "../../lib/payments/signing-payload";
+import { config, paymentFixture, payloadForPlan } from "../../lib/payments/test-fixtures";
 
 export async function settlementFixture(count: 2 | 3 = 2) {
   const f = await paymentFixture(count);

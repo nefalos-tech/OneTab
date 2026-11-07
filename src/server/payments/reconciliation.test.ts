@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decideReconciliation, type ChainObservation } from "./reconciliation.js";
-import { settlementFixture } from "./settlement-fixture.js";
+import { decideReconciliation, type ChainObservation } from "./reconciliation";
+import { settlementFixture } from "./settlement-fixture";
 
 const assured = "coherent_backend_and_retention_established";
 const absence = { kind: "recent_absence" as const, finalizedSlot: 1000n, finalizedBlockHeight: 251n,
