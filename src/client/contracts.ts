@@ -73,11 +73,16 @@ export type PublicConfig = {
 /** GET /api/auth/session data. Signed out is `null` at use sites. */
 export type Session = { readonly wallet: Address; readonly expiresAt: string };
 
-const PAYER_COUNTS = [2, 3] as const;
+export const PAYER_COUNTS = [2, 3] as const;
 export type PayerCount = (typeof PAYER_COUNTS)[number];
-const MOST_PAYERS: PayerCount = 3;
+export const FEWEST_PAYERS: PayerCount = PAYER_COUNTS.reduce((a, b) => (b < a ? b : a));
+const MOST_PAYERS: PayerCount = PAYER_COUNTS.reduce((a, b) => (b > a ? b : a));
 
 const isPayerCount = (value: unknown): value is PayerCount => PAYER_COUNTS.some((n) => n === value);
+
+export function parsePayerCount(text: string): PayerCount | null {
+  return PAYER_COUNTS.find((n) => String(n) === text) ?? null;
+}
 
 export type Checkout = {
   readonly id: CheckoutId;

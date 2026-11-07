@@ -22,7 +22,7 @@ export type WalletView = {
   readonly connectAction: ConnectAction | null;
 };
 
-export function deriveWalletView(state: SessionState, approving = false): WalletView {
+export function deriveWalletView(state: SessionState, waitingOnPrompt = false): WalletView {
   switch (state.kind) {
     case "signed_out": {
       const status = state.problem === null ? null : problemStatus(state.problem, null);
@@ -41,7 +41,7 @@ export function deriveWalletView(state: SessionState, approving = false): Wallet
       return { control: { kind: "account", address: state.account, signedIn: false }, status, connectAction: status.fix };
     }
     case "signed_in":
-      if (approving) return waiting("payment_prompt");
+      if (waitingOnPrompt) return waiting("payment_prompt");
       return {
         control: { kind: "account", address: state.account, signedIn: true },
         status: { kind: "signed_in", text: `${WORDS.signed_in_as} ${shortAddress(state.account)}.` },

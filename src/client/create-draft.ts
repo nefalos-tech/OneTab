@@ -1,5 +1,8 @@
 import {
+  FEWEST_PAYERS,
   looksLikeAddress,
+  PAYER_COUNTS,
+  parsePayerCount,
   type Address,
   type ClientRequestId,
   type PayerCount,
@@ -46,8 +49,8 @@ export function checkDraft(
   else if (seller === ctx.organizer) errors.seller = "The seller can't be your own wallet. Enter the seller's wallet.";
   else sellerWallet = seller;
 
-  const payerCount: PayerCount | null = input.payerCount === "2" ? 2 : input.payerCount === "3" ? 3 : null;
-  if (payerCount === null) errors.payerCount = "Choose 2 or 3 payers.";
+  const payerCount = parsePayerCount(input.payerCount);
+  if (payerCount === null) errors.payerCount = `Choose ${PAYER_COUNTS.join(" or ")} payers.`;
 
   const amount = parseAmountInput(input.total, decimals);
   if (!amount.ok) errors.total = AMOUNT_PROBLEMS[amount.problem](decimals);
@@ -95,7 +98,7 @@ export function previewTab(
     input.title.trim() || PREVIEW_TITLE,
     amount.ok ? amount.units : toTokenUnits(0n),
     looksLikeAddress(seller) ? seller : null,
-    input.payerCount === "3" ? 3 : 2,
+    parsePayerCount(input.payerCount) ?? FEWEST_PAYERS,
     ctx,
   );
 }
