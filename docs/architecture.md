@@ -71,7 +71,9 @@ F1 created the Frontend paths listed below, except the wallet paths that F2 crea
 
 Frontend ownership of src/app/ excludes API route files. The filesystem parameter [id] corresponds to checkoutId in the API contract. A lane asks the listed owner to change shared files. Backend exposes one session guard for both room and payment routes. Payment owners do not create a second authentication implementation.
 
-Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/, and ESLint rejects such an import. Server-only modules protect privileged configuration and database access. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
+Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/, and ESLint rejects such an import. Server-only modules protect privileged configuration and database access.
+
+Pages get their data only through src/client/checkout-source.ts, the one module that reads `ONETAB_FIXTURES` or calls `notFound()`. Each screen is a pure function of one `CheckoutState`, and src/client/checkout-view.ts holds every rule about what a viewer sees. F3 fills the live branches of checkout-source.ts. F3 to F5 add the live calls for create, join, readiness, start, approve and retry inside `ActionGroup` in src/components/actions.tsx and nowhere else. F4's poller wraps the unchanged screens. It may move a viewer to a state's owner screen only when the polled state changes owner, never on first load. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
 
 ## Checkout execution
 
