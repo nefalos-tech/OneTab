@@ -8,7 +8,7 @@ import { z } from 'zod';
 import {
   assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
   type PayerSignature, type SignatureTarget,
-} from './signature-core.js';
+} from '../../../src/lib/payments/signature-core.js';
 import { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
 export { fromBase64, toBase64 } from '../../../src/lib/payments/signing-payload.js';
 

@@ -9,7 +9,7 @@ import { buildPaymentMessage, createPaymentPlan, equalBytes, inspectPaymentMessa
 import {
   assembleSignedPayment, assembleTrustedSignatures, verifyPayerSignature, verifyWalletSignature,
   type PayerSignature, type SignatureTarget,
-} from '../src/signature-core.js';
+} from '../../../src/lib/payments/signature-core.js';
 
 const syntheticAddress = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
 const lifetime = { blockhash: blockhash(syntheticAddress(30)), lastValidBlockHeight: 100n };
