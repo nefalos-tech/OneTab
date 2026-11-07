@@ -33,7 +33,7 @@ The database is authoritative for membership, readiness, immutable attempt bytes
 | --- | --- |
 | Application | Next.js App Router, React and TypeScript with strict type checking |
 | Package manager | npm with one committed package-lock.json, owned by Frontend |
-| Styling | Tailwind CSS for the three desktop screens |
+| Styling | Tailwind CSS 4 with only the tokens in the [design system](design-system.md). Tailwind's default palette, scale, radii, shadows, breakpoints and widths are disabled |
 | API | Same-origin JSON Route Handlers under src/app/api/ |
 | Authentication | Wallet-signed challenge and opaque, short-lived session cookie |
 | Storage | Supabase Postgres, accessed through server-owned operations |
@@ -46,16 +46,20 @@ Solana Kit and Wallet Standard integration are the starting candidates from the 
 
 ## Module and file ownership
 
-Paths in this table are agreed destinations, not existing implementation files.
+F1 created the Frontend paths listed below, except the wallet paths that F2 creates. The other owners' paths are still agreed destinations.
 
 | Owner | Destination | Responsibility |
 | --- | --- | --- |
 | @Quantomz | src/app/page.tsx | Create checkout |
 | @Quantomz | src/app/checkouts/[id]/page.tsx | Shared checkout room |
 | @Quantomz | src/app/checkouts/[id]/result/page.tsx | Shared result and receipt |
-| @Quantomz | src/app/layout.tsx, src/app/globals.css, src/components/, src/client/ | Layout, screens, polling and API client |
+| @Quantomz | src/app/layout.tsx, src/app/globals.css, src/app/not-found.tsx, src/app/error.tsx, src/components/, src/client/ | Layout, design tokens, screens, page states, polling and API client |
+| @Quantomz | src/app/samples/, src/client/fixtures.ts | The sample data index and the rules that select sample data |
+| @Quantomz | src/client/contracts.ts, src/client/fixture-data.ts | Interim copies of the contracts and sample snapshots. Deleted when B1 publishes src/contracts/ and src/fixtures/ |
 | @Quantomz | src/lib/wallet/, src/components/wallet/ | WalletBridge implementation and wallet controls |
-| @Quantomz | package.json, package-lock.json, tsconfig.json, next.config.*, eslint.config.*, postcss.config.* | One application scaffold and shared dependencies |
+| @Quantomz | package.json, package-lock.json, .nvmrc, tsconfig.json, next.config.ts, eslint.config.mjs, vitest.config.ts, playwright.config.ts | One application scaffold, shared dependencies and test configuration |
+| @Quantomz | scripts/, e2e/, .github/workflows/ci.yml | Design checks, browser tests and CI |
+| @Quantomz | docs/design-system.md, docs/design-decisions.md | The UI contract and its reasoning |
 | @SophiaChua | src/contracts/, src/fixtures/ | Shared types, runtime input schemas and fixture responses |
 | @SophiaChua | src/server/auth/, src/server/rooms/, src/server/db/, src/server/attempt-store/ | Sessions, room operations, database adapter and AttemptStore |
 | @SophiaChua | src/app/api/config/, src/app/api/auth/, src/app/api/checkouts/route.ts, src/app/api/checkouts/[id]/route.ts, its join/ and readiness/ children | Configuration, authentication and room endpoints |
@@ -67,7 +71,7 @@ Paths in this table are agreed destinations, not existing implementation files.
 
 Frontend ownership of src/app/ excludes API route files. The filesystem parameter [id] corresponds to checkoutId in the API contract. A lane asks the listed owner to change shared files. Backend exposes one session guard for both room and payment routes. Payment owners do not create a second authentication implementation.
 
-Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/. Server-only modules protect privileged configuration and database access. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
+Browser modules may import src/contracts/ and browser-safe src/lib/payments/ modules. They must not import src/server/, and ESLint rejects such an import. Server-only modules protect privileged configuration and database access. Payment orchestration depends on AttemptStore; AttemptStore never imports payment orchestration.
 
 ## Checkout execution
 
