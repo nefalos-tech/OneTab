@@ -57,7 +57,7 @@ const restrict = (...patterns) => ({
 export default defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**"]),
+  globalIgnores([".next/**", ".agents/**", ".local-setup/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**"]),
   {
     files: ["src/**/*.{ts,tsx}"],
     rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT),
@@ -73,6 +73,12 @@ export default defineConfig([
   {
     files: ["src/app/**/*.{ts,tsx}"],
     rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT),
+  },
+  {
+    files: ["src/app/api/**/*.{ts,tsx}"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT] }],
+    },
   },
   {
     files: ["src/components/wallet/wallet-scope.tsx"],
