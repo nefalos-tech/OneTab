@@ -4,6 +4,7 @@ import { getRoom, publicConfig } from "../rooms/service";
 import { PaymentFailure } from "./errors";
 import { createPaymentHandlers } from "./http";
 import { createPaymentService, type PaymentDependencies } from "./service";
+import { createPaymentProgress } from "./settlement";
 
 export async function readPaymentRoom(input: { checkoutId: string }): Promise<RoomSnapshot | null> {
   const result = await getRoom(input.checkoutId);
@@ -21,11 +22,16 @@ export async function readPaymentRoom(input: { checkoutId: string }): Promise<Ro
   };
 }
 
-export function createPaymentRuntime(ports?: Pick<PaymentDependencies, "store" | "lifecycle" | "rpc" | "progress">) {
+export function createPaymentRuntime(ports?: Pick<PaymentDependencies, "store" | "lifecycle" | "rpc">) {
   if (!ports) throw new PaymentFailure("CONFIGURATION_UNAVAILABLE");
   const config = publicConfig();
   if (!config.ok) throw new PaymentFailure(config.code);
-  return createPaymentService({ ...ports, config: { ...config.value }, readRoom: readPaymentRoom });
+  const paymentConfig = { ...config.value };
+  const progress = createPaymentProgress({
+    store: ports.store, rpc: ports.rpc, config: paymentConfig,
+    readCheckout: async checkoutId => (await readPaymentRoom({ checkoutId }))?.checkout ?? null,
+  });
+  return createPaymentService({ ...ports, config: paymentConfig, readRoom: readPaymentRoom, progress });
 }
 
 export const paymentHandlers = createPaymentHandlers({

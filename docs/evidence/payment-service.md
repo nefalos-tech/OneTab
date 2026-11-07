@@ -1,6 +1,6 @@
 # Payment application integration
 
-P3 lets authenticated frozen payers contribute verified signatures to the current payment attempt. This implementation connects the promoted signature core to the B1 store interface, B2 session and origin guards, and B3 configuration and room reader. The production routes fail with `CONFIGURATION_UNAVAILABLE` until a durable store, lifecycle adapter, RPC, and progress function are supplied.
+P3 lets authenticated frozen payers contribute verified signatures to the current payment attempt. This implementation connects the promoted signature core to the B1 store interface, B2 session and origin guards, and B3 configuration and room reader. The production routes fail with `CONFIGURATION_UNAVAILABLE` until a durable store, lifecycle adapter, and RPC are supplied.
 
 ## Application interface
 
@@ -27,7 +27,7 @@ Signature collection requires the session wallet in frozen membership and the at
 
 All operations require the B2 wallet session. Mutations require B2's matching origin. Payload GET does not require an Origin header. Body fields cannot override the session wallet. Unknown body fields, malformed UUIDs, invalid hashes, and oversized encodings fail at the HTTP boundary.
 
-`readPaymentRoom` unwraps the real B3 result union. It preserves service failures and maps only `CHECKOUT_NOT_FOUND` to null. It copies readonly participant, signed-wallet, and receipt-contribution arrays into the B1 shape. `createPaymentRuntime` takes explicit store, lifecycle, RPC, and progress ports, then supplies B3's real reader and public configuration. The production route composition currently supplies no persistence ports and therefore fails closed. There is no production memory store or process-global adapter registration.
+`readPaymentRoom` unwraps the real B3 result union. It preserves service failures and maps only `CHECKOUT_NOT_FOUND` to null. It copies readonly participant, signed-wallet, and receipt-contribution arrays into the B1 shape. `createPaymentRuntime` takes explicit store, lifecycle, and RPC ports, then supplies B3's real reader and public configuration. It constructs P4 progress with the same store, config, and RPC, using B3 for the checkout read. The production route composition currently supplies no persistence ports and therefore fails closed. There is no production memory store or process-global adapter registration.
 
 Public attempt responses project only B1 summary fields. They omit signature bytes, lease tokens, frozen transaction bytes, and signed submission bytes. Unknown observed error text becomes a fixed `RPC_UNAVAILABLE` message. `canRetry` requires a safely resolved failed or expired current attempt and an unpaid room. Reservation must enforce the same rule atomically.
 
