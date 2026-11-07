@@ -4,7 +4,8 @@
 <h1>OneTab P1 wallet experiment</h1>
 <p>Solana Devnet test assets. Local feasibility experiment. Wallet keys remain in your wallet.</p>
 <p>Current-profile mode uses two distinct payer accounts with separate prompts. Independent browser profiles can use their own private invitation.</p>
-<label>Wallet <select id="wallets"></select></label> <button id="connect">Connect wallet</button> <button id="clear">Clear local connection</button>
+<label>Wallet <select id="wallets"></select></label> <button id="connect">Connect wallet</button> <button id="disconnect">Disconnect wallet</button> <button id="clear">Clear local connection</button>
+<p>Disconnect wallet asks the selected wallet to disconnect. Clear local connection only clears this tab's connection. Reconnect and verify the displayed payer account before approving.</p>
 <h2>Wallet capability inventory</h2><pre id="inventory">Waiting for a Wallet Standard extension. No signing or sending occurs during inspection.</pre>
 <h2>Frozen payment</h2><pre id="payment">No payment has been prepared.</pre>
 <button id="approve" disabled>Approve my contribution</button> <button id="simulate" disabled>Check first-signature refusal</button>

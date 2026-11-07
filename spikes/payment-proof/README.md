@@ -16,6 +16,14 @@ Open `http://127.0.0.1:4317` in the selected Chrome profile. The initial page ne
 
 Use the current profile sequentially with two distinct payer accounts, or open each invitation in an independent profile. Record the arrangement actually tested. Wallet Standard discovery and connection do not establish transaction-signing compatibility. This spike has no automatic injected-provider fallback and never calls sign-and-send.
 
+## Change payer in the same profile
+
+1. Select the registered wallet and choose **Disconnect wallet**. Wait for the provider-disconnection result. This explicit action calls the optional Wallet Standard `standard:disconnect` feature, even if the last connection failed or no local account is connected. An unavailable feature or provider failure reports an error. **Clear local connection** only forgets this tab's account and does not call the provider.
+2. Open the intended payer's invitation, then choose **Connect wallet**. Select that payer in the wallet prompt if the wallet offers an account choice. Verify the exact displayed address before approving.
+3. If Phantom still returns the previous account, open that account's **Settings > Connected Apps** in Phantom. Disconnect only this experiment's origin. Choose **Connect wallet** again, open the account avatar in the fresh prompt, and select the intended payer. Verify the displayed address again. Leave other connected apps alone.
+
+Wallet Standard disconnect does not promise permission revocation or a different account on the next connect. The new app button's effect on Phantom account selection still requires a live check. No connection operation automatically disconnects a wallet. Disconnecting invalidates pending local approvals immediately, even if provider cleanup later fails. It does not revoke an approval already issued for the frozen payment.
+
 ## Prepare the fixed payment
 
 1. Prepare two distinct Devnet payer wallets and a separate seller wallet in their wallets. Fund both payer token accounts with test USDC and the organizer with test SOL. Create all required ordinary Token Program token accounts beforehand. Keep every wallet key and recovery phrase outside this experiment.
@@ -39,7 +47,7 @@ Use the current profile sequentially with two distinct payer accounts, or open e
 ```
 
 3. Set `SOLANA_RPC_URL` privately if using a provider. The default is the public Devnet endpoint. No RPC URL enters browser assets, invitations, or public reports.
-4. Connect both intended accounts before preparing. A fresh blockhash has a short lifetime. Run the following command once setup is ready.
+4. Inspect both intended accounts before preparing. In one profile, use the account-change procedure above, then reconnect payer zero. A fresh blockhash has a short lifetime. Run the following command once setup is ready.
 
 ```sh
 npm run proof -- prepare --config .private/payment.config.json --port 4317
@@ -56,7 +64,7 @@ The state directory requires mode `0700`. SQLite and invitation files use mode `
 1. Open payer zero's private invitation. The page removes the URL fragment and retains that invitation in this tab's session storage. Check the displayed plan against the reviewed public configuration.
 2. Connect the expected account. Select **Approve my contribution**. The browser validates the full message before one sign-only prompt. The coordinator independently verifies the returned Ed25519 signature.
 3. Verify that submit remains disabled with one approval. Select **Check first-signature refusal**. Only an explicit RPC signature-verification error counts as refusal. An unrelated simulation failure is inconclusive. Simulation never broadcasts.
-4. Open payer one's invitation in the same profile after switching to the second distinct account, or in its independent profile. Connect that account and approve separately. Compare both displayed message hashes.
+4. In the same profile, follow **Change payer in the same profile** before connecting payer one. Alternatively, open payer one's invitation in its independent profile. Verify the second distinct account and approve separately. Compare both displayed message hashes.
 5. Return to payer zero's invitation. Select **Check this transaction** to reload its durable state. **Submit this transaction once** becomes available only when both valid signatures are stored.
 6. Submit once, then check the same transaction until a finalized receipt or a clearly unresolved outcome appears.
 

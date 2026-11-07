@@ -1,10 +1,11 @@
 import type { Wallet, WalletAccount } from '@wallet-standard/base';
-import { StandardConnect, StandardEvents, type StandardConnectFeature, type StandardEventsFeature } from '@wallet-standard/features';
+import { StandardConnect, StandardDisconnect, StandardEvents, type StandardConnectFeature, type StandardDisconnectFeature, type StandardEventsFeature } from '@wallet-standard/features';
 import { SolanaSignTransaction, type SolanaSignTransactionFeature } from '@solana/wallet-standard-features';
 import { address, getAddressEncoder } from '@solana/kit';
 import { equalBytes, fromBase64, inspectPayment, verifyWalletReturn, type Plan, type Slot } from './payment.js';
 
 type ConnectWallet = Wallet & { features: StandardConnectFeature & StandardEventsFeature };
+type DisconnectWallet = Wallet & { features: StandardDisconnectFeature };
 type SignWallet = ConnectWallet & { features: SolanaSignTransactionFeature };
 
 function hasMethod(value: unknown, method: string): boolean {
@@ -13,6 +14,9 @@ function hasMethod(value: unknown, method: string): boolean {
 }
 export function canConnect(wallet: Wallet): wallet is ConnectWallet {
   return hasMethod(wallet.features[StandardConnect], 'connect') && hasMethod(wallet.features[StandardEvents], 'on');
+}
+function canDisconnect(wallet: Wallet): wallet is DisconnectWallet {
+  return hasMethod(wallet.features[StandardDisconnect], 'disconnect');
 }
 export function canSign(wallet: Wallet): wallet is SignWallet {
   const feature = wallet.features[SolanaSignTransaction];
@@ -36,6 +40,18 @@ export class WalletSession {
     this.unsubscribe?.();
     this.unsubscribe = null;
     this.changed();
+  }
+
+  async disconnect(wallet: Wallet): Promise<void> {
+    this.clear();
+    const generation = this.generation;
+    if (!canDisconnect(wallet)) throw new Error('Wallet lacks standard:disconnect 1.0.0. Only the local connection was cleared.');
+    try {
+      await wallet.features[StandardDisconnect].disconnect();
+    } catch {
+      throw new Error('Wallet disconnect failed. The local connection was cleared. Provider disconnection was not confirmed.');
+    }
+    if (generation !== this.generation) throw new AccountChanged('Wallet connection changed while disconnecting. Connect again and check the account.');
   }
 
   async connect(wallet: Wallet, preferred?: string): Promise<void> {

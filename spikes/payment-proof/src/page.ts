@@ -14,6 +14,7 @@ function element<T extends HTMLElement>(id: string, kind: { new(): T }): T {
   return value;
 }
 const walletSelect = element('wallets', HTMLSelectElement);
+const disconnect = element('disconnect', HTMLButtonElement);
 const approve = element('approve', HTMLButtonElement);
 const submit = element('submit', HTMLButtonElement);
 const simulate = element('simulate', HTMLButtonElement);
@@ -30,7 +31,8 @@ if (rawInvite) {
 }
 const stored = sessionStorage.getItem('onetab-p1-invitation');
 const invite = stored ? inviteSchema.parse(JSON.parse(stored)) : null;
-let busy = false;
+let activeOperations = 0;
+let disconnecting = false;
 let state: unknown = null;
 const wallets = getWallets();
 const session = new WalletSession(() => render());
@@ -48,6 +50,7 @@ const viewSchema = z.object({
   approvedSlots: z.array(z.object({ slot: slotSchema })),
 });
 function render() {
+  const busy = activeOperations > 0;
   const info = session.inventory();
   inventory.textContent = JSON.stringify(info ?? { availableWallets: wallets.get().map(wallet => ({
     name: wallet.name, walletStandardVersion: wallet.version, chains: [...wallet.chains], features: Object.keys(wallet.features),
@@ -61,24 +64,35 @@ function render() {
   submit.disabled = busy || !matched || invite?.slot !== 0 || view?.state !== 'ready';
   simulate.disabled = busy || !matched || view?.approvedSlots.length !== 1;
   refresh.disabled = busy || !matched;
+  disconnect.disabled = disconnecting;
 }
 function listWallets() {
   walletSelect.replaceChildren(...wallets.get().map((wallet, index) => {
     const option = document.createElement('option'); option.value = String(index); option.textContent = wallet.name; return option;
   })); render();
 }
-async function run(operation: () => Promise<void>) {
-  if (busy) return;
-  busy = true; message.textContent = ''; render();
+async function run(operation: () => Promise<void>, interrupt = false) {
+  if (activeOperations && !interrupt) return;
+  activeOperations++; message.textContent = ''; render();
   try { await operation(); }
   catch (error) { message.textContent = error instanceof Error ? error.message : 'Operation failed'; }
-  finally { busy = false; render(); }
+  finally { activeOperations--; render(); }
 }
 element('connect', HTMLButtonElement).onclick = () => void run(async () => {
   const wallet = wallets.get()[Number(walletSelect.value)];
   if (!wallet) throw new Error('No Wallet Standard wallet found. Install or enable a supported extension, then reload.');
   await session.connect(wallet, invite?.plan.contributions[invite.slot].wallet);
 });
+disconnect.onclick = () => {
+  if (disconnecting) return;
+  disconnecting = true;
+  void run(async () => {
+    const wallet = wallets.get()[Number(walletSelect.value)];
+    if (!wallet) throw new Error('No Wallet Standard wallet selected. Choose a registered wallet to disconnect.');
+    await session.disconnect(wallet);
+    message.textContent = 'Wallet provider disconnection completed. Reconnect and check the selected account.';
+  }, true).finally(() => { disconnecting = false; render(); });
+};
 element('clear', HTMLButtonElement).onclick = () => session.clear();
 approve.onclick = () => void run(async () => {
   if (!invite) throw new Error('Load your private payer invitation first');
