@@ -143,7 +143,8 @@ type ActionPayload = {
   readonly create_a_checkout: Href;
   readonly reload_page: NoPayload;
 };
-export type Action = { [K in ActionKind]: { readonly kind: K } & ActionPayload[K] }[ActionKind];
+export type ActionOf<K extends ActionKind> = { [P in K]: { readonly kind: P } & ActionPayload[P] }[K];
+export type Action = ActionOf<ActionKind>;
 
 export type ActionsView = {
   readonly primary: Action | null;

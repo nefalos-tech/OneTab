@@ -1,13 +1,13 @@
 import type { Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, type ActionKind } from "./catalog";
-import { checkoutLinks, type Action } from "./checkout-view";
+import { checkoutLinks, type Action, type ActionOf } from "./checkout-view";
 import type { CheckoutId, RoomSnapshot } from "./contracts";
 
 export type LiveKind = {
   [K in ActionKind]: (typeof ACTIONS)[K] extends { readonly busy: string } ? K : never;
 }[ActionKind];
-export type LiveAction = Extract<Action, { readonly kind: LiveKind }>;
+export type LiveAction = ActionOf<LiveKind>;
 
 export function isLiveAction(action: Action): action is LiveAction {
   return "busy" in ACTIONS[action.kind];
@@ -49,7 +49,7 @@ export function roomTracker(show: (snapshot: RoomSnapshot) => void): Track {
 }
 
 type Context = { readonly api: CheckoutApi; readonly track: Track };
-type Run<K extends LiveKind> = (action: Extract<LiveAction, { readonly kind: K }>, context: Context) => Promise<Outcome>;
+type Run<K extends LiveKind> = (action: ActionOf<K>, context: Context) => Promise<Outcome>;
 
 const DONE: Outcome = { kind: "done" };
 
@@ -66,6 +66,10 @@ const RUN: { readonly [K in LiveKind]: Run<K> } = {
   },
 };
 
+function run<K extends LiveKind>(action: ActionOf<K>, context: Context): Promise<Outcome> {
+  return RUN[action.kind](action, context);
+}
+
 function outcomeOf(problem: RequestProblem): Outcome {
   return problem === "signed_out" ? { kind: "signed_out" } : { kind: "notice", text: REQUEST_PROBLEMS[problem] };
 }
@@ -81,7 +85,7 @@ export type Live = {
 
 export function liveActions(api: CheckoutApi): Live {
   return {
-    run: (action, track) => (RUN[action.kind] as Run<LiveKind>)(action, { api, track }),
+    run: (action, track) => run(action, { api, track }),
     refresh: (id, track) => refresh(api, id, track),
   };
 }
