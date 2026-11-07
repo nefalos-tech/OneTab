@@ -7,6 +7,7 @@ import {
   deriveReviewActions,
   deriveRoomView,
   noticeApplies,
+  termsOf,
   type ActionsView,
   type CheckoutState,
   type ClientRequestId,
@@ -289,5 +290,60 @@ describe("a notice applies while its wallet is signed in and its action is offer
   it("ends when its action is no longer offered", () => {
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering({ kind: "connect_wallet" }) })).toBe(false);
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: offering(null) })).toBe(false);
+  });
+});
+
+describe("the payment a payer approves", () => {
+  const termsFor = (id: string) => {
+    const { state } = caseById(id);
+    return termsOf(state.snapshot, state.session);
+  };
+
+  it("is the whole frozen payment, in spot order, for a payer who hasn't approved", () => {
+    const { snapshot } = caseById("signing as spot-2").state;
+    expect(termsFor("signing as spot-2")).toEqual({
+      checkoutId: snapshot.checkout.id,
+      attemptId: snapshot.attempt!.id,
+      network: "devnet",
+      mint: snapshot.checkout.mint,
+      tokenDecimals: 6,
+      totalUnits: "10000000",
+      seller: SAMPLE_WALLETS.seller,
+      feePayer: SAMPLE_WALLETS.organizer,
+      contributions: [
+        { slot: 0, wallet: SAMPLE_WALLETS.organizer, amountUnits: "3333334" },
+        { slot: 1, wallet: SAMPLE_WALLETS.bea, amountUnits: "3333333" },
+        { slot: 2, wallet: SAMPLE_WALLETS.cam, amountUnits: "3333333" },
+      ],
+      payer: SAMPLE_WALLETS.bea,
+      lastValidBlockHeight: 312345678n,
+    });
+  });
+
+  it("exists while the payment is being prepared, before it has an expiry height", () => {
+    expect(termsFor("preparing as spot-1")).toMatchObject({ payer: SAMPLE_WALLETS.organizer, lastValidBlockHeight: null });
+  });
+
+  it("keeps spot order when the server lists payers in another order", () => {
+    const { state } = caseById("signing as spot-2");
+    const shuffled = { ...state.snapshot, participants: [...state.snapshot.participants].reverse() };
+    expect(termsOf(shuffled, state.session)?.contributions.map((c) => c.slot)).toEqual([0, 1, 2]);
+  });
+
+  it.each([
+    "signing as spot-1",
+    "signing as outsider",
+    "signing as signed-out",
+    "ready as spot-1",
+    "submitting as spot-2",
+    "declined-retry as spot-2",
+  ])("doesn't exist for %s", (id) => {
+    expect(termsFor(id)).toBeNull();
+  });
+
+  it("doesn't exist for the seller or for a room missing a payer", () => {
+    const { state } = caseById("signing as spot-2");
+    expect(termsOf(state.snapshot, { ...state.session!, wallet: SAMPLE_WALLETS.seller })).toBeNull();
+    expect(termsOf({ ...state.snapshot, participants: state.snapshot.participants.slice(0, 2) }, state.session)).toBeNull();
   });
 });

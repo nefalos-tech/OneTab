@@ -322,6 +322,32 @@ export function deriveReviewActions(
   };
 }
 
+/**
+ * The payment `session` is asked to approve: only while an attempt is preparing or open for approvals,
+ * the viewer holds a spot and hasn't approved, and the frozen room is full.
+ */
+export function termsOf(snapshot: RoomSnapshot, session: Session | null): ApprovalTerms | null {
+  const { checkout, participants, attempt } = snapshot;
+  if (attempt === null || (attempt.state !== "preparing" && attempt.state !== "signing")) return null;
+  if (session === null || participants.length !== checkout.payerCount) return null;
+  if (!participants.some((p) => p.wallet === session.wallet) || attempt.signedWallets.includes(session.wallet)) return null;
+  return {
+    checkoutId: checkout.id,
+    attemptId: attempt.id,
+    network: checkout.network,
+    mint: checkout.mint,
+    tokenDecimals: checkout.tokenDecimals,
+    totalUnits: checkout.totalUnits,
+    seller: checkout.sellerWallet,
+    feePayer: checkout.organizerWallet,
+    contributions: [...participants]
+      .sort((a, b) => a.slot - b.slot)
+      .map((p) => ({ slot: p.slot, wallet: p.wallet, amountUnits: p.shareUnits })),
+    payer: session.wallet,
+    lastValidBlockHeight: attempt.lastValidBlockHeight === null ? null : BigInt(attempt.lastValidBlockHeight),
+  };
+}
+
 type PaidAttempt = AttemptSummary & { readonly state: "confirmed"; readonly receipt: Receipt };
 
 type Classified =
