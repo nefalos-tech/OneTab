@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { WORDS } from "@/client/catalog";
 import { formatMoney, type Money } from "@/client/units";
+import { shortAddress } from "@/client/checkout-view";
 
 const AMOUNT_SIZE = {
   body: "",
@@ -28,7 +29,7 @@ export function Amount({
 export function AddressText({ value, form }: { readonly value: string; readonly form: "short" | "full" }): ReactNode {
   return form === "short" ? (
     <span className="font-mono" title={value}>
-      {`${value.slice(0, 4)}…${value.slice(-4)}`}
+      {shortAddress(value)}
     </span>
   ) : (
     <span className="font-mono break-all">{value}</span>

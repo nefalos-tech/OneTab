@@ -3,7 +3,9 @@ import type { ReactNode } from "react";
 import { WORDS } from "@/client/catalog";
 import type { Chrome, FlowStepView, SampleBanner } from "@/client/checkout-view";
 import { Icon } from "./icon";
-import { AddressText } from "./values";
+import { SampleWalletPanel } from "./wallet/sample-wallet-panel";
+import { WalletControl } from "./wallet/wallet-control";
+import { WalletStatus } from "./wallet/wallet-status";
 
 type Props = { readonly chrome: Chrome } & (
   | {
@@ -19,10 +21,12 @@ export function PageShell(props: Props): ReactNode {
   const { chrome } = props;
   return (
     <>
-      <SiteHeader networkLabel={chrome.networkLabel} viewerWallet={chrome.viewerWallet} />
+      <SiteHeader networkLabel={chrome.networkLabel} wallet={<WalletControl />} />
+      <WalletStatus />
       <div className="mx-auto max-w-content px-6">
         <FlowSteps steps={chrome.flow} />
         {chrome.sample && <SampleNotice banner={chrome.sample} />}
+        <SampleWalletPanel />
       </div>
       <main id="main" tabIndex={-1} className="mx-auto max-w-content px-6 pt-8 pb-16 focus:outline-none">
         {props.layout === "split" ? (
@@ -41,10 +45,10 @@ export function PageShell(props: Props): ReactNode {
 
 export function SiteHeader({
   networkLabel,
-  viewerWallet,
+  wallet = null,
 }: {
   readonly networkLabel: string;
-  readonly viewerWallet: string | null;
+  readonly wallet?: ReactNode;
 }): ReactNode {
   return (
     <header className="border-b border-line">
@@ -55,17 +59,7 @@ export function SiteHeader({
         </Link>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-small">
           <p className="font-semibold">{networkLabel}</p>
-          <p data-wallet-slot="" className="inline-flex items-center gap-2 text-muted">
-            <Icon name="wallet" className="size-4" />
-            {viewerWallet ? (
-              <>
-                <span className="sr-only">{WORDS.viewing_as} </span>
-                <AddressText value={viewerWallet} form="short" />
-              </>
-            ) : (
-              WORDS.wallet_not_connected
-            )}
-          </p>
+          {wallet}
         </div>
       </div>
     </header>

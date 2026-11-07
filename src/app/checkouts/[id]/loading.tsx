@@ -6,7 +6,7 @@ const BLOCK = "rounded-control bg-brand-soft";
 export default function Loading() {
   return (
     <>
-      <SiteHeader networkLabel={NETWORK_LABELS.devnet} viewerWallet={null} />
+      <SiteHeader networkLabel={NETWORK_LABELS.devnet} />
       <main id="main" tabIndex={-1} aria-busy="true" className="mx-auto max-w-content px-6 pt-8 pb-16 focus:outline-none">
         <p role="status" className="sr-only">
           Loading the checkout
