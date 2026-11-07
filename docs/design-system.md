@@ -126,7 +126,8 @@ The Foreground, Background, Minimum and Use columns are written by hand. The scr
 ## Layout
 
 - Content is at most 1080px wide (`max-w-content`), centered, with 24px side padding.
-- Create and room screens use two columns from 900px up (the `wide:` prefix), with the main column about 7/12 and the side column about 5/12. Below 900px they stack, main column first.
+- Create and room screens use two columns from 900px up (the `wide:` prefix), with the main column about 7/12 and the side column about 5/12.
+- Below 900px, and at 200% zoom on a laptop, the columns stack. The room stacks the tab card, then the status panel with the viewer's action, then the payer list, so the action never sits below every payer. The create screen stacks the form above its preview. The DOM order matches the stacked order, so keyboard order matches what the viewer sees.
 - The result screen is one centered column, at most 640px wide (`max-w-result`).
 - Text is left-aligned. Amounts in lists are right-aligned.
 
@@ -150,11 +151,13 @@ Create checkout:
 ```text
 +-------------------------------+   +----------------------------+
 | Split a purchase              |   | TAB CARD (live preview)    |
-| What are you buying?  [_____] |   | Concert tickets            |
+| Checkout name         [_____] |   | Concert tickets            |
 | Seller wallet         [_____] |   | 60.00 test USDC            |
-| Total in test USDC    [_____] |   | [ 20.00 | 20.00 | 20.00 ]  |
-| Split between      (2)  (3)   |   | Seller SAMP...Se11         |
-| [Review checkout]             |   |                            |
+| Total in test USDC    [_____] |   | Seller SAMP...Se11         |
+| Split between                 |   | [ Joined | Open | Open ]   |
+|   (o) 2 payers  ( ) 3 payers  |   | You       20.00 test USDC  |
+| [Review checkout]             |   | Spot 2    20.00 test USDC  |
+|                               |   | Spot 3    20.00 test USDC  |
 +-------------------------------+   +----------------------------+
 ```
 
@@ -184,17 +187,22 @@ Payment result:
         | (icon) Status label                  |
         | Status line: what happened and       |
         | what happens next                    |
+        | Reason, when the payment stopped     |
         | [primary action, if any]             |
-        | Receipt or payment summary           |
+        | Receipt or transaction reference     |
         | Back to checkout                     |
         +--------------------------------------+
+        | TAB CARD                             |
+        +--------------------------------------+
 ```
+
+The reason always comes before the action, so the viewer reads why a payment stopped before choosing to try again.
 
 ## Components
 
 | Component | Purpose | Variants and states |
 | --- | --- | --- |
-| Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet slot. Layout is split (create, room) or single (result) |
+| Page shell | Header, flow steps, sample banner, page layout | The header holds the logo home link, the network label and the wallet slot. Until F2 adds the wallet control, the slot is plain text with a wallet icon, never a button shape. Layout is split (create, room) or single (result) |
 | Flow steps | Where the viewer is in the flow | Each step is done, current, or upcoming. Current uses `aria-current="step"` |
 | Sample banner | Marks sample data | Visible whenever sample data is shown, with links to the other viewers of the same sample and to every sample |
 | Tab card | The checkout at a glance | Title, total, seller, split bar, counts. Tide fill, white text |
@@ -203,9 +211,9 @@ Payment result:
 | Text field | Form input | Label above, hint below, error below the hint. States: default, focus, invalid, disabled |
 | Choice | Pick 2 or 3 payers | Radio group shown as two side-by-side options |
 | Amount | Money values | Number plus "test USDC", tabular figures |
-| Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. Copy button beside it |
+| Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
-| Status panel | The current state | Tone, label, status line, your share, and the action group |
+| Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group |
 | Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing |
 | Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. A sample receipt has no explorer link |
 | Notice | Inline message | Info, success, warning, danger. Icon plus text |
@@ -225,8 +233,8 @@ Labels and meanings are in the generated [states](#states) region. Each status a
 | --- | --- | --- |
 | `open` | White outline, dashed | None |
 | `joined` | `brand-soft` fill | None |
-| `ready` | `brand-soft` fill | Tide check |
-| `approved` | Marigold fill | Deep Tide check |
+| `ready` | `brand-soft` fill | Check |
+| `approved` | Marigold fill | Check |
 
 Ready and Approved always look different. Ready moves no money.
 
@@ -390,7 +398,30 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 
 ## Debugging the UI
 
-FILL_AFTER_IMPLEMENTATION
+To see any state, run `npm run dev` and open http://localhost:3000/samples. Every sample state and viewer has a stable address, such as `/checkouts/sample-signing?as=spot-2`, that you can send to a teammate.
+
+| Symptom | Where to look |
+| --- | --- |
+| A state shows the wrong label, owner screen or flow step | `SITUATIONS` in `src/client/catalog.ts` |
+| A status line or an action is wrong for one viewer | `STATUS_COPY`, `ROOM_ACTIONS` and `resultActions` in `src/client/checkout-view.ts` |
+| A button label or fixed word is wrong | `ACTIONS` and `WORDS` in `src/client/catalog.ts`. Run `npm run design:write` after the change |
+| A sample shows impossible data | Its spec in `src/client/fixture-data.ts`. `npm test` checks every sample against the contract rules |
+| A sample address returns 404 | Sample data is off, or the sample has no such viewer. Use `npm run dev`, or set `ONETAB_FIXTURES=1` for a production build |
+| A color, size, radius or width does not apply | The class uses a Tailwind default or an arbitrary value, and neither compiles. Use a token from [Tokens](#tokens). `npm run design:check` names the file and line |
+| An amount shows the wrong digits | `src/client/units.ts` formats integer units with BigInt and never rounds |
+| A screen looks wrong for one state only | After `npm run test:e2e`, open its screenshot in `test-results/screens/` |
+
+These files own the decisions behind every screen:
+
+| File | Owns |
+| --- | --- |
+| `src/client/checkout-source.ts` | Which data a page gets. The only reader of `ONETAB_FIXTURES` |
+| `src/client/fixtures.ts` | Sample addresses, viewers, and the registry that the tests enumerate |
+| `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |
+| `src/components/` | Rendering only. No state rules |
+| `scripts/design-system.mjs` | The design check and the generated tables in this document |
+
+An unknown viewer, such as `?as=bogus`, shows the not-found page with HTTP status 200 instead of 404. The room's loading placeholder starts streaming before the page can reject the viewer, and layouts cannot read query strings.
 
 ## Change log
 
