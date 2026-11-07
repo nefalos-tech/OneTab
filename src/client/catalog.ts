@@ -1,3 +1,4 @@
+import type { Problem } from "@/lib/wallet/machine";
 import type { Network } from "./contracts";
 
 export type Screen = "room" | "result";
@@ -184,4 +185,88 @@ export const WORDS = {
   try_sample: "Try it with sample data",
   home: "Go to the start",
   steps: "Checkout steps",
+  cancel: "Cancel",
+  copy_address: "Copy address",
+  disconnect: "Disconnect",
+  wallet: "Wallet",
+  signed_in_as: "Signed in as",
+  sample_wallet: "Sample wallet",
+  sample_wallet_note: "Stands in for a real wallet in sample data. It never signs a payment.",
+  sample_account: "Account",
+  sample_requests: "Requests",
+  connect_request: "OneTab wants to see your wallet address.",
+  sign_request: "OneTab asks you to sign this message:",
+  no_requests: "No requests.",
+  approve: "Approve",
+  reject: "Reject",
+  end_sign_in: "End sign-in",
 } as const;
+
+type WalletFixMeta =
+  | { readonly label: string; readonly element: "button" }
+  | { readonly label: string; readonly element: "external_link"; readonly href: string };
+
+/** The one action each wallet problem offers. Every button runs Connect wallet's flow again. */
+export const WALLET_FIXES = {
+  connect_wallet: { label: ACTIONS.connect_wallet.label, element: "button" },
+  sign_in_again: { label: "Sign in again", element: "button" },
+  try_again: { label: "Try again", element: "button" },
+  get_phantom: { label: "Get Phantom", element: "external_link", href: "https://phantom.com/download" },
+} as const satisfies Record<string, WalletFixMeta>;
+export type WalletFixKind = keyof typeof WALLET_FIXES;
+
+/** While Connect wallet runs. `control` is the header button's label, `line` the status line with Cancel. */
+export const WALLET_WAITING = {
+  connect_prompt: { state: "Connecting", control: "Connecting…", line: "Approve the connection in your wallet." },
+  sign_prompt: {
+    state: "Signing in",
+    control: "Signing in…",
+    line: "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.",
+  },
+  server: { state: "Checking sign-in", control: "Signing in…", line: "Signing in…" },
+} as const satisfies Record<string, { readonly state: string; readonly control: string; readonly line: string }>;
+export type WalletWaiting = keyof typeof WALLET_WAITING;
+
+/** `{address}` becomes the short form of the wallet's current account. */
+export const WALLET_PROBLEMS = {
+  no_wallet: {
+    state: "No wallet found",
+    message: "No Solana wallet found. Install Phantom, then reload this page.",
+    fix: "get_phantom",
+  },
+  wrong_network: {
+    state: "Wrong network",
+    message: "Your wallet isn't on Solana Devnet. Switch it to Devnet, then connect again.",
+    fix: "connect_wallet",
+  },
+  connect_rejected: {
+    state: "Connection refused",
+    message: "You closed the connection request. Nothing was shared.",
+    fix: "connect_wallet",
+  },
+  sign_rejected: { state: "Sign-in refused", message: "You didn't sign in. Nothing was signed or sent.", fix: "sign_in_again" },
+  cannot_sign: { state: "Wallet can't sign in", message: "This wallet can't sign in to OneTab. Use Phantom.", fix: "get_phantom" },
+  challenge_stale: {
+    state: "Sign-in message expired",
+    message: "That sign-in message expired. Sign in again for a new one.",
+    fix: "sign_in_again",
+  },
+  unavailable: {
+    state: "Sign-in unavailable",
+    message: "Sign-in isn't available right now. Try again in a moment.",
+    fix: "try_again",
+  },
+  account_switched: {
+    state: "Account switched",
+    message: "Your wallet switched to {address}. Sign in again to continue as that wallet.",
+    fix: "sign_in_again",
+  },
+  session_expired: {
+    state: "Sign-in expired",
+    message: "Your sign-in expired. Sign in again with the same wallet to continue.",
+    fix: "sign_in_again",
+  },
+} as const satisfies Record<
+  Problem,
+  { readonly state: string; readonly message: string; readonly fix: WalletFixKind }
+>;

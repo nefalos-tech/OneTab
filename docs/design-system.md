@@ -299,7 +299,8 @@ Page states that every screen handles:
 | Signed out | None | **Connect wallet** |
 | Connecting | "Approve the connection in your wallet." | **Cancel** |
 | Signing in | "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money." | **Cancel** |
-| Signed in | None. The header shows the short address | Menu: **Copy address**, **Disconnect** |
+| Checking sign-in | "Signing in…" | **Cancel** |
+| Signed in | None. The header shows the short address, and screen readers hear "Signed in as SAMP…Bea2." | Menu: **Copy address**, **Disconnect** |
 | No wallet found | "No Solana wallet found. Install Phantom, then reload this page." | **Get Phantom** |
 | Wrong network | "Your wallet isn't on Solana Devnet. Switch it to Devnet, then connect again." | **Connect wallet** |
 | Connection refused | "You closed the connection request. Nothing was shared." | **Connect wallet** |
@@ -385,6 +386,21 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `try_sample` | Try it with sample data |
 | `home` | Go to the start |
 | `steps` | Checkout steps |
+| `cancel` | Cancel |
+| `copy_address` | Copy address |
+| `disconnect` | Disconnect |
+| `wallet` | Wallet |
+| `signed_in_as` | Signed in as |
+| `sample_wallet` | Sample wallet |
+| `sample_wallet_note` | Stands in for a real wallet in sample data. It never signs a payment. |
+| `sample_account` | Account |
+| `sample_requests` | Requests |
+| `connect_request` | OneTab wants to see your wallet address. |
+| `sign_request` | OneTab asks you to sign this message: |
+| `no_requests` | No requests. |
+| `approve` | Approve |
+| `reject` | Reject |
+| `end_sign_in` | End sign-in |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
 <!-- /design-system:words -->
