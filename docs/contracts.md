@@ -15,7 +15,7 @@ The [specification](../spec.md) owns product behavior. The [architecture](archit
 
 ## Public configuration
 
-GET /api/config returns network, mint, tokenDecimals and confirmationTarget. The values come from validated server configuration. network is devnet and confirmationTarget is finalized. RPC URLs and database credentials are never returned.
+GET /api/config returns network, mint, tokenDecimals and confirmationTarget. The values come from validated server configuration. `SOLANA_CLUSTER` must be `devnet`, `USDC_MINT` must be a base58 address, and `USDC_DECIMALS` must be an integer from 0 through 255. The response fixes `network` to devnet and `confirmationTarget` to finalized. RPC URLs and database credentials are never returned.
 
 The browser uses this response for labels and payment validation. Fixture mode provides an explicitly labeled test configuration without contacting the database or RPC. Production signing is disabled until valid configuration is present.
 
@@ -28,7 +28,7 @@ The browser uses this response for labels and payment validation. Fixture mode p
 | phase | open, ready, paying, paid or needs_attention, derived by the server from membership/readiness and the current attempt |
 | attempt | null or the AttemptSummary below |
 
-Derive phase in this order. A successful finalized receipt gives paid. Otherwise an attempt in declined, unresolved, failed or expired gives needs_attention. Any other existing attempt gives paying. Without an attempt, a full room with every payer ready gives ready, and all other rooms give open. needs_attention does not imply that retry is safe.
+Derive phase in this order. A successful finalized receipt or the checkout's paid-attempt marker gives paid. Otherwise an attempt in declined, unresolved, failed or expired gives needs_attention. Any other existing attempt gives paying. Without an attempt, a full room with every payer ready gives ready, and all other rooms give open. needs_attention does not imply that retry is safe.
 
 The public snapshot contains no session-specific flags. The frontend derives its membership from GET /api/auth/session. Endpoint authorization remains authoritative even if a button appears enabled.
 
@@ -79,9 +79,9 @@ Authentication challenges expire after five minutes and bind the configured orig
 
 The server derives the acting wallet from the session. Clients never authorize a mutation by passing another wallet address. Seller wallets cannot claim payer slots. Checkout creation rejects a seller equal to the organizer.
 
-Creating a checkout uses a client-generated UUID clientRequestId scoped to the authenticated organizer. An identical retry returns the same checkout. Reusing that key with different input returns a conflict. Creation and the organizer's slot commit together.
+Creating a checkout uses a client-generated UUID clientRequestId scoped to the authenticated organizer. An identical retry returns the same checkout. Reusing that key with different input returns a conflict. Creation and the organizer's slot commit together. The title is trimmed and must contain 1 to 120 characters. The total is a positive u64 decimal string with at least one unit per payer.
 
-Rejoining returns the existing slot. Readiness updates are idempotent and blocked once an attempt has frozen the participants. A retry requires the exact latest retryOfAttemptId and canRetry=true. Duplicate preparation while an attempt is active returns that attempt, never another message.
+Rejoining returns the existing slot. Joins lock the checkout row, then claim the lowest available non-organizer slot. The seller cannot join. New membership and readiness updates are blocked once any attempt exists or the checkout is paid. Readiness updates are idempotent and membership-only. B3 mutations and public snapshot reads lock the checkout row first. B4 uses the same row lock when it starts an attempt. This prevents readiness changes while B4 copies participants. It also prevents a public read from combining room state from before and after an attempt starts. A retry requires the exact latest retryOfAttemptId and canRetry=true. Duplicate preparation while an attempt is active returns that attempt, never another message.
 
 Signature upload verifies the caller, expected signer, message and signature before storage. Identical uploads return the existing result. The final accepted signature triggers one bounded submit pass. Any frozen participant may call submit again to resume the same transaction. No missing signatures are synthesized.
 
