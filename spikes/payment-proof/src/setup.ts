@@ -1,7 +1,7 @@
 import { renameSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { Coordinator } from './coordinator.js';
-import { freezePayment, planBytes, equalBytes, type Plan } from './payment.js';
+import { corePlanFromProofPlan, freezePayment, planBytes, equalBytes, type Plan } from './payment.js';
 import { type ProofRpc } from './rpc.js';
 import { ProofFailure } from './errors.js';
 
@@ -10,7 +10,7 @@ export async function prepareExperiment(options: {
   checkpoint?: (boundary: 'after_initialize') => void;
 }): Promise<void> {
   if (options.proof.view().kind === 'unprepared') {
-    const lifetime = await options.rpc.prepare(options.plan);
+    const lifetime = await options.rpc.prepare(corePlanFromProofPlan(options.plan));
     const payment = await freezePayment({ id: randomUUID(), plan: options.plan, ...lifetime });
     await options.rpc.checkFee(payment);
     await options.proof.initialize(payment);

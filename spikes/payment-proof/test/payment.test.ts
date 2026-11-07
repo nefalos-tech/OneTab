@@ -199,3 +199,56 @@ test('missing, wrong, invalid, stale, changed-message and extra signatures canno
   assert.ok(submission.reference.length > 70);
   assert.equal(toBase64(getTransactionDecoder().decode(fromBase64(submission.signedBase64)).messageBytes), f.payment.messageBase64);
 });
+
+const P1_KNOWN_ANSWER = {
+  "id": "11111111-1111-4111-8111-111111111111",
+  "plan": {
+    "network": "devnet",
+    "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "decimals": 6,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "sellerWallet": "LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY",
+    "sellerTokenAccount": "QWmroo4YnnMqYW3cnxWkFdaTxGD3P7vMSzwMHGbUzwF",
+    "feePayer": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+    "total": "4000001",
+    "contributions": [
+      {
+        "slot": 0,
+        "wallet": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "sourceTokenAccount": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8",
+        "units": "2000001"
+      },
+      {
+        "slot": 1,
+        "wallet": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        "sourceTokenAccount": "GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq",
+        "units": "2000000"
+      }
+    ]
+  },
+  "planHash": "3ccf9aeda8b7671bce1f24e26c2f52e0a98fdf57f274069b06164644a2bd2ca1",
+  "messageHash": "ed2300a9401acbdb1dd3bfe4704dc9146a503c3a1e94f7da1cb036081e1cbff7",
+  "blockhash": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "lastValidBlockHeight": "100",
+  "messageBase64": "AgEDCAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+  "transactionBase64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgEDCAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+  "version": "legacy"
+};
+
+test('P1 d1fb9d6 synthetic known-answer plan, message and unsigned transaction bytes stay unchanged', async () => {
+  const expected = { ...P1_KNOWN_ANSWER, plan: planSchema.parse(P1_KNOWN_ANSWER.plan) };
+  const payment = await freezePayment(expected);
+  assert.deepEqual(payment, expected);
+  assert.deepEqual(await inspectPayment(payment, expected), expected);
+});
+
+test('P1 wire adapter keeps two stable ordered slots and rejects supplied-share disagreement', async () => {
+  const { plan } = await syntheticFixture();
+  for (const contributions of [
+    [plan.contributions[1], plan.contributions[0]],
+    [plan.contributions[0]],
+    [...plan.contributions, { ...plan.contributions[1], slot: 2 }],
+    [{ ...plan.contributions[0], units: '2000000' }, plan.contributions[1]],
+  ]) assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
+  assert.equal(planSchema.safeParse({ ...plan, total: '1' }).success, false);
+});

@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import { getAddressDecoder, getCompiledTransactionMessageDecoder, getTransactionDecoder } from '@solana/kit';
 import { TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
-import { equalBytes, fromBase64, type FrozenPayment, type Plan, type Submission } from './payment.js';
+import { equalBytes, fromBase64, type FrozenPayment, type Submission } from './payment.js';
 import { ProofFailure } from './errors.js';
+import type { PaymentPlan } from './payment-core.js';
 
 const integer = z.number().int().nonnegative().safe();
 const tokenBalance = z.object({
@@ -30,12 +31,13 @@ export type Simulation = { kind: 'signature_refused' } | { kind: 'inconclusive';
 export class RpcRejected extends Error {
   constructor(readonly code: number) { super('RPC rejected request'); }
 }
+type FeePayment = Readonly<{ plan: Pick<PaymentPlan, 'feePayer'>; messageBase64: string }>;
 export interface ProofRpc {
-  prepare(plan: Plan): Promise<{ blockhash: string; lastValidBlockHeight: string }>;
+  prepare(plan: PaymentPlan): Promise<{ blockhash: string; lastValidBlockHeight: string }>;
   send(submission: Submission): Promise<string>;
   observe(payment: FrozenPayment, submission: Submission): Promise<Observation>;
   simulateIncomplete(transactionBase64: string): Promise<Simulation>;
-  checkFee(payment: FrozenPayment): Promise<{ feeLamports: string }>;
+  checkFee(payment: FeePayment): Promise<{ feeLamports: string }>;
   height(): Promise<bigint>;
 }
 
@@ -72,12 +74,12 @@ export class DevnetRpc implements ProofRpc {
     return fromBase64(account.value.data[0]);
   }
 
-  async prepare(plan: Plan): Promise<{ blockhash: string; lastValidBlockHeight: string }> {
+  async prepare(plan: PaymentPlan): Promise<{ blockhash: string; lastValidBlockHeight: string }> {
     await this.assertDevnet();
     const mint = await this.account(plan.mint, true);
     if (mint.length !== 82 || mint[44] !== 6 || mint[45] !== 1) throw new ProofFailure('MINT_INVALID');
     for (const account of [...plan.contributions.map(payer => ({
-      wallet: payer.wallet, token: payer.sourceTokenAccount, minimum: BigInt(payer.units),
+      wallet: payer.wallet, token: payer.sourceTokenAccount, minimum: payer.units,
     })), { wallet: plan.sellerWallet, token: plan.sellerTokenAccount, minimum: 0n }]) {
       const data = await this.account(account.token);
       if (data.length !== 165) throw new ProofFailure('TOKEN_ACCOUNT_INVALID');
@@ -106,7 +108,7 @@ export class DevnetRpc implements ProofRpc {
     }]));
   }
 
-  async checkFee(payment: FrozenPayment): Promise<{ feeLamports: string }> {
+  async checkFee(payment: FeePayment): Promise<{ feeLamports: string }> {
     await this.assertDevnet();
     const fee = z.object({ value: integer.nullable() }).parse(await this.call('getFeeForMessage', [payment.messageBase64, { commitment: 'confirmed' }]));
     const balance = z.object({ value: integer }).parse(await this.call('getBalance', [payment.plan.feePayer, { commitment: 'confirmed' }]));
