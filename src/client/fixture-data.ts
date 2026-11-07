@@ -73,7 +73,7 @@ export const SAMPLE_WALLETS = {
 export const SAMPLE_SESSION_EXPIRY = "2099-01-01T00:00:00.000Z";
 
 const SPOT_WALLETS = [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam] as const;
-const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 88);
+const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 87);
 const LAST_VALID_BLOCK_HEIGHT = height("312345678");
 const CREATED_AT = "2026-11-07T09:00:00.000Z";
 const OBSERVED_AT = "2026-11-07T14:05:00.000Z";

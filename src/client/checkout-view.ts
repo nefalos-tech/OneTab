@@ -1,3 +1,4 @@
+import { isSignature } from "@solana/kit";
 import type {
   Address,
   AttemptId,
@@ -257,12 +258,8 @@ export type ResultBody =
   | { readonly kind: "approvals"; readonly stage: "preparing" | "signing" }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
   | { readonly kind: "unresolved"; readonly transactionReference: string | null }
-  | {
-      readonly kind: "needs_attention";
-      readonly recovery: Recovery;
-      readonly reason: Reason | null;
-      readonly transactionReference: string | null;
-    }
+  | { readonly kind: "failed"; readonly reason: Reason; readonly transactionReference: string | null }
+  | { readonly kind: "stopped"; readonly transactionReference: string | null }
   | { readonly kind: "paid"; readonly receipt: ReceiptView };
 
 export type ReceiptView = {
@@ -362,18 +359,15 @@ export function deriveResultView(state: CheckoutState): ResultView {
   const c = classify(state.snapshot);
   const role = roleOf(state.snapshot, state.session, c.situation);
   const tab = tabOf(state.snapshot, role);
-  const body = bodyOf(c, role, tab, state.page, state.source.kind === "sample" ? null : state.snapshot.checkout.network);
+  const explorerUrl =
+    c.situation === "paid" && state.source.kind === "live" ? EXPLORER[state.snapshot.checkout.network](c.receipt.transactionReference) : null;
   return {
     chrome: chromeOf(state, SITUATIONS[c.situation].step, "result"),
     status: statusOf(c, role, tab),
     tab,
-    body,
+    body: bodyOf(c, tab, state.page, explorerUrl),
     actions: {
-      ...resultActions(body, {
-        checkoutId: state.snapshot.checkout.id,
-        signedOut: role.kind === "signed_out",
-        links: state.source.links,
-      }),
+      ...resultActions(c, { checkoutId: state.snapshot.checkout.id, role, links: state.source.links, explorerUrl }),
       sample: sampleActions(state),
     },
     connection: connectionOf(state.page),
@@ -448,10 +442,13 @@ function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
   const receipt = attempt.receipt;
   const shares = [...snapshot.participants].sort((a, b) => a.slot - b.slot);
   const proves =
-    isTransactionReference(receipt.transactionReference) &&
+    isTransactionSignature(receipt.transactionReference) &&
     receipt.transactionReference === attempt.transactionReference &&
     receipt.sellerWallet === checkout.sellerWallet &&
     receipt.totalUnits === checkout.totalUnits &&
+    shares.length === checkout.payerCount &&
+    shares.every((p, slot) => p.slot === slot) &&
+    receipt.contributions.reduce((sum, c) => sum + BigInt(c.amountUnits), 0n) === BigInt(checkout.totalUnits) &&
     receipt.contributions.length === shares.length &&
     receipt.contributions.every(
       (c, i) => c.slot === shares[i]?.slot && c.wallet === shares[i]?.wallet && c.amountUnits === shares[i]?.shareUnits,
@@ -459,7 +456,8 @@ function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
   return proves ? (receipt as VerifiedReceipt) : null;
 }
 
-const isTransactionReference = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(s);
+/** isSignature throws on a character outside base58 rather than answering false. */
+const isTransactionSignature = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]+$/.test(s) && isSignature(s);
 
 const EXPLORER: { readonly [N in Network]: (reference: string) => string } = {
   devnet: (reference) => `https://explorer.solana.com/tx/${reference}?cluster=devnet`,
@@ -594,7 +592,7 @@ function recoveryOf(attempt: AttemptSummary, role: ViewerRole): Recovery {
   return role.kind === "organizer" ? { kind: "organizer_can_retry", retryOfAttemptId: id } : { kind: "waiting_for_organizer" };
 }
 
-function bodyOf(c: Classified, role: ViewerRole, tab: TabView, page: PageFacts, network: Network | null): ResultBody {
+function bodyOf(c: Classified, tab: TabView, page: PageFacts, explorerUrl: string | null): ResultBody {
   switch (c.situation) {
     case "open_spots":
     case "full_not_ready":
@@ -608,22 +606,17 @@ function bodyOf(c: Classified, role: ViewerRole, tab: TabView, page: PageFacts, 
       return { kind: "in_progress", transactionReference: c.attempt?.transactionReference ?? null };
     case "unresolved":
       return { kind: "unresolved", transactionReference: c.attempt.transactionReference };
-    case "declined":
     case "failed":
+      return { kind: "failed", reason: reasonOf(c.attempt, page.noted), transactionReference: c.attempt.transactionReference };
+    case "declined":
     case "expired":
-      return {
-        kind: "needs_attention",
-        recovery: recoveryOf(c.attempt, role),
-        reason: reasonOf(c.attempt, page.noted),
-        transactionReference: c.attempt.transactionReference,
-      };
+      return { kind: "stopped", transactionReference: c.attempt.transactionReference };
     case "paid":
-      return { kind: "paid", receipt: receiptOf(c.receipt, tab, network) };
+      return { kind: "paid", receipt: receiptOf(c.receipt, tab, explorerUrl) };
   }
 }
 
-function reasonOf(attempt: AttemptSummary, noted: readonly NotedCause[]): Reason | null {
-  if (attempt.state !== "failed") return null;
+function reasonOf(attempt: AttemptSummary, noted: readonly NotedCause[]): Reason {
   if (attempt.transactionReference !== null) return reason("network_rejected", "attempt");
   const fromRoom = attempt.error === null ? null : causeOfCode(attempt.error.code);
   if (fromRoom !== null) return reason(fromRoom, "room");
@@ -633,7 +626,7 @@ function reasonOf(attempt: AttemptSummary, noted: readonly NotedCause[]): Reason
 
 const reason = (key: StopReason, from: Reason["from"]): Reason => ({ key, ...STOP_REASONS[key], from });
 
-function receiptOf(receipt: VerifiedReceipt, tab: TabView, network: Network | null): ReceiptView {
+function receiptOf(receipt: VerifiedReceipt, tab: TabView, explorerUrl: string | null): ReceiptView {
   const decimals = tab.total.decimals;
   return {
     transactionReference: receipt.transactionReference,
@@ -646,7 +639,7 @@ function receiptOf(receipt: VerifiedReceipt, tab: TabView, network: Network | nu
       isViewer: tab.spots.some((s) => s.slot === c.slot && s.isViewer),
     })),
     observedAt: formatUtc(receipt.observedAt),
-    explorerUrl: network === null ? null : EXPLORER[network](receipt.transactionReference),
+    explorerUrl,
   };
 }
 
@@ -665,31 +658,36 @@ function formatUtc(iso: string): string {
 }
 
 function resultActions(
-  body: ResultBody,
-  c: { readonly checkoutId: CheckoutId; readonly signedOut: boolean; readonly links: ScreenLinks },
+  c: Classified,
+  a: { readonly checkoutId: CheckoutId; readonly role: ViewerRole; readonly links: ScreenLinks; readonly explorerUrl: string | null },
 ): ActionPlan {
-  const back = { kind: "back_to_checkout", href: c.links.room } as const;
-  const connect = c.signedOut ? ({ kind: "connect_wallet" } as const) : null;
-  switch (body.kind) {
-    case "not_started":
-    case "approvals":
+  const back = { kind: "back_to_checkout", href: a.links.room } as const;
+  const connect = a.role.kind === "signed_out" ? ({ kind: "connect_wallet" } as const) : null;
+  switch (c.situation) {
+    case "open_spots":
+    case "full_not_ready":
+    case "ready":
+    case "preparing":
+    case "signing":
       return { primary: back, secondary: [] };
-    case "in_progress":
+    case "submitting":
+    case "confirming":
     case "unresolved":
       return { primary: connect, secondary: [back] };
-    case "needs_attention":
+    case "declined":
+    case "failed":
+    case "expired": {
+      const recovery = recoveryOf(c.attempt, a.role);
       return {
         primary:
-          body.recovery.kind === "organizer_can_retry"
-            ? { kind: "retry", checkoutId: c.checkoutId, retryOfAttemptId: body.recovery.retryOfAttemptId }
+          recovery.kind === "organizer_can_retry"
+            ? { kind: "retry", checkoutId: a.checkoutId, retryOfAttemptId: recovery.retryOfAttemptId }
             : connect,
         secondary: [back],
       };
+    }
     case "paid":
-      return {
-        primary: body.receipt.explorerUrl === null ? null : { kind: "view_on_explorer", href: body.receipt.explorerUrl },
-        secondary: [back],
-      };
+      return { primary: a.explorerUrl === null ? null : { kind: "view_on_explorer", href: a.explorerUrl }, secondary: [back] };
   }
 }
 

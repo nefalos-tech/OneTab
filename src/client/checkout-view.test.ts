@@ -230,6 +230,11 @@ describe("a receipt shows only when the room proves this checkout's payment", ()
   const withAttempt = (changes: Partial<AttemptSummary>): RoomSnapshot => ({ ...paid.snapshot, attempt: { ...attempt, ...changes } });
   const withReceipt = (changes: Partial<Receipt>): RoomSnapshot => withAttempt({ receipt: { ...receipt, ...changes } });
   const unsigned = (reference: string) => withAttempt({ transactionReference: reference, receipt: { ...receipt, transactionReference: reference } });
+  const spotsAre = (spots: readonly { readonly slot: number; readonly units: string }[]): RoomSnapshot => {
+    const participants = spots.map(({ slot, units }, i) => ({ ...paid.snapshot.participants[i]!, slot, shareUnits: units as TokenUnits }));
+    const contributions = participants.map((p) => ({ slot: p.slot, wallet: p.wallet, amountUnits: p.shareUnits }));
+    return { ...withReceipt({ contributions }), participants };
+  };
 
   it("shows the receipt for the paid sample, so the rows below each break one thing", () => {
     expect(deriveResultView(live(paid.snapshot)).body.kind).toBe("paid");
@@ -239,6 +244,14 @@ describe("a receipt shows only when the room proves this checkout's payment", ()
     ["names a reference other than the attempt's", withReceipt({ transactionReference: receipt.transactionReference.replace(/Txn5$/, "Txn6") })],
     ["names a reference that isn't base58", unsigned("0".repeat(88))],
     ["names a reference too short to be a signature", unsigned("1".repeat(63))],
+    ["names a base58 reference that decodes to 47 bytes", unsigned("2".repeat(64))],
+    ["names a base58 reference that decodes to 65 bytes", unsigned("z".repeat(88))],
+    ["names the old 88-character sample reference, 65 bytes", unsigned(`SAMPLEtransaction${"1".repeat(67)}Txn5`)],
+    ["names B1's confirmed fixture reference, 63 bytes", unsigned(roomFixtures.data.confirmed.attempt!.transactionReference!)],
+    ["comes from a room missing a spot, listing only the spots it names", spotsAre([{ slot: 0, units: "30000000" }])],
+    ["comes from a room with no one in it", spotsAre([])],
+    ["comes from a room that lists spot 1 twice", spotsAre([{ slot: 0, units: "30000000" }, { slot: 0, units: "30000000" }])],
+    ["comes from a room whose shares add up to a third of the total", spotsAre([{ slot: 0, units: "10000000" }, { slot: 1, units: "10000000" }])],
     ["names another seller", withReceipt({ sellerWallet: SAMPLE_WALLETS.outsider })],
     ["names another total", withReceipt({ totalUnits: "1" as TokenUnits })],
     ["sends a share to another wallet", withReceipt({ contributions: shares.map((c) => (c.slot === 1 ? { ...c, wallet: SAMPLE_WALLETS.outsider } : c)) })],
@@ -711,7 +724,7 @@ describe("B1's room fixtures, read with the parser the server uses for rooms", (
     submitting: "submitting",
     unresolved: "unresolved",
     declined: "declined",
-    confirmed: "paid",
+    confirmed: "confirming",
     failedBlocked: "failed",
     failedRetry: "failed",
     expired: "expired",
@@ -755,10 +768,10 @@ describe("why a failed payment stopped", () => {
     });
   const reasonOf = (changes: Partial<AttemptSummary>, noted: PageFacts["noted"] = []) => {
     const body = resultOf(changes, noted).body;
-    return body.kind === "needs_attention" ? body.reason && { key: body.reason.key, from: body.reason.from } : "no reason slot";
+    return body.kind === "failed" ? { key: body.reason.key, from: body.reason.from } : body.kind === "stopped" ? null : "no reason slot";
   };
   const masked = { code: "INVALID_PAYMENT", message: SENTINEL } as const;
-  const sent = "SAMPLEtransaction".padEnd(84, "1") + "Txn5";
+  const sent = "SAMPLEtransaction".padEnd(83, "1") + "Txn5";
 
   it.each<[string, Partial<AttemptSummary>, PageFacts["noted"], { key: string; from: string } | null]>([
     ["sent, whatever the room or this page says", { transactionReference: sent, error: { code: "INSUFFICIENT_SOL", message: SENTINEL } }, [{ attemptId: attempt.id, cause: "short_usdc" }], { key: "network_rejected", from: "attempt" }],
@@ -969,7 +982,7 @@ describe("every room the generator builds keeps the honesty rules", () => {
 
   it("gives a reason exactly for a failed attempt, and mentions a paid fee only when it was sent", () => {
     const honest = (b: Built, result: ResultView) => {
-      const reason = result.body.kind === "needs_attention" ? result.body.reason : null;
+      const reason = result.body.kind === "failed" ? result.body.reason : null;
       if ((reason !== null) !== (result.status.situation === "failed")) return false;
       return reason === null || /may have paid/.test(reason.happened) === ((b.snapshot.attempt?.transactionReference ?? null) !== null);
     };
@@ -993,7 +1006,7 @@ describe("every explanation is at most two sentences", () => {
     const [room, result] = views(c.state);
     atMostTwo("room line", room.status.line);
     atMostTwo("result line", result.status.line);
-    const reason = result.body.kind === "needs_attention" ? result.body.reason : null;
+    const reason = result.body.kind === "failed" ? result.body.reason : null;
     if (reason) {
       expect(sentences(reason.happened), reason.happened).toHaveLength(1);
       if (reason.next) expect(sentences(reason.next), reason.next).toHaveLength(1);

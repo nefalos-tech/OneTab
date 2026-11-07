@@ -17,7 +17,7 @@ export function ResultScreen({ state }: { readonly state: CheckoutState }): Reac
           you={null}
           actions={view.actions}
           heading="h1"
-          reason={view.body.kind === "needs_attention" ? view.body.reason : null}
+          reason={view.body.kind === "failed" ? view.body.reason : null}
           connection={view.connection}
         >
           <ResultDetails body={view.body} />
@@ -38,7 +38,8 @@ function ResultDetails({ body }: { readonly body: ResultBody }): ReactNode {
       return <p className="text-muted">{APPROVALS[body.stage]}</p>;
     case "in_progress":
     case "unresolved":
-    case "needs_attention":
+    case "failed":
+    case "stopped":
       return <Reference value={body.transactionReference} />;
     case "paid":
       return <Receipt receipt={body.receipt} />;
