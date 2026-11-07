@@ -136,3 +136,15 @@ export type RoomSnapshot = {
   readonly phase: Phase;
   readonly attempt: AttemptSummary | null;
 };
+
+/** PROVISIONAL(B1): every JSON success body is `{ data }`. */
+export type DataEnvelope<T> = { readonly data: T };
+
+/** PROVISIONAL(B1): every JSON error body. */
+export type ErrorEnvelope = { readonly error: { readonly code: ErrorCode; readonly message: string } };
+
+/** PROVISIONAL(B1): POST /api/auth/challenge data. */
+export type AuthChallenge = { readonly challengeId: string; readonly messageBase64: string; readonly expiresAt: string };
+
+/** PROVISIONAL(B1): POST /api/auth/verify body. */
+export type AuthVerifyRequest = { readonly challengeId: string; readonly signatureBase64: string };
