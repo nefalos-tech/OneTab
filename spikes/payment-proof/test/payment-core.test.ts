@@ -8,7 +8,7 @@ import { getTransferCheckedInstructionDataDecoder, TOKEN_PROGRAM_ADDRESS } from 
 import {
   DEVNET_USDC, buildPaymentMessage, createPaymentPlan, equalShares, inspectPaymentMessage, sha256,
   type MessageCandidate, type PayerSource,
-} from '../src/payment-core.js';
+} from '../../../src/lib/payments/payment-core.js';
 
 const COMPUTE_BUDGET_PROGRAM = 'ComputeBudget111111111111111111111111111111';
 const U64_MAX = (1n << 64n) - 1n;
