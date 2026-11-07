@@ -47,6 +47,6 @@ Three temporary negative controls removed cryptographic verification, input copy
 
 ## Remaining integration
 
-B1's executable contracts are still required for application integration. P3 authentication, attempt reservation, signability, durable idempotency, and concurrent application uploads depend on B2 through B4. This work supplies the independent signature computations. P1's local two-payer experiment continues to use its existing coordinator and SQLite store.
+The core now lives in `src/lib/payments/signature-core.ts`. The [P3 application integration](payment-service.md) adds reservation, frozen payload retrieval, authenticated collection, lifecycle ports, HTTP routes, and local concurrency tests against B1, B2, and B3. Durable B4 persistence and production composition remain required. P1's local two-payer experiment continues to use its existing coordinator and SQLite store.
 
 These results are local synthetic and browser computation evidence. The three-payer hosted checkout and real-wallet application acceptance remain open.
