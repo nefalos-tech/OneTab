@@ -70,6 +70,7 @@ test("the room's primary action sits above the payer list when stacked, and besi
   for (const c of cases) {
     await page.setViewportSize({ width: 640, height: 900 });
     await page.goto(c.state.source.links.room);
+    await expect(page.locator("[data-action='primary']"), c.id).toBeVisible();
     const primary = await page.locator("[data-action='primary']").boundingBox();
     const payers = await page.getByRole("heading", { name: "Payers", exact: true }).boundingBox();
     expect(primary!.y, c.id).toBeLessThan(payers!.y);
