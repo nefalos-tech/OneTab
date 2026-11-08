@@ -248,14 +248,21 @@ async function main() {
       accounts.set(account.token, encoded(getTokenEncoder().encode({ mint: plan.mint, owner: account.wallet, amount: 100n, delegate: null, state: AccountState.Initialized, isNative: null, delegatedAmount: 0n, closeAuthority: null })));
     }
     const calls = [];
+    const rpcNotes = [];
     const sent = [];
+    let restarted = false;
+    const note = (method, detail = {}) => {
+      calls.push(method);
+      rpcNotes.push({ phase: restarted ? "after-restart" : "before-restart", method, ...detail });
+    };
+    const sha256Base64 = value => createHash("sha256").update(Buffer.from(value, "base64")).digest("hex");
     const latestBlockhash = getAddressDecoder().decode(new Uint8Array(32).fill(7));
     const rpc = createServer(async (incoming, outgoing) => {
       const chunks = [];
       for await (const chunk of incoming) chunks.push(chunk);
       const body = JSON.parse(Buffer.concat(chunks).toString() || "{}");
-      calls.push(body.method);
       let result;
+      let detail = {};
       if (body.method === "getGenesisHash") result = DEVNET_GENESIS_HASH;
       else if (body.method === "getBalance") result = { value: 15000 };
       else if (body.method === "getFeeForMessage") result = { value: 15000 };
@@ -263,13 +270,26 @@ async function main() {
       else if (body.method === "getAccountInfo") result = accounts.get(String(body.params?.[0])) ?? { value: null };
       else if (body.method === "getEpochInfo") result = { absoluteSlot: 10, blockHeight: 10 };
       else if (body.method === "getBlockHeight") result = 90;
-      else if (body.method === "getSignatureStatuses") result = { context: { slot: 1 }, value: [null] };
+      else if (body.method === "getSignatureStatuses") {
+        const status = { context: { slot: 1 }, value: [null] };
+        if (status.value[0]?.confirmationStatus === "finalized") throw new Error("finalized status before replacement send");
+        detail = { status: "absent" };
+        result = status;
+      } else if (body.method === "getTransaction") {
+        note(body.method, { status: "finalized-read" });
+        outgoing.writeHead(200, { "content-type": "application/json" });
+        outgoing.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error: { code: -32602, message: "finalized read is outside this absence flow" } }));
+        return;
+      }
       else if (body.method === "sendTransaction") {
-        sent.push(String(body.params?.[0]));
-        const transaction = getTransactionDecoder().decode(Uint8Array.from(Buffer.from(String(body.params?.[0]), "base64")));
+        const bytes = String(body.params?.[0]);
+        sent.push(bytes);
+        detail = { sha256: sha256Base64(bytes), byteLength: Buffer.from(bytes, "base64").length };
+        const transaction = getTransactionDecoder().decode(Uint8Array.from(Buffer.from(bytes, "base64")));
         const signature = transaction.signatures[organizer.wallet];
         result = signature ? getBase58Decoder().decode(signature) : null;
       } else { outgoing.writeHead(200, { "content-type": "application/json" }); outgoing.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, error: { code: -32601, message: body.method } })); return; }
+      note(body.method, detail);
       outgoing.writeHead(200, { "content-type": "application/json" });
       outgoing.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result }));
     });
@@ -319,24 +339,51 @@ async function main() {
     const submitted = psql(db, `select replace(encode(transaction_bytes,'base64'), chr(10), '') from public.submissions where attempt_id='${attemptId}'`);
     const [storedMessage, storedTransaction] = stored.split(" ");
     if (storedMessage !== payload.json.data.messageBase64 || storedTransaction !== payload.json.data.transactionBase64) throw new Error("frozen SQL bytes differ from the signing payload");
-    if (!sent.includes(submitted)) throw new Error(`submission bytes were not sent calls=${calls.join(",")} sent=${sent.length} storedLength=${submitted.length} sentLength=${sent[0]?.length ?? 0}`);
+    if (!sent.includes(submitted)) throw new Error(`submission bytes were not sent calls=${calls.join(",")} sent=${sent.length} storedSha=${sha256Base64(submitted)} sentSha=${sent[0] ? sha256Base64(sent[0]) : "none"}`);
+    const referenceBefore = psql(db, `select transaction_reference from public.submissions where attempt_id='${attemptId}'`);
     const beforeRestart = calls.filter(method => method === "getLatestBlockhash").length;
-    process.kill(payments.pid, "SIGTERM");
-    await new Promise(resolve => payments.on("exit", resolve));
-    pids.splice(pids.indexOf(payments.pid), 1);
     const firstPid = payments.pid;
+    process.kill(firstPid, "SIGTERM");
+    await new Promise(resolve => payments.on("exit", resolve));
+    pids.splice(pids.indexOf(firstPid), 1);
+    const sentBeforeRestart = sent.length;
+    const callsBeforeRestart = calls.length;
+    console.log(JSON.stringify({
+      phase: "boundary", name: "before-restart", pid: firstPid, sendCount: sentBeforeRestart,
+      submissionSha256: sha256Base64(submitted), attemptId,
+    }));
+    restarted = true;
     payments = startPayments();
     await wait(() => fetch(`http://127.0.0.1:${paymentsPort}/health`).then(response => response.ok, () => false), "Restarted payments process did not listen", () => paymentsLog);
-    if (payments.pid === firstPid) throw new Error("payments pid did not change");
-    const sentBeforeRestart = sent.length;
+    if (!(payments.pid > 1) || payments.pid === firstPid) throw new Error(`payments pid ${firstPid} did not change`);
     const resumed = await call(organizerCookie, `/api/attempts/${attemptId}/refresh`, {});
     const after = psql(db, `select replace(encode(message_bytes,'base64'), chr(10), '') || ' ' || replace(encode(transaction_bytes,'base64'), chr(10), '') from public.attempts where id='${attemptId}'`);
     const submittedAfter = psql(db, `select replace(encode(transaction_bytes,'base64'), chr(10), '') from public.submissions where attempt_id='${attemptId}'`);
+    const referenceAfter = psql(db, `select transaction_reference from public.submissions where attempt_id='${attemptId}'`);
     const resent = sent.slice(sentBeforeRestart);
-    if (resumed.status !== 200 || resumed.json.data?.id !== attemptId || after !== stored || submittedAfter !== submitted || resent.some(bytes => bytes !== submitted)) {
-      throw new Error(`restart resume ${resumed.status} ${resumed.json.data?.state ?? ""} bytes=${after === stored && submittedAfter === submitted}`);
+    const beforeSend = rpcNotes.slice(callsBeforeRestart, callsBeforeRestart + Math.max(0, rpcNotes.slice(callsBeforeRestart).findIndex(entry => entry.method === "sendTransaction")));
+    const statusBeforeSend = beforeSend.filter(entry => entry.method === "getSignatureStatuses");
+    const referenceOf = bytes => {
+      const transaction = getTransactionDecoder().decode(Uint8Array.from(Buffer.from(bytes, "base64")));
+      const signature = transaction.signatures[organizer.wallet];
+      return signature ? getBase58Decoder().decode(signature) : "";
+    };
+    if (statusBeforeSend.length < 1 || statusBeforeSend.some(entry => entry.status !== "absent") || beforeSend.some(entry => entry.method === "getTransaction")) {
+      throw new Error(`replacement status before send ${beforeSend.map(entry => `${entry.method}:${entry.status ?? ""}`).join(",")}`);
+    }
+    if (resumed.status !== 200 || resumed.json.data?.id !== attemptId || resumed.json.data?.transactionReference !== referenceBefore || after !== stored || submittedAfter !== submitted || referenceAfter !== referenceBefore) {
+      throw new Error(`restart identity status=${resumed.status} state=${resumed.json.data?.state ?? ""} attempt=${resumed.json.data?.id === attemptId} bytes=${after === stored && submittedAfter === submitted} reference=${referenceAfter === referenceBefore}`);
+    }
+    if (resent.length < 1 || resent.some(bytes => bytes !== submittedAfter) || resent.some(bytes => referenceOf(bytes) !== referenceBefore)) {
+      throw new Error(`post-restart send count ${resent.length} sha ${resent.map(sha256Base64).join(",") || "none"} stored ${sha256Base64(submittedAfter)}`);
     }
     if (calls.filter(method => method === "getLatestBlockhash").length !== beforeRestart) throw new Error("restart rebuilt the blockhash");
+    console.log(JSON.stringify({
+      phase: "boundary", name: "after-restart", previousPid: firstPid, pid: payments.pid,
+      postRestartSendCount: resent.length, submissionSha256: sha256Base64(submittedAfter),
+      postRestartSendSha256: resent.map(sha256Base64), attemptId,
+      statusBeforeSend: statusBeforeSend.map(entry => entry.status),
+    }));
     const declineCheckout = randomUUID();
     psql(db, `select public.create_checkout('${declineCheckout}'::uuid, '${randomUUID()}'::uuid, 'Decline checkout'::text, '${organizer.wallet}'::text, '${seller.wallet}'::text, 10::numeric, 2::smallint, 'devnet'::text, '${DEVNET_USDC}'::text, 6::smallint); select public.join_checkout('${declineCheckout}'::uuid, '${payer.wallet}'::text); select public.set_checkout_readiness('${declineCheckout}'::uuid, '${organizer.wallet}'::text, true); select public.set_checkout_readiness('${declineCheckout}'::uuid, '${payer.wallet}'::text, true);`);
     const declinedId = psql(db, `select public.reserve_attempt('${declineCheckout}'::uuid, '${organizer.wallet}'::text, null::uuid)->>'id'`);
@@ -355,7 +402,10 @@ async function main() {
       sha, dirty: dirty.length > 0, execPath: process.execPath, node: process.version,
       postgres: versions.postgres, postgrest: versions.postgrest, pgBinDir: directory, pgShareDir: share,
       attempts: 1, submissions: 1, blockhashReadsBeforeRestart: beforeRestart, sendCount: sent.length,
-      bytesStable: true, restartPidChanged: true, prefreezeClosed: true, oldSignatureRejected: true,
+      postRestartSendCount: resent.length, previousPid: firstPid, resumedPid: payments.pid,
+      postRestartBytesEqual: resent.length > 0 && resent.every(bytes => bytes === submittedAfter),
+      sameAttempt: resumed.json.data?.id === attemptId, sameTransactionReference: referenceAfter === referenceBefore,
+      bytesStable: true, restartPidChanged: payments.pid !== firstPid, prefreezeClosed: true, oldSignatureRejected: true,
     }));
   } catch (error) {
     show(error instanceof Error ? `${error.message}\n${existsSync(join(dir, "postgres.log")) ? readFileSync(join(dir, "postgres.log"), "utf8") : ""}` : String(error));
