@@ -119,7 +119,7 @@ function ApprovalSummary({ approval }: { readonly approval: ApprovalView }): Rea
       <dl className="flex flex-col gap-3">
         <div>
           <dt className="text-small text-muted">{WORDS.seller}</dt>
-          <dd className="flex flex-col items-start gap-2">
+          <dd className="flex items-start justify-between gap-3">
             <AddressText value={approval.seller} form="full" />
             <CopyButton value={approval.seller} labelSuffix={WORDS.seller_wallet} />
           </dd>

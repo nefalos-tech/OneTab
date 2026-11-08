@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { ACTIONS, SITUATIONS, STOP_REASONS } from "../src/client/catalog";
+import { ACTIONS, SITUATIONS, STOP_REASONS, WORDS } from "../src/client/catalog";
 import { deriveResultView, deriveRoomView } from "../src/client/checkout-view";
 import { FIXTURES, fixtureCases, personaParam } from "../src/client/fixtures";
 import { formatMoney, splitEqually, toTokenUnits } from "../src/client/units";
@@ -92,6 +92,26 @@ test("the room's primary action sits above the payer list when stacked, and besi
     expect(status!.x, c.id).toBeGreaterThan(tab!.x + tab!.width);
     expect(status!.y, c.id).toBe(tab!.y);
     expect((await page.getByRole("heading", { name: "Payers", exact: true }).boundingBox())!.y, c.id).toBeGreaterThan(tab!.y + tab!.height);
+  }
+});
+
+test("at 1280 by 800 a payer sees Approve in wallet without scrolling", async ({ page }) => {
+  const cases = fixtureCases().filter(
+    (c) => SITUATIONS[c.situation].owner === "room" && deriveRoomView(c.state).actions.primary?.kind === "approve",
+  );
+  expect(cases.length).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const c of cases) {
+    await page.goto(c.state.source.links.room);
+    const approve = page.locator("[data-action='primary']");
+    await expect(approve, `${c.id}: the streamed room is revealed before it is measured`).toBeVisible();
+    await expect(approve, c.id).toHaveText(ACTIONS.approve.label);
+    // A live page has neither sample aside, so hide them to measure the page a live payer sees.
+    for (const name of [WORDS.sample, WORDS.sample_wallet]) {
+      await page.getByRole("complementary", { name, exact: true }).evaluate((aside) => (aside.style.display = "none"));
+    }
+    const { bottom, fold } = await approve.evaluate((el) => ({ bottom: el.getBoundingClientRect().bottom + scrollY, fold: innerHeight }));
+    expect(bottom, `${c.id}: Approve in wallet ends above the fold`).toBeLessThanOrEqual(fold);
   }
 });
 
