@@ -120,6 +120,7 @@ test("at 320px the approval summary keeps a long share's digits on one line and 
   const share = formatMoney({ units: splitEqually(total, 3)[1]!, decimals: 6 });
   expect(share).toBe("3,333.333334");
   const panel = page.locator("[data-situation]");
+  await expect(panel, "the streamed room is revealed before it is edited and measured").toBeVisible();
   const hero = panel.locator("[data-amount]").first();
   // Sample data has no amount this long, so the test puts one into the rendered summary.
   const setDigits = (amount: Locator, text: string) =>

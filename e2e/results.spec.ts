@@ -8,6 +8,7 @@ import { FAIL_SCRIPT, PAY_SCRIPT, REFERENCE, failBrowserReads, failingRoom, goTo
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
 async function capture(page: Page, name: string) {
+  await expect(panel(page), "the streamed room is revealed before it is checked and captured").toBeVisible();
   const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
   expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`)).toEqual([]);
   await page.screenshot({ path: `test-results/screens/results-${name}.png`, fullPage: true });
