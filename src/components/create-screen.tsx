@@ -7,6 +7,7 @@ import {
   deriveCreateView,
   deriveReviewActions,
   spotNumber,
+  type ActionsView,
   type ClientRequestId,
   type CreateState,
   type CreateView,
@@ -32,6 +33,7 @@ type FormView = Extract<CreateView, { readonly kind: "form" }>;
 
 const EMPTY: DraftInput = { title: "", seller: "", total: "", payerCount: "2" };
 const FIELDS: readonly DraftField[] = ["title", "seller", "total", "payerCount"];
+const TRY_AGAIN: ActionsView = { primary: { kind: "reload_page" }, secondary: [], sample: null };
 
 type Step =
   | { readonly kind: "form"; readonly focus: "heading" | DraftField | null }
@@ -46,6 +48,7 @@ export function CreateScreen({ state }: { readonly state: CreateState }): ReactN
       <PageShell chrome={view.chrome} layout="single">
         <h1 className="text-title font-bold">Checkouts can&apos;t be created right now</h1>
         <p>{WORDS.creation_unavailable}</p>
+        <ActionGroup actions={TRY_AGAIN} />
         {view.samples && (
           <p className="flex flex-wrap gap-x-6">
             <Link href={view.samples.createHref} className={BUTTON.link}>

@@ -287,7 +287,7 @@ Page states that every screen handles:
 | Loading | The page layout with placeholder blocks. No layout shift when data arrives. A live checkout's first load waits for the server's read instead, so a missing checkout can still return a real 404 |
 | Not found | "We can't find this checkout." with **Create a checkout**. A live checkout shows it, with status 404, only when the server says `CHECKOUT_NOT_FOUND` |
 | Unexpected error | What failed, **Try again**, and a link home. A live checkout the server can't read, during an outage or before its route is deployed, shows this page with status 500 |
-| Creation unavailable | When GET /api/config fails, the create screen says checkouts can't be created right now and asks the viewer to try again in a moment |
+| Creation unavailable | When GET /api/config fails, the create screen says checkouts can't be created right now and asks the viewer to try again in a moment. **Try again** loads the page again |
 | Sample data | The sample banner on every screen |
 | Signed out | The room is readable. Actions ask the viewer to **Connect wallet**. The create review offers **Connect wallet** in place of **Create checkout** |
 | Spectator | A full room is readable. The status says the checkout is full |
@@ -500,8 +500,8 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | Area | Rule |
 | --- | --- |
 | Contrast | Pairs from [Contrast pairs](#contrast-pairs) only. Body text and primary buttons meet AAA |
-| Keyboard | Every action works with Tab, Enter and Space. Focus order follows visual order. No traps |
-| Focus | A 2px ring with a 2px offset. Tide on light surfaces, Marigold on Tide. Never removed |
+| Keyboard | Tab reaches every action. Buttons work with Enter and Space. Links work with Enter, as in every browser. Focus order follows visual order. No traps |
+| Focus | A 2px ring with a 2px offset. Tide on light surfaces, Marigold on Tide. It appears at its full color at once, without fading in. Never removed from a control. A focus target that isn't a control, such as `main`, the status block or a heading that takes focus after a step, shows no ring |
 | Structure | A skip link first, then `header`, `nav` for the flow steps, and `main`. One `h1` per page |
 | Forms | Visible labels. Hints and errors linked with `aria-describedby`. Invalid fields set `aria-invalid` |
 | Status | The status block (status line, connection line and reason) is one `aria-live="polite"` region, focused after a move between screens. Only blocking errors use `role="alert"` |

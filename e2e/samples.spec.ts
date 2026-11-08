@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { ACTIONS, SITUATIONS, STOP_REASONS } from "../src/client/catalog";
+import { ACTIONS, SITUATIONS, STOP_REASONS, WORDS } from "../src/client/catalog";
 import { deriveResultView, deriveRoomView } from "../src/client/checkout-view";
 import { FIXTURES, fixtureCases, personaParam } from "../src/client/fixtures";
 import { formatMoney, splitEqually, toTokenUnits } from "../src/client/units";
@@ -95,6 +95,26 @@ test("the room's primary action sits above the payer list when stacked, and besi
   }
 });
 
+test("at 1280 by 800 a payer sees Approve in wallet without scrolling", async ({ page }) => {
+  const cases = fixtureCases().filter(
+    (c) => SITUATIONS[c.situation].owner === "room" && deriveRoomView(c.state).actions.primary?.kind === "approve",
+  );
+  expect(cases.length).toBeGreaterThan(0);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  for (const c of cases) {
+    await page.goto(c.state.source.links.room);
+    const approve = page.locator("[data-action='primary']");
+    await expect(approve, `${c.id}: the streamed room is revealed before it is measured`).toBeVisible();
+    await expect(approve, c.id).toHaveText(ACTIONS.approve.label);
+    // A live page has neither sample aside, so hide them to measure the page a live payer sees.
+    for (const name of [WORDS.sample, WORDS.sample_wallet]) {
+      await page.getByRole("complementary", { name, exact: true }).evaluate((aside) => (aside.style.display = "none"));
+    }
+    const { bottom, fold } = await approve.evaluate((el) => ({ bottom: el.getBoundingClientRect().bottom + scrollY, fold: innerHeight }));
+    expect(bottom, `${c.id}: Approve in wallet ends above the fold`).toBeLessThanOrEqual(fold);
+  }
+});
+
 test("the header wallet control shows the persona's short address, or Connect wallet when signed out", async ({ page }) => {
   const signedIn = fixtureCases().find((c) => c.state.source.links.room === "/checkouts/sample-signing?as=spot-2");
   const wallet = signedIn!.state.session!.wallet;
@@ -104,6 +124,29 @@ test("the header wallet control shows the persona's short address, or Connect wa
 
   await page.goto("/checkouts/sample-signing?as=signed-out");
   await expect(page.getByRole("banner").getByRole("button", { name: ACTIONS.connect_wallet.label })).toBeVisible();
+});
+
+test("a button's focus ring shows at its full color the moment the button gets keyboard focus", async ({ page }) => {
+  await page.goto("/checkouts/sample-ready?as=spot-1");
+  const buttons = page.locator("main button[data-action]");
+  await expect(buttons.first(), "the streamed room is revealed before focus moves").toBeVisible();
+  expect(await buttons.count()).toBeGreaterThan(1);
+  await page.keyboard.press("Tab");
+  const rings = await buttons.evaluateAll(async (els) => {
+    const seen = [];
+    for (const el of els) {
+      el.focus();
+      const atFocus = getComputedStyle(el).outlineColor;
+      const ringShown = el.matches(":focus-visible") && getComputedStyle(el).outlineStyle !== "none";
+      await Promise.all(el.getAnimations().map((a) => a.finished));
+      seen.push({ label: el.textContent, ringShown, atFocus, settled: getComputedStyle(el).outlineColor });
+    }
+    return seen;
+  });
+  for (const ring of rings) {
+    expect(ring.ringShown, `${ring.label} shows a focus ring`).toBe(true);
+    expect(ring.atFocus, `${ring.label}'s ring doesn't fade in`).toBe(ring.settled);
+  }
 });
 
 test("a stubbed action announces that nothing was sent and stays put", async ({ page }) => {
@@ -230,6 +273,17 @@ test("plain / says creation is unavailable and offers the samples", async ({ pag
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Checkouts can't be created right now");
   await expect(page.getByRole("link", { name: "Try it with sample data" })).toHaveAttribute("href", "/?sample");
   await expectNoAxeViolations(page);
+});
+
+test("creation unavailable offers Try again, which loads the page again", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Checkouts can't be created right now");
+  const tryAgain = page.getByRole("button", { name: ACTIONS.reload_page.label });
+  await expect(tryAgain, "the unavailable view offers Try again").toBeVisible();
+  const reload = page.waitForRequest((r) => r.isNavigationRequest() && new URL(r.url()).pathname === "/");
+  await tryAgain.click();
+  await reload;
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Checkouts can't be created right now");
 });
 
 test("a real checkout ID never falls back to sample data, even with samples on", async ({ page }) => {
