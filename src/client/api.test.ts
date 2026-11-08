@@ -233,7 +233,7 @@ describe("checkoutApi readiness and attempts", () => {
     json(200, { data: call.path.endsWith("/readiness") ? room : call.path.endsWith("/signing-payload") ? wire : attempt });
   const everyOperation = (api: ReturnType<typeof checkoutApi>) => [
     api.setReady(checkoutId, true),
-    api.startAttempt(checkoutId),
+    api.startAttempt(checkoutId, null),
     api.signingPayload(attemptId),
     api.uploadApproval(attemptId, approval),
     api.refreshAttempt(attemptId),
@@ -264,16 +264,27 @@ describe("checkoutApi readiness and attempts", () => {
   });
 
   it("refuses an answer about another room or attempt, or one that doesn't parse", async () => {
-    const other = FIXTURES["declined-on-hold"].snapshot;
+    const other = FIXTURES.declined.snapshot;
     const otherAttempt = { ...attempt, id: other.attempt!.id };
     expect(await api(() => json(200, { data: other })).setReady(checkoutId, true)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: otherAttempt })).uploadApproval(attemptId, approval)).toEqual({ ok: false, failure: "unavailable" });
     expect(await api(() => json(200, { data: room })).refreshAttempt(attemptId)).toEqual({ ok: false, failure: "unavailable" });
-    expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId)).toEqual({ ok: true, value: otherAttempt });
+    expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId, null)).toEqual({ ok: true, value: otherAttempt });
+  });
+
+  it("Start names no attempt to replace, and Try again names the one it replaces", async () => {
+    const { fetch, calls } = stubFetch(answerFor);
+    const api = checkoutApi(fetch);
+    await api.startAttempt(checkoutId, null);
+    await api.startAttempt(checkoutId, attemptId);
+    expect(calls.map((c) => [c.init.method, c.path, JSON.parse(String(c.init.body))])).toEqual([
+      ["POST", `/api/checkouts/${checkoutId}/attempts`, { retryOfAttemptId: null }],
+      ["POST", `/api/checkouts/${checkoutId}/attempts`, { retryOfAttemptId: attemptId }],
+    ]);
   });
 
   it.each<[string, unknown]>([
-    ["another attempt", wirePayloadFor(FIXTURES["declined-on-hold"].snapshot)],
+    ["another attempt", wirePayloadFor(FIXTURES.declined.snapshot)],
     ["a hash that isn't one", { ...wire, messageHash: "nope" }],
     ["another network", { ...wire, payment: { ...(wire.payment as object), network: "mainnet-beta" } }],
   ])("reads a signing payload for %s as a payment that doesn't match, never as an outage", async (_, data) => {
@@ -288,9 +299,9 @@ describe("checkoutApi readiness and attempts", () => {
     ["SIGNATURES_INCOMPLETE", () => json(409, errorBody("SIGNATURES_INCOMPLETE")), "room_changed"],
     ["RETRY_BLOCKED", () => json(409, errorBody("RETRY_BLOCKED")), "room_changed"],
     ["CHECKOUT_PAID", () => json(409, errorBody("CHECKOUT_PAID")), "room_changed"],
-    ["INSUFFICIENT_USDC", () => json(422, errorBody("INSUFFICIENT_USDC")), "not_funded"],
-    ["INSUFFICIENT_SOL", () => json(422, errorBody("INSUFFICIENT_SOL")), "not_funded"],
-    ["TOKEN_ACCOUNT_MISSING", () => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), "not_funded"],
+    ["INSUFFICIENT_USDC", () => json(422, errorBody("INSUFFICIENT_USDC")), "short_usdc"],
+    ["INSUFFICIENT_SOL", () => json(422, errorBody("INSUFFICIENT_SOL")), "short_sol"],
+    ["TOKEN_ACCOUNT_MISSING", () => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), "no_token_account"],
     ["MESSAGE_MISMATCH", () => json(400, errorBody("MESSAGE_MISMATCH")), "refused"],
     ["INVALID_SIGNATURE", () => json(400, errorBody("INVALID_SIGNATURE")), "refused"],
     ["INVALID_PAYMENT", () => json(400, errorBody("INVALID_PAYMENT")), "refused"],

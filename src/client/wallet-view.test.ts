@@ -5,7 +5,7 @@ import { deriveWalletView } from "./wallet-view";
 
 const BEA = "SAMPLEpayerBea11111111111111111111111111Bea2" as Address;
 const SIGN_PROMPT =
-  "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.";
+  "Sign the sign-in message in your wallet. It proves the wallet is yours and can't move money.";
 
 const BRIEF: Record<Problem, { readonly message: string; readonly action: string }> = {
   no_wallet: { message: "No Solana wallet found. Install Phantom, then reload this page.", action: "Get Phantom" },

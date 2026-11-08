@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { apiOrigin, checkoutApi, originFetch } from "./api";
-import { checkoutLinks, type CheckoutState, type CreateState } from "./checkout-view";
+import { NOTHING_HEARD, checkoutLinks, type CheckoutState, type CreateState } from "./checkout-view";
 import type { CheckoutId, RoomSnapshot } from "./contracts";
 import {
   parseCheckoutRef,
@@ -39,6 +39,7 @@ export async function loadCheckout(props: CheckoutRouteProps): Promise<CheckoutS
     snapshot: await liveRoom(ref.checkoutId),
     session: null,
     source: { kind: "live", links: checkoutLinks(ref.checkoutId) },
+    page: NOTHING_HEARD,
   };
 }
 

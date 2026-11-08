@@ -3,14 +3,15 @@
 // across the client boundary.
 
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Screen as ScreenName } from "@/client/catalog";
-import { ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
-import { live, roomTracker } from "@/client/live-actions";
+import { NOTHING_HEARD, ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
+import { live, pageMoves, type Intent } from "@/client/live-actions";
 import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
 import { ResultScreen } from "./result-screen";
 import { RoomScreen } from "./room-screen";
+import { ArrivedByMove } from "./status-panel";
 import { SampleWalletProvider, useWalletSession } from "./wallet/wallet-scope";
 
 export type ViewerProps =
@@ -31,32 +32,45 @@ export function Viewer(props: ViewerProps): ReactNode {
   return <LiveCheckout key={props.state.snapshot.checkout.id} screen={props.screen} state={props.state} />;
 }
 
+const noChanges = () => () => {};
+
 function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly state: CheckoutState }): ReactNode {
-  const [received, setReceived] = useState<CheckoutState["snapshot"] | null>(null);
-  const [track] = useState(() => roomTracker(setReceived));
+  const [received, setReceived] = useState<{ readonly snapshot: CheckoutState["snapshot"]; readonly intent: Intent } | null>(null);
+  const [roomUnreachable, setRoomUnreachable] = useState(false);
+  const hydrating = useSyncExternalStore(noChanges, () => false, () => true);
+  const [arrived] = useState(() => live.arrivals.movedTo(state.source.links[screen]));
+  useEffect(() => live.arrivals.landed(), []);
+  const [moves] = useState(() => pageMoves(hydrating ? "loaded" : arrived ? "moved" : "navigated", screen, ownerOf(state.snapshot)));
+  const [track] = useState(() =>
+    live.tracker({
+      show: (snapshot, intent) => setReceived({ snapshot, intent }),
+      reached: (answered) => setRoomUnreachable(!answered),
+      acting: moves.acting,
+    }),
+  );
+  const noted = useSyncExternalStore(live.noted.subscribe, live.noted.current, () => NOTHING_HEARD.noted);
   const { session, expired } = useWalletSession();
   const router = useRouter();
-  const snapshot = received ?? state.snapshot;
+  const snapshot = received?.snapshot ?? state.snapshot;
   const id = state.snapshot.checkout.id;
 
   const now = useEffectEvent(() => ({ snapshot, session }));
   const signedOut = useEffectEvent((ended: Session) => expired(ended));
   useEffect(() => live.watch({ id, track, now, signedOut }), [id, track]);
 
-  // The first room the browser reads, not the loaded one, sets where the viewer stands: Back restores a
-  // page with the room it had then, and moving away from it would bounce the viewer back.
-  const lastOwner = useRef<ScreenName | null>(null);
   useEffect(() => {
     if (received === null) return;
-    const next = ownerOf(received);
-    const moved = lastOwner.current !== null && next !== lastOwner.current;
-    lastOwner.current = next;
-    if (moved && next !== screen) router.push(state.source.links[next]);
-  }, [received, screen, router, state.source.links]);
+    const to = moves.shown({ owner: ownerOf(received.snapshot), intent: received.intent });
+    if (to === null) return;
+    live.arrivals.moveTo(state.source.links[to]);
+    router.push(state.source.links[to]);
+  }, [received, moves, router, state.source.links]);
 
   return (
     <RoomTrack value={track}>
-      <Screen screen={screen} state={{ ...state, snapshot }} />
+      <ArrivedByMove value={arrived}>
+        <Screen screen={screen} state={{ ...state, snapshot, page: { noted, roomUnreachable } }} />
+      </ArrivedByMove>
     </RoomTrack>
   );
 }

@@ -72,7 +72,7 @@ const party = (id) => ({
   participants: PARTY.map((wallet, slot) => ({ slot, wallet, shareUnits: "30000000", ready: true })),
 });
 
-const attempt = (id, state, signedWallets) => ({
+const attempt = (id, state, signedWallets, fields = {}) => ({
   id: `a7${id.slice(2)}`,
   state,
   signedWallets,
@@ -81,16 +81,64 @@ const attempt = (id, state, signedWallets) => ({
   error: null,
   canRetry: false,
   receipt: null,
+  ...fields,
 });
 
-export const SCRIPT = [
-  (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
-  (id) => ({ ...party(id), phase: "ready", attempt: null }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo]) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo, WALLETS.ava]) }),
-  (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
-];
+export const REFERENCE = "5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW";
+
+const MASKED = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
+
+const sent = (fields = {}) => ({ transactionReference: REFERENCE, ...fields });
+
+const receipt = () => ({
+  transactionReference: REFERENCE,
+  confirmationStatus: "finalized",
+  sellerWallet: WALLETS.shop,
+  totalUnits: "90000000",
+  contributions: PARTY.map((wallet, slot) => ({ slot, wallet, amountUnits: "30000000" })),
+  observedAt: "2026-11-07T12:00:00.000Z",
+  explorerUrl: `https://explorer.solana.com/tx/${REFERENCE}?cluster=devnet`,
+});
+
+export const PAY_SCRIPT = {
+  one_ready: (id) => ({ ...party(id), phase: "open", attempt: null, participants: party(id).participants.map((p) => ({ ...p, ready: p.slot === 0 })) }),
+  ready: (id) => ({ ...party(id), phase: "ready", attempt: null }),
+  preparing: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
+  one_approved: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo]) }),
+  two_approved: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "signing", [WALLETS.cleo, WALLETS.ava]) }),
+  submitting: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", [WALLETS.cleo, WALLETS.ava, WALLETS.ben]) }),
+  sent: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent()) }),
+  unresolved: (id) => ({ ...party(id), phase: "needs_attention", attempt: attempt(id, "unresolved", PARTY, sent({ error: MASKED })) }),
+  sent_again: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "submitting", PARTY, sent({ error: MASKED })) }),
+  paid: (id) => ({ ...party(id), phase: "paid", attempt: attempt(id, "confirmed", PARTY, sent({ receipt: receipt() })) }),
+};
+export const SCRIPT = Object.values(PAY_SCRIPT);
+
+const FAILING_PREFIX = "fa11fa11-";
+
+export const failingRoom = () => `${FAILING_PREFIX}${randomUUID().slice(FAILING_PREFIX.length)}`;
+
+export const FAIL_SCRIPT = {
+  ready: (id) => ({ ...party(id), phase: "ready", attempt: null }),
+  preparing: (id) => ({ ...party(id), phase: "paying", attempt: attempt(id, "preparing", []) }),
+  failed: (id) => ({
+    ...party(id),
+    phase: "needs_attention",
+    attempt: attempt(id, "failed", [], { lastValidBlockHeight: null, error: MASKED, canRetry: true }),
+  }),
+  replaced: (id) => ({ ...party(id), phase: "paying", attempt: { ...attempt(id, "preparing", []), id: `b7${id.slice(2)}` } }),
+};
+
+const SCRIPTS = { [SCRIPTED_PREFIX]: PAY_SCRIPT, [FAILING_PREFIX]: FAIL_SCRIPT };
+const scriptOf = (id) => Object.entries(SCRIPTS).find(([prefix]) => id.startsWith(prefix))?.[1];
+
+export const goToStep = (id, name) => `${FAKE_API.rooms}/__script/${id}/to/${name}`;
+
+/** Fails the browser's room reads while on, and leaves the server render's reads answering. */
+export const failBrowserReads = (id, on) => `${FAKE_API.rooms}/__script/${id}/browser-reads/${on ? "fail" : "answer"}`;
+
+/** Holds the server render's reads of a room while on, so a page that reads it shows its loading skeleton. */
+export const holdServerReads = (id, on) => `${FAKE_API.rooms}/__script/${id}/server-reads/${on ? "hold" : "answer"}`;
 
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
@@ -98,14 +146,32 @@ const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
-function respond(dataset, { reads, steps }, method, path) {
+function respond(dataset, { reads, steps, failingReads, heldReads }, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
-  const advance = /^\/__script\/(5c5c5c5c-[0-9a-f-]{27})\/step$/.exec(path);
-  if (method === "POST" && advance) {
-    const step = Math.min((steps.get(advance[1]) ?? 0) + 1, SCRIPT.length - 1);
-    steps.set(advance[1], step);
-    return json(200, { step });
+  const control = /^\/__script\/([0-9a-f-]{36})\/(step|to\/[a-z_]+|browser-reads\/(?:fail|answer)|server-reads\/(?:hold|answer))$/.exec(path);
+  const scripted = control && scriptOf(control[1]);
+  if (method === "POST" && scripted) {
+    const [, id, command] = control;
+    const names = Object.keys(scripted);
+    if (command.startsWith("browser-reads/")) {
+      if (command === "browser-reads/fail") failingReads.add(id);
+      else failingReads.delete(id);
+      return json(200, { failingReads: failingReads.has(id) });
+    }
+    if (command === "server-reads/hold") {
+      if (!heldReads.has(id)) heldReads.set(id, Promise.withResolvers());
+      return json(200, { heldReads: true });
+    }
+    if (command === "server-reads/answer") {
+      heldReads.get(id)?.resolve();
+      heldReads.delete(id);
+      return json(200, { heldReads: false });
+    }
+    const step = command === "step" ? Math.min((steps.get(id) ?? 0) + 1, names.length - 1) : names.indexOf(command.slice("to/".length));
+    if (step === -1) return json(404, { error: `no step ${command}` });
+    steps.set(id, step);
+    return json(200, { step: names[step] });
   }
   if (method === "GET" && path === "/api/config") {
     return dataset === "rooms" ? json(200, { data: CONFIG }) : error(503, "CONFIGURATION_UNAVAILABLE");
@@ -118,16 +184,22 @@ function respond(dataset, { reads, steps }, method, path) {
   if (dataset === "rooms" && id === LIVE.outage) return error(503, "CONFIGURATION_UNAVAILABLE");
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
-  if (dataset === "rooms" && id.startsWith(SCRIPTED_PREFIX)) return json(200, { data: SCRIPT[steps.get(id) ?? 0](id) });
+  if (room[1] === "__rooms" && failingReads.has(id)) return error(503, "CONFIGURATION_UNAVAILABLE");
+  const script = dataset === "rooms" ? scriptOf(id) : undefined;
+  if (script) return json(200, { data: Object.values(script)[steps.get(id) ?? 0](id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }
 
+const serverRead = (method, path) => (method === "GET" ? /^\/api\/checkouts\/([0-9a-fA-F-]{36})$/.exec(path)?.[1].toLowerCase() : undefined);
+
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const state = { reads: new Map(), steps: new Map() };
-    createServer((req, res) => {
-      const { status, type, body } = respond(dataset, state, req.method, new URL(req.url ?? "/", origin).pathname);
+    const state = { reads: new Map(), steps: new Map(), failingReads: new Set(), heldReads: new Map() };
+    createServer(async (req, res) => {
+      const path = new URL(req.url ?? "/", origin).pathname;
+      await state.heldReads.get(serverRead(req.method, path))?.promise;
+      const { status, type, body } = respond(dataset, state, req.method, path);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
     }).listen(Number(new URL(origin).port));
   }

@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import { SITUATIONS, type Situation } from "./catalog";
 import { looksLikeAddress, type Phase, type RoomSnapshot } from "./contracts";
 import { deriveRoomView } from "./checkout-view";
-import { SAMPLE_CONFIG, SAMPLE_WALLETS } from "./fixture-data";
+import { SAMPLE_CONFIG, SAMPLE_WALLETS, hasPaidMarker, type SampleName } from "./fixture-data";
 import { FIXTURES, fixtureCases, parseCheckoutRef, parseFixtureFlag, personaParam, sampleIndex } from "./fixtures";
 
 const ENTRIES = Object.entries(FIXTURES);
 
-function contractPhase(s: RoomSnapshot): Phase {
+function contractPhase(s: RoomSnapshot, paidMarker: boolean): Phase {
   const a = s.attempt;
-  if (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized") return "paid";
+  if (paidMarker || (a?.state === "confirmed" && a.receipt?.confirmationStatus === "finalized")) return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
     return "needs_attention";
   if (a) return "paying";
@@ -21,7 +21,7 @@ describe.each(ENTRIES)("fixture %s is a snapshot the server could send", (name, 
   const { checkout, participants, attempt } = entry.snapshot;
 
   it("has the phase contracts.md derives", () => {
-    expect(entry.snapshot.phase).toBe(contractPhase(entry.snapshot));
+    expect(entry.snapshot.phase).toBe(contractPhase(entry.snapshot, hasPaidMarker(name as SampleName)));
   });
 
   it("splits shares by the spec's remainder rule, organizer in slot 0", () => {
@@ -64,9 +64,37 @@ describe("the registry covers the state matrix", () => {
     expect([...covered].sort()).toEqual(Object.keys(SITUATIONS).sort());
   });
 
-  it.each(["declined", "failed", "expired"] as const)("has %s with canRetry false and true", (situation) => {
-    const values = ENTRIES.filter(([, e]) => e.situation === situation).map(([, e]) => e.snapshot.attempt?.canRetry);
-    expect(new Set(values)).toEqual(new Set([false, true]));
+});
+
+const ROOM_ERROR = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
+
+describe("samples are rooms the server can produce", () => {
+  const attempts = ENTRIES.flatMap(([name, e]) => (e.snapshot.attempt === null ? [] : [[name, e.snapshot.attempt] as const]));
+
+  it.each(attempts)("%s is safe to replace exactly when it failed or expired, which only safely resolved attempts do", (_, attempt) => {
+    expect(attempt.canRetry).toBe(attempt.state === "failed" || attempt.state === "expired");
+  });
+
+  it.each(attempts)("%s carries the room's masked error or none", (_, attempt) => {
+    if (attempt.error !== null) expect(attempt.error).toEqual(ROOM_ERROR);
+  });
+
+  it.each(attempts.filter(([, a]) => a.state === "failed" && a.transactionReference === null))(
+    "%s failed while preparing, so nobody approved and it has no expiry height",
+    (_, attempt) => {
+      expect(attempt.signedWallets).toEqual([]);
+      expect(attempt.lastValidBlockHeight).toBeNull();
+    },
+  );
+
+  it("show a paid room without its attempt only in paid-no-receipt", () => {
+    const lost = ENTRIES.filter(([, e]) => e.snapshot.phase === "paid" && e.snapshot.attempt === null).map(([name]) => name);
+    expect(lost).toEqual(["paid-no-receipt"]);
+  });
+
+  it("include a failure before sending and one after, so both reasons have a sample", () => {
+    const failed = attempts.filter(([, a]) => a.state === "failed").map(([, a]) => a.transactionReference !== null);
+    expect(new Set(failed)).toEqual(new Set([false, true]));
   });
 });
 

@@ -1,3 +1,4 @@
+import { isSignature } from "@solana/kit";
 import type {
   Address,
   AttemptId,
@@ -19,13 +20,17 @@ import {
   FLOW_STEPS,
   NETWORK_LABELS,
   SITUATIONS,
+  STOP_REASONS,
   WORDS,
+  causeOfCode,
   type ActionKind,
+  type FundingCause,
   type FlowStepId,
   type OwnedBy,
   type Screen,
   type Situation,
   type SpotStatus,
+  type StopReason,
   type Tone,
 } from "./catalog";
 import { splitEqually, type Money } from "./units";
@@ -35,7 +40,17 @@ export type CheckoutState = {
   readonly snapshot: RoomSnapshot;
   readonly session: Session | null;
   readonly source: CheckoutSource;
+  readonly page: PageFacts;
 };
+
+export type PageFacts = {
+  readonly noted: readonly NotedCause[];
+  readonly roomUnreachable: boolean;
+};
+
+export type NotedCause = { readonly attemptId: AttemptId; readonly cause: FundingCause };
+
+export const NOTHING_HEARD: PageFacts = Object.freeze({ noted: Object.freeze([]), roomUnreachable: false });
 
 export type CheckoutSource =
   | {
@@ -98,6 +113,7 @@ export type StatusView = {
   readonly tone: Tone;
   readonly label: string;
   readonly line: string;
+  readonly attempt: AttemptId | null;
 };
 
 export type SpotView = {
@@ -146,7 +162,7 @@ type ActionPayload = {
   readonly start_payment: { readonly checkoutId: CheckoutId };
   readonly approve: { readonly terms: ApprovalTerms };
   readonly decline: { readonly checkoutId: CheckoutId; readonly attemptId: AttemptId };
-  readonly retry: { readonly retryOfAttemptId: AttemptId };
+  readonly retry: { readonly checkoutId: CheckoutId; readonly retryOfAttemptId: Replaceable };
   readonly view_status: Href;
   readonly view_receipt: Href;
   readonly back_to_checkout: Href;
@@ -184,12 +200,19 @@ export type Notice = {
   readonly followUp: Action | null;
   readonly wallet: Address | null;
   readonly raisedBy: Action;
+  readonly about: AttemptId | null;
 };
+
+/** What an action says: the words, a follow-up, and the attempt they are about, or null when it is the action's own. */
+export type Said = { readonly text: string; readonly followUp: Action | null; readonly about: AttemptId | null };
+
+export function noticeOf(said: Said, by: { readonly wallet: Address | null; readonly raisedBy: Action }): Notice {
+  return { text: said.text, followUp: said.followUp, wallet: by.wallet, raisedBy: by.raisedBy, about: said.about ?? attemptOf(by.raisedBy) };
+}
 
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
   const { kind } = notice.raisedBy;
-  const attempt = attemptOf(notice.raisedBy);
-  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === attempt);
+  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === notice.about);
 }
 
 export function busyShown(running: ActionKind | null, prompting: AttemptId | null, actions: ActionsView): ActionKind | null {
@@ -198,28 +221,48 @@ export function busyShown(running: ActionKind | null, prompting: AttemptId | nul
 }
 
 function attemptOf(action: Action): AttemptId | null {
-  if (action.kind === "approve") return action.terms.attemptId;
-  return action.kind === "decline" ? action.attemptId : null;
+  switch (action.kind) {
+    case "approve":
+      return action.terms.attemptId;
+    case "decline":
+      return action.attemptId;
+    case "retry":
+      return action.retryOfAttemptId;
+    default:
+      return null;
+  }
 }
 
 const offered = (actions: ActionsView): readonly Action[] =>
   [actions.primary, ...actions.secondary].filter((a): a is Action => a !== null);
 
+declare const replaceableBrand: unique symbol;
+
+type Replaceable = AttemptId & { readonly [replaceableBrand]: true };
+
+function replaceable(attempt: AttemptSummary): Replaceable | null {
+  return attempt.canRetry && (attempt.state === "failed" || attempt.state === "expired") ? (attempt.id as Replaceable) : null;
+}
+
 export type Recovery =
   | { readonly kind: "on_hold" }
-  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: AttemptId }
+  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: Replaceable }
   | { readonly kind: "waiting_for_organizer" };
+
+export type Reason = {
+  readonly key: StopReason;
+  readonly happened: string;
+  readonly next: string | null;
+  readonly from: "room" | "this_page" | "attempt";
+};
 
 export type ResultBody =
   | { readonly kind: "not_started" }
+  | { readonly kind: "approvals"; readonly line: string }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
   | { readonly kind: "unresolved"; readonly transactionReference: string | null }
-  | {
-      readonly kind: "needs_attention";
-      readonly recovery: Recovery;
-      readonly detail: string | null;
-      readonly transactionReference: string | null;
-    }
+  | { readonly kind: "failed"; readonly reason: Reason; readonly transactionReference: string | null }
+  | { readonly kind: "stopped"; readonly transactionReference: string | null }
   | { readonly kind: "paid"; readonly receipt: ReceiptView };
 
 export type ReceiptView = {
@@ -243,6 +286,7 @@ export type RoomView = {
   readonly you: YouView | null;
   readonly approval: ApprovalView | null;
   readonly actions: ActionsView;
+  readonly connection: string | null;
 };
 
 export type ResultView = {
@@ -251,6 +295,7 @@ export type ResultView = {
   readonly tab: TabView;
   readonly body: ResultBody;
   readonly actions: ActionsView;
+  readonly connection: string | null;
 };
 
 export type CreateView =
@@ -295,8 +340,11 @@ export function deriveRoomView(state: CheckoutState): RoomView {
     you: me && { share: me.share, status: me.status, isOrganizer: me.isOrganizer },
     approval: terms && approvalOf(terms),
     actions: { ...plan, sample: sampleActions(state) },
+    connection: connectionOf(state.page),
   };
 }
+
+const connectionOf = (page: PageFacts): string | null => (page.roomUnreachable ? WORDS.room_unreachable : null);
 
 function approvalOf(terms: ApprovalTerms): ApprovalView | null {
   const mine = terms.contributions.find((c) => c.wallet === terms.payer);
@@ -314,13 +362,18 @@ export function deriveResultView(state: CheckoutState): ResultView {
   const c = classify(state.snapshot);
   const role = roleOf(state.snapshot, state.session, c.situation);
   const tab = tabOf(state.snapshot, role);
-  const body = bodyOf(c, role, tab, state.source.kind === "sample");
+  const explorerUrl =
+    c.situation === "paid" && state.source.kind === "live" ? EXPLORER[state.snapshot.checkout.network](c.receipt.transactionReference) : null;
   return {
     chrome: chromeOf(state, SITUATIONS[c.situation].step, "result"),
     status: statusOf(c, role, tab),
     tab,
-    body,
-    actions: { ...resultActions(body, state.source.links), sample: sampleActions(state) },
+    body: bodyOf(c, tab, state.page, explorerUrl),
+    actions: {
+      ...resultActions(c, { checkoutId: state.snapshot.checkout.id, role, links: state.source.links, explorerUrl }),
+      sample: sampleActions(state),
+    },
+    connection: connectionOf(state.page),
   };
 }
 
@@ -382,28 +435,64 @@ export function termsOf(snapshot: RoomSnapshot, session: Session | null): Approv
   };
 }
 
-type PaidAttempt = AttemptSummary & { readonly state: "confirmed"; readonly receipt: Receipt };
+declare const verified: unique symbol;
+
+type VerifiedReceipt = Receipt & { readonly [verified]: true };
+
+function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
+  const { attempt, checkout } = snapshot;
+  if (snapshot.phase !== "paid" || attempt === null || attempt.state !== "confirmed" || attempt.receipt === null) return null;
+  const receipt = attempt.receipt;
+  const shares = [...snapshot.participants].sort((a, b) => a.slot - b.slot);
+  const proves =
+    isTransactionSignature(receipt.transactionReference) &&
+    receipt.transactionReference === attempt.transactionReference &&
+    receipt.sellerWallet === checkout.sellerWallet &&
+    receipt.totalUnits === checkout.totalUnits &&
+    shares.length === checkout.payerCount &&
+    shares.every((p, slot) => p.slot === slot) &&
+    new Set(shares.map((p) => p.wallet)).size === shares.length &&
+    shares.every((p) => attempt.signedWallets.includes(p.wallet)) &&
+    receipt.contributions.reduce((sum, c) => sum + BigInt(c.amountUnits), 0n) === BigInt(checkout.totalUnits) &&
+    receipt.contributions.length === shares.length &&
+    receipt.contributions.every(
+      (c, i) => c.slot === shares[i]?.slot && c.wallet === shares[i]?.wallet && c.amountUnits === shares[i]?.shareUnits,
+    );
+  return proves ? (receipt as VerifiedReceipt) : null;
+}
+
+/** isSignature throws on a character outside base58 rather than answering false. */
+const isTransactionSignature = (s: string): boolean => /^[1-9A-HJ-NP-Za-km-z]+$/.test(s) && isSignature(s);
+
+const EXPLORER: { readonly [N in Network]: (reference: string) => string } = {
+  devnet: (reference) => `https://explorer.solana.com/tx/${reference}?cluster=devnet`,
+};
 
 type Classified =
   | { readonly situation: "open_spots" | "full_not_ready" | "ready"; readonly attempt: null }
+  | { readonly situation: "confirming"; readonly attempt: AttemptSummary | null }
   | {
-      readonly situation: Exclude<Situation, "open_spots" | "full_not_ready" | "ready" | "paid">;
+      readonly situation: Exclude<Situation, "open_spots" | "full_not_ready" | "ready" | "confirming" | "paid">;
       readonly attempt: AttemptSummary;
     }
-  | { readonly situation: "paid"; readonly attempt: PaidAttempt };
+  | { readonly situation: "paid"; readonly attempt: AttemptSummary; readonly receipt: VerifiedReceipt };
 
 function classify(snapshot: RoomSnapshot): Classified {
   const a = snapshot.attempt;
+  if (snapshot.phase === "paid") {
+    const receipt = verifiedReceipt(snapshot);
+    return receipt !== null && a !== null ? { situation: "paid", attempt: a, receipt } : { situation: "confirming", attempt: a };
+  }
   if (a === null) {
+    // The room drops a confirmed attempt whose receipt row isn't written yet, and its phase still says paying.
+    if (snapshot.phase === "paying") return { situation: "confirming", attempt: null };
     if (snapshot.phase === "ready") return { situation: "ready", attempt: null };
     const full = snapshot.participants.length >= snapshot.checkout.payerCount;
     return { situation: full ? "full_not_ready" : "open_spots", attempt: null };
   }
   switch (a.state) {
     case "confirmed":
-      return snapshot.phase === "paid" && a.receipt !== null
-        ? { situation: "paid", attempt: { ...a, state: "confirmed", receipt: a.receipt } }
-        : { situation: "confirming", attempt: a };
+      return { situation: "confirming", attempt: a };
     case "preparing":
     case "signing":
     case "submitting":
@@ -419,8 +508,12 @@ function classify(snapshot: RoomSnapshot): Classified {
   }
 }
 
+export function situationOf(snapshot: RoomSnapshot): Situation {
+  return classify(snapshot).situation;
+}
+
 export function ownerOf(snapshot: RoomSnapshot): Screen {
-  return SITUATIONS[classify(snapshot).situation].owner;
+  return SITUATIONS[situationOf(snapshot)].owner;
 }
 
 function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation is OwnedBy<S> {
@@ -491,44 +584,57 @@ function statusOf(c: Classified, role: ViewerRole, tab: TabView): StatusView {
         ? recoveryOf(c.attempt, role)
         : null,
   };
-  return { situation: c.situation, tone: meta.tone, label: meta.label, line: STATUS_COPY[c.situation](context) };
+  return {
+    situation: c.situation,
+    tone: meta.tone,
+    label: meta.label,
+    line: STATUS_COPY[c.situation](context),
+    attempt: c.attempt?.id ?? null,
+  };
 }
 
 function recoveryOf(attempt: AttemptSummary, role: ViewerRole): Recovery {
-  if (!attempt.canRetry) return { kind: "on_hold" };
-  return role.kind === "organizer"
-    ? { kind: "organizer_can_retry", retryOfAttemptId: attempt.id }
-    : { kind: "waiting_for_organizer" };
+  const id = replaceable(attempt);
+  if (id === null) return { kind: "on_hold" };
+  return role.kind === "organizer" ? { kind: "organizer_can_retry", retryOfAttemptId: id } : { kind: "waiting_for_organizer" };
 }
 
-function bodyOf(c: Classified, role: ViewerRole, tab: TabView, sample: boolean): ResultBody {
+function bodyOf(c: Classified, tab: TabView, page: PageFacts, explorerUrl: string | null): ResultBody {
   switch (c.situation) {
     case "open_spots":
     case "full_not_ready":
     case "ready":
-    case "preparing":
-    case "signing":
       return { kind: "not_started" };
+    case "preparing":
+      return { kind: "approvals", line: WORDS.approvals_soon };
+    case "signing":
+      return { kind: "approvals", line: WORDS.approvals_open };
     case "submitting":
     case "confirming":
-      return { kind: "in_progress", transactionReference: c.attempt.transactionReference };
+      return { kind: "in_progress", transactionReference: c.attempt?.transactionReference ?? null };
     case "unresolved":
       return { kind: "unresolved", transactionReference: c.attempt.transactionReference };
-    case "declined":
     case "failed":
+      return { kind: "failed", reason: reasonOf(c.attempt, page.noted), transactionReference: c.attempt.transactionReference };
+    case "declined":
     case "expired":
-      return {
-        kind: "needs_attention",
-        recovery: recoveryOf(c.attempt, role),
-        detail: c.attempt.error?.message ?? null,
-        transactionReference: c.attempt.transactionReference,
-      };
+      return { kind: "stopped", transactionReference: c.attempt.transactionReference };
     case "paid":
-      return { kind: "paid", receipt: receiptOf(c.attempt.receipt, tab, sample) };
+      return { kind: "paid", receipt: receiptOf(c.receipt, tab, explorerUrl) };
   }
 }
 
-function receiptOf(receipt: Receipt, tab: TabView, sample: boolean): ReceiptView {
+function reasonOf(attempt: AttemptSummary, noted: readonly NotedCause[]): Reason {
+  if (attempt.transactionReference !== null) return reason("network_rejected", "attempt");
+  const fromRoom = attempt.error === null ? null : causeOfCode(attempt.error.code);
+  if (fromRoom !== null) return reason(fromRoom, "room");
+  const heard = noted.find((n) => n.attemptId === attempt.id);
+  return heard === undefined ? reason("not_sent", "attempt") : reason(heard.cause, "this_page");
+}
+
+const reason = (key: StopReason, from: Reason["from"]): Reason => ({ key, ...STOP_REASONS[key], from });
+
+function receiptOf(receipt: VerifiedReceipt, tab: TabView, explorerUrl: string | null): ReceiptView {
   const decimals = tab.total.decimals;
   return {
     transactionReference: receipt.transactionReference,
@@ -541,7 +647,7 @@ function receiptOf(receipt: Receipt, tab: TabView, sample: boolean): ReceiptView
       isViewer: tab.spots.some((s) => s.slot === c.slot && s.isViewer),
     })),
     observedAt: formatUtc(receipt.observedAt),
-    explorerUrl: sample ? null : receipt.explorerUrl,
+    explorerUrl,
   };
 }
 
@@ -559,27 +665,37 @@ function formatUtc(iso: string): string {
   return `${UTC_FORMAT.format(new Date(iso))} UTC`;
 }
 
-function resultActions(body: ResultBody, links: ScreenLinks): ActionPlan {
-  const back = { kind: "back_to_checkout", href: links.room } as const;
-  switch (body.kind) {
-    case "not_started":
+function resultActions(
+  c: Classified,
+  a: { readonly checkoutId: CheckoutId; readonly role: ViewerRole; readonly links: ScreenLinks; readonly explorerUrl: string | null },
+): ActionPlan {
+  const back = { kind: "back_to_checkout", href: a.links.room } as const;
+  const connect = a.role.kind === "signed_out" ? ({ kind: "connect_wallet" } as const) : null;
+  switch (c.situation) {
+    case "open_spots":
+    case "full_not_ready":
+    case "ready":
+    case "preparing":
+    case "signing":
       return { primary: back, secondary: [] };
-    case "in_progress":
+    case "submitting":
+    case "confirming":
     case "unresolved":
-      return { primary: null, secondary: [back] };
-    case "needs_attention":
+      return { primary: connect, secondary: [back] };
+    case "declined":
+    case "failed":
+    case "expired": {
+      const recovery = recoveryOf(c.attempt, a.role);
       return {
         primary:
-          body.recovery.kind === "organizer_can_retry"
-            ? { kind: "retry", retryOfAttemptId: body.recovery.retryOfAttemptId }
-            : null,
+          recovery.kind === "organizer_can_retry"
+            ? { kind: "retry", checkoutId: a.checkoutId, retryOfAttemptId: recovery.retryOfAttemptId }
+            : connect,
         secondary: [back],
       };
+    }
     case "paid":
-      return {
-        primary: body.receipt.explorerUrl === null ? null : { kind: "view_on_explorer", href: body.receipt.explorerUrl },
-        secondary: [back],
-      };
+      return { primary: a.explorerUrl === null ? null : { kind: "view_on_explorer", href: a.explorerUrl }, secondary: [back] };
   }
 }
 
@@ -664,14 +780,13 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
 
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const FULL = "This checkout is full.";
-const SIGNED_OUT = "Sign in with your wallet if you hold a spot.";
 
-const recoveryLine = (r: Recovery | null, onHold: string): string =>
-  r?.kind === "organizer_can_retry"
-    ? "Try again to ask everyone to approve a new payment."
-    : r?.kind === "waiting_for_organizer"
-      ? "The organizer can start a new payment, and everyone approves again."
-      : onHold;
+const STOPPED: { readonly [S in "failed" | "expired"]: { readonly [R in Recovery["kind"]]: string } } = {
+  failed: { organizer_can_retry: WORDS.failed_retry, waiting_for_organizer: WORDS.failed_waiting, on_hold: WORDS.failed_on_hold },
+  expired: { organizer_can_retry: WORDS.expired_retry, waiting_for_organizer: WORDS.expired_waiting, on_hold: WORDS.expired_on_hold },
+};
+
+const signInIfOut = (c: CopyContext): string => (c.role.kind === "signed_out" ? ` ${WORDS.sign_in}` : "");
 
 const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
   open_spots: (c) =>
@@ -682,7 +797,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
         : c.role.kind === "seller"
           ? WORDS.seller_no_spot
           : c.role.kind === "organizer"
-            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}, ${WORDS.send_the_link}`
             : c.role.kind === "payer"
               ? `${c.me === "ready" ? WORDS.you_are_ready : "You joined."} Waiting for ${count(c.openSpots, "more payer")}.`
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
@@ -692,7 +807,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       : isMember(c.role)
         ? `${WORDS.you_are_ready} Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
-          ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${SIGNED_OUT}`
+          ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${WORDS.sign_in}`
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,
   ready: (c) =>
     c.role.kind === "organizer"
@@ -700,26 +815,20 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
       : isMember(c.role)
         ? "Everyone is ready. Waiting for the organizer to start the payment."
         : c.role.kind === "signed_out"
-          ? `Everyone is ready. ${SIGNED_OUT}`
+          ? `Everyone is ready. ${WORDS.sign_in}`
           : `${FULL} Everyone is ready to pay.`,
-  preparing: (c) =>
-    `Preparing the payment, and approvals open in a moment.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
+  preparing: (c) => `${WORDS.preparing}${signInIfOut(c)}`,
   signing: (c) =>
     isMember(c.role) && c.me !== "approved"
       ? "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."
       : isMember(c.role)
         ? `You approved. Waiting for ${count(c.approvals.total - c.approvals.done, "more approval")}.`
-        : `${c.approvals.done} of ${c.approvals.total} payers approved.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
-  submitting: () =>
-    "Sending one payment with every share to the seller. We'll confirm it once the network finalizes it.",
-  confirming: () => "The network accepted the payment. The receipt appears once it's final.",
-  unresolved: () =>
-    "We can't confirm the result yet. We keep checking the same transaction, and no new payment will start.",
-  declined: (c) =>
-    `A payer declined. ${recoveryLine(c.recovery, "Approvals already given aren't withdrawn, so this payment stays on hold until it's safely closed.")}`,
-  failed: (c) =>
-    `No share reached the seller${c.role.kind === "organizer" ? ", but you may still pay a small network fee" : ""}. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}`,
-  expired: (c) =>
-    `The approval window ended and nothing reached the seller. ${recoveryLine(c.recovery, "A new payment can start once this one is safely closed.")}`,
+        : `${c.approvals.done} of ${c.approvals.total} payers approved.${signInIfOut(c)}`,
+  submitting: (c) => `${WORDS.sending}${signInIfOut(c)}`,
+  confirming: (c) => `${WORDS.finalizing}${signInIfOut(c)}`,
+  unresolved: (c) => `${isMember(c.role) ? WORDS.unresolved_here : WORDS.unresolved_payers}${signInIfOut(c)}`,
+  declined: (c) => `${WORDS.payer_declined}${signInIfOut(c)}`,
+  failed: (c) => `${STOPPED.failed[c.recovery?.kind ?? "on_hold"]}${signInIfOut(c)}`,
+  expired: (c) => `${STOPPED.expired[c.recovery?.kind ?? "on_hold"]}${signInIfOut(c)}`,
   paid: () => "The seller received every share in one transaction.",
 };

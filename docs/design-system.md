@@ -19,7 +19,7 @@ Every UI or UX change updates this file in the same pull request. Five regions b
 | --- | --- |
 | Hick's law | One primary button per screen state. A choice offers at most three options. Secondary actions are quiet buttons or links |
 | Simplicity | Show only what the current step needs. The tab card is the only filled card. Nothing decorative that carries no information |
-| Scannability | Amount first, label second. Headings state the point, such as "Your share". Explanations are at most two short sentences |
+| Scannability | Amount first, label second. Headings state the point, such as "Your share". Explanations are at most two short sentences. A unit test in checkout-view.test.ts reads every sample's status lines and reasons and every catalog explanation, and fails on a third sentence. A result line for a signed-out viewer is one sentence plus the sign-in sentence, and a stop reason says what happened in one sentence and what to do next in one |
 | Jakob's law | The logo, top left, goes home. The wallet sits top right. Copy uses the two-squares icon. External links use the arrow-out-of-box icon and open in a new tab. Flow steps read left to right like a shop checkout |
 | Consistency | Colors, sizes, weights, radii, shadows, breakpoints and widths come only from tokens. Tailwind's defaults are disabled. One word per concept, from the [glossary](#glossary) |
 | Visibility of system status | Every state shows a status line that says what is happening and what happens next. Work in progress shows a spinner with text. The split bar shows each spot's progress. Status changes are announced to screen readers |
@@ -188,7 +188,9 @@ Payment result:
         | (icon) Status label                  |
         | Status line: what happened and       |
         | what happens next                    |
-        | Reason, when the payment stopped     |
+        | Connection line, while offline       |
+        | Reason, when the payment failed:     |
+        | what happened, what to do next       |
         | [primary action, if any]             |
         | Receipt or transaction reference     |
         | Back to checkout                     |
@@ -197,7 +199,7 @@ Payment result:
         +--------------------------------------+
 ```
 
-The reason always comes before the action, so the viewer reads why a payment stopped before choosing to try again.
+The reason always comes before the action, so the viewer reads why a payment stopped before choosing to try again. The room's status panel shows the same connection line under its status line.
 
 ## Components
 
@@ -216,9 +218,9 @@ The reason always comes before the action, so the viewer reads why a payment sto
 | Amount | Money values | Number plus "test USDC", tabular figures. A number never breaks across lines. The hero amount can put "test USDC" on the next line, and below 360px (the `max-narrow:` prefix) it takes the title size so its digits fit a 320px screen. The others stay on one line |
 | Address | Wallets and transaction references | Mono font. Short form in lists, full form where the user verifies it. The full form has a **Copy** button beside it |
 | Payer list | Everyone's spot, share and status | One row per spot. Organizer and You tags |
-| Status panel | The current state | Tone, label, status line, the reason when a payment stopped, your share, and the action group. While a payer has a payment to approve, the approval summary takes your share's place, above **Approve in wallet**: the share as the hero, the full seller with **Copy**, the total and the network, who pays the network fee, and a note that one approval covers every share |
-| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change, or when the screen shows another attempt. A notice can offer a follow-up, such as **Decline payment** after a refusal in the wallet. The follow-up shows its busy label in the notice, stays offered if it fails, and clears the notice once it goes through. While this page waits on the wallet's payment prompt, **Approve in wallet** on the room screen shows **Approving…**, only for the attempt the prompt is for. Another tab has its own prompt. While spots are open, **I'm ready** and **Not ready yet** are one secondary toggle that keeps its button and focus when it flips. Once the room is full, **I'm ready** is the primary action and **Not ready yet** a secondary one, so a flip removes the focused button. When an answer removes the focused control, focus moves to the primary action, or to the status line when there is none. So **Not ready yet** hands focus to **I'm ready**, and **I'm ready** hands it to the status line, or to **Start payment** for the organizer once everyone is ready |
-| Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. A sample receipt has no explorer link |
+| Status panel | The current state | Tone, label, status line, the connection line, the reason when a payment failed, your share, and the action group. The status line, the connection line and the reason share one polite live region, so a screen reader hears each change. That block is also where focus lands after a live page moves the viewer between the room and the result, and when an answer removes the focused control and no primary action is left. A direct load or a reload leaves focus alone. The connection line, "Can't reach OneTab right now…", shows on both screens and follows the newest request that answered. It shows when that was a failed room read, and clears when a newer request shows a room. The reason comes from the stop reasons table: what happened, then what to do next. Network rejected comes first, whenever the payment was sent. Otherwise the reason gives the cause from the room's code, then the cause this page's own Start or Try again heard for that exact attempt, and otherwise a line that says the payment stopped before it was sent. It never shows the server's message. While a payer has a payment to approve, the approval summary takes your share's place, above **Approve in wallet**: the share as the hero, the full seller with **Copy**, the total and the network, who pays the network fee, and a note that one approval covers every share |
+| Action group | The state's actions | One primary at most. In sample data, actions that need a wallet, the backend or the chain explain themselves and send nothing. A live action shows a spinner and its busy label, such as **Joining…**, and keeps its width, while the group's other buttons wait. A request that changes nothing explains itself in a notice under the actions, which clears when the wallet or the offered actions change, or when the screen shows another attempt. A notice can offer a follow-up, such as **Decline payment** after a refusal in the wallet. The follow-up shows its busy label in the notice, stays offered if it fails, and clears the notice once it goes through. While this page waits on the wallet's payment prompt, **Approve in wallet** on the room screen shows **Approving…**, only for the attempt the prompt is for. Another tab has its own prompt. While spots are open, **I'm ready** and **Not ready yet** are one secondary toggle that keeps its button and focus when it flips. Once the room is full, **I'm ready** is the primary action and **Not ready yet** a secondary one, so a flip removes the focused button. When an answer removes the focused control, focus moves to the primary action, or to the status block when there is none. So **Not ready yet** hands focus to **I'm ready**, and **I'm ready** hands it to the status block, or to **Start payment** for the organizer once everyone is ready. **Try again** shows **Starting…** like **Start payment**, and its notice lasts only while Try again is for the same attempt. When Try again is refused again and leaves a new failed attempt, the notice is about that new attempt and says the new try stopped before it was sent. It shows on every press, and clears once another attempt shows. The notice region stays separate from the status block's live region. On a result that is in progress, unresolved or needs attention, a signed-out viewer gets **Connect wallet** as the primary action, so a payer who reloaded can sign in and the page resumes checking. Before a payment starts, and during approvals, the result keeps **Back to checkout** first. A payment that is sending or unresolved offers a signed-out viewer **Connect wallet**, then **Back to checkout**, and nothing else. Anyone else gets only **Back to checkout** |
+| Receipt | Proof of a paid checkout | Seller, total, each contribution, transaction reference, explorer link. It shows only when the room is paid, its attempt is confirmed, and every check holds: the room lists every spot once, each on its own wallet, and its shares add up to the total; every payer's wallet approved the attempt; the reference is the attempt's own and decodes to a 64-byte signature; and the receipt names this checkout's seller and total and every share in spot order. Anything less reads **Finalizing**. The explorer link is built from the reference, never taken from the server. A sample receipt has no explorer link |
 | Notice | Inline message | Info, success, warning, danger. Icon plus text |
 
 Buttons:
@@ -243,7 +245,7 @@ Ready and Approved always look different. Ready moves no money.
 
 ## States
 
-Every checkout is in exactly one state. Each state has an owner screen, where its primary action lives. The other screen still renders the checkout and links to the owner: the room shows **View payment status** or **View receipt**, and the result shows **Back to checkout**. Neither page redirects, so the **Back to checkout** exit door never bounces back. A live page polls its room, and moves the viewer to the owner screen only when a room it read changes owner, never on first load or after Back.
+Every checkout is in exactly one state. Each state has an owner screen, where its primary action lives. The other screen still renders the checkout and links to the owner: the room shows **View payment status** or **View receipt**, and the result shows **Back to checkout**. Neither page redirects, so the **Back to checkout** exit door never bounces back. A live page polls its room. A room shown by this page's own action moves the viewer to its owner screen. A polled room moves the viewer only when its owner differs from the one before. A load or reload starts from the room it loaded, and a page that a move opened starts from its own screen, so a room that changes owner again while that page opens still moves the viewer. Back, Forward and links start from their first read, so Back never bounces, unless the viewer's own action starts first, which makes that screen the one before. A move ends as soon as the app shows another address. So when the viewer leaves before a move's page opens, Back to that page later starts from its first read and leaves focus alone.
 
 <!-- design-system:states -->
 | State | Screen | Flow step | Tone | Label | Server data |
@@ -254,12 +256,12 @@ Every checkout is in exactly one state. Each state has an owner screen, where it
 | `preparing` | room | approve | info | Preparing payment | attempt preparing |
 | `signing` | room | approve | info | Collecting approvals | attempt signing |
 | `submitting` | result | paid | info | Sending payment | attempt submitting |
-| `confirming` | result | paid | info | Finalizing | attempt confirmed, but no receipt or phase not paid |
+| `confirming` | result | paid | info | Finalizing | phase paid without a receipt that proves it, phase paying with no attempt, or attempt confirmed before the phase is paid |
 | `unresolved` | result | paid | warning | Checking the network | attempt unresolved |
 | `declined` | result | approve | warning | Approval declined | attempt declined |
 | `failed` | result | approve | danger | Payment failed | attempt failed |
-| `expired` | result | approve | warning | Approval window ended | attempt expired |
-| `paid` | result | complete | success | Paid | phase paid and attempt confirmed with a receipt |
+| `expired` | result | approve | warning | Payment expired | attempt expired |
+| `paid` | result | complete | success | Paid | phase paid, every spot from 1 to the payer count held once by its own wallet, the attempt confirmed with every payer's approval, and a receipt naming the attempt's own 64-byte signature, this checkout's seller and total, and every share in spot order, adding up to the total |
 
 | Spot status | Label | Meaning |
 | --- | --- | --- |
@@ -300,7 +302,7 @@ Page states that every screen handles:
 | --- | --- | --- |
 | Signed out | None | **Connect wallet** |
 | Connecting | "Approve the connection in your wallet." | **Cancel** |
-| Signing in | "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money." | **Cancel** |
+| Signing in | "Sign the sign-in message in your wallet. It proves the wallet is yours and can't move money." | **Cancel** |
 | Checking sign-in | "Signing in…" | **Cancel** |
 | Approving | "Approve the payment in your wallet. It covers every share in one payment." | **Cancel** |
 | Signed in | None. The header shows the short address, and screen readers hear "Signed in as SAMP…Bea2." | Menu: **Copy address**, **Disconnect** |
@@ -348,7 +350,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `start_payment` | Start payment | backend | button | Starting… |
 | `approve` | Approve in wallet | wallet | button | Approving… |
 | `decline` | Decline payment | backend | button | Declining… |
-| `retry` | Try again | backend | button |  |
+| `retry` | Try again | backend | button | Starting… |
 | `view_status` | View payment status | nothing | link |  |
 | `view_receipt` | View receipt | nothing | link |  |
 | `back_to_checkout` | Back to checkout | nothing | link |  |
@@ -362,17 +364,29 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `room_full` | Someone took the last spot first. This checkout is full. |
 | `room_changed` | The checkout moved on before this went through. It shows the latest now. |
 | `room_changed_unread` | The checkout moved on before this went through. OneTab couldn't load the latest yet. |
-| `not_funded` | The payment can't start until every payer holds their share in test USDC and the organizer holds SOL for the network fee. Nothing was sent. |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so nothing was sent and no network fee was paid. Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so nothing was sent and no network fee was paid. The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so nothing was sent and no network fee was paid. That wallet receives test USDC on Solana Devnet once before the next try. |
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
+| `start_unread` | OneTab couldn't confirm what happened to this payment. This page shows it as soon as it can read the checkout. |
 | `mismatch` | The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved. |
 | `unsupported` | Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved. |
-| `rejected` | You didn't approve in your wallet, so nothing was sent. You can approve again, or decline to stop this payment for everyone. |
+| `rejected` | You didn't approve in your wallet, so nothing was sent, and you can approve again. Declining stops this payment for everyone and keeps the checkout on hold until it's safely closed. |
 | `busy` | Your wallet already has an approval request open. Finish it there first. |
 | `failed` | Your wallet didn't return an approval OneTab can use, so nothing was approved. Try again. |
 | `unchecked` | OneTab couldn't check the approval your wallet returned, so nothing was sent. |
 | `approval_refused` | OneTab couldn't accept this approval, so nothing was sent. You can approve again. |
+
+| Stop reason | What happened | What to do next |
+| --- | --- | --- |
+| `short_usdc` | A payer's wallet didn't hold their full share in test USDC, so nothing was sent and no network fee was paid. | Each payer checks that their wallet holds their share in test USDC on Solana Devnet. |
+| `short_sol` | The organizer's wallet didn't hold enough SOL for the network fee, so nothing was sent and no network fee was paid. | The organizer adds SOL on Solana Devnet to their wallet. |
+| `no_token_account` | A wallet in this payment, a payer's or the seller's, can't receive test USDC yet, so nothing was sent and no network fee was paid. | That wallet receives test USDC on Solana Devnet once before the next try. |
+| `network_unreachable` | OneTab couldn't reach Solana Devnet while preparing the payment, so nothing was sent and no network fee was paid. | None. The status line says who can act. |
+| `network_rejected` | The network rejected the payment, so no share reached the seller, though the organizer's wallet may have paid a small network fee in SOL. | Before the next try, each payer checks that their wallet still holds their share in test USDC. |
+| `not_sent` | The payment stopped before it was sent, so nothing reached the seller and no network fee was paid. | Before the next try, each payer checks that their wallet holds their share in test USDC, and the organizer checks that theirs holds SOL for the network fee. |
 
 | Word | Text |
 | --- | --- |
@@ -429,7 +443,26 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `declined` | You declined this payment. |
 | `seller_wallet` | seller wallet |
 | `you_are_ready` | You're ready. |
+| `send_the_link` | so copy the link and send it to them. |
 | `end_sign_in` | End sign-in |
+| `no_payment_yet` | No payment has started yet. Its status appears here once everyone approves. |
+| `approvals_soon` | Approvals open on the checkout page in a moment, and this page shows the payment once everyone approves. |
+| `approvals_open` | Approvals are open on the checkout page. The payment goes out once every payer approves it, and its status appears here then. |
+| `room_unreachable` | Can't reach OneTab right now. This page keeps trying and shows the last update it got. |
+| `retry_stopped` | Your new try stopped before it was sent, so nothing moved. The reason is above. |
+| `sign_in` | Sign in with your wallet if you hold a spot. |
+| `preparing` | Preparing the payment, and approvals open in a moment. |
+| `sending` | Sending one payment with every share to the seller, and OneTab confirms it once the network finalizes it. |
+| `finalizing` | The network accepted the payment, and the receipt appears once it's final. |
+| `unresolved_here` | We can't confirm the result yet, so this page keeps checking the same transaction and no new payment will start. |
+| `unresolved_payers` | We can't confirm the result yet, so OneTab keeps checking the same transaction while a payer has this checkout open, and no new payment will start. |
+| `payer_declined` | A payer declined, so this payment stays on hold until it's safely closed. |
+| `failed_retry` | No share reached the seller. Try again to ask everyone to approve a new payment. |
+| `failed_waiting` | No share reached the seller, and the organizer can start a new payment that everyone approves again. |
+| `failed_on_hold` | No share reached the seller, and a new payment can start once this one is safely closed. |
+| `expired_retry` | This payment expired before reaching the seller. Try again to ask everyone to approve a new payment. |
+| `expired_waiting` | This payment expired before reaching the seller, and the organizer can start a new payment that everyone approves again. |
+| `expired_on_hold` | This payment expired before reaching the seller, and a new one can start once it's safely closed. |
 | `network devnet` | Test USDC on Solana Devnet |
 | `flow steps` | Create, Get ready, Approve, Paid |
 <!-- /design-system:words -->
@@ -470,7 +503,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | Focus | A 2px ring with a 2px offset. Tide on light surfaces, Marigold on Tide. Never removed |
 | Structure | A skip link first, then `header`, `nav` for the flow steps, and `main`. One `h1` per page |
 | Forms | Visible labels. Hints and errors linked with `aria-describedby`. Invalid fields set `aria-invalid` |
-| Status | The status line is an `aria-live="polite"` region. Only blocking errors use `role="alert"` |
+| Status | The status block (status line, connection line and reason) is one `aria-live="polite"` region, focused after a move between screens. Only blocking errors use `role="alert"` |
 | Color | Never the only signal. Status and spot status always pair color with an icon and words |
 | Motion | Honors `prefers-reduced-motion` |
 | Targets | At least 44 by 44 pixels for buttons and links |
@@ -498,7 +531,7 @@ To see any state, run `npm run dev` and open http://localhost:3000/samples. Ever
 | A wallet message or fix is wrong | The wallet tables in `src/client/catalog.ts`. Run `npm run design:write` after the change |
 | Approve in wallet opens no wallet, or says the payment doesn't match | `src/client/payment-check.ts` compares the signing payload with the screen's `ApprovalTerms`. Its byte check answers `unsupported` until Payments' validator is wired |
 | A second payment prompt opens, or a late approval is uploaded | `keptOrNewApproval` in `src/lib/wallet/store.ts` holds the page's one payment prompt and drops answers from an earlier sign-in. `npm test` runs every order of a switch, disconnect, expiry or second call against it |
-| A room doesn't update, or a page moves to the wrong screen | `watch` and `pollPlan` in `src/client/live-actions.ts`, and `LiveCheckout` in `src/components/viewer.tsx` |
+| A room doesn't update, or a page moves to the wrong screen | `watch`, `pollPlan` and `pageMoves` in `src/client/live-actions.ts`, `LiveCheckout` in `src/components/viewer.tsx`, and `ArrivalWatcher` in `src/components/arrival-watcher.tsx`, which ends a move when the app shows another address |
 | An account switch or a late wallet answer misbehaves | `npm test` runs the exhaustive test in `src/lib/wallet/machine.test.ts`, which drives every short sequence of wallet events |
 | Sign-in calls reach the server in the wrong order | `src/lib/wallet/store.ts` runs every effect and sends sign-in calls one at a time |
 | The sample wallet misbehaves | `src/lib/wallet/sample.ts` holds the sample wallet and sign-in service. `src/components/wallet/sample-wallet-panel.tsx` draws it |
@@ -509,7 +542,7 @@ These files own the decisions behind every screen:
 | --- | --- |
 | `src/client/checkout-source.ts` | Which data a page gets, including the server's read of a live checkout. The only reader of `ONETAB_FIXTURES` |
 | `src/client/api.ts` | Every request to a contract route, and which error code means which problem |
-| `src/client/live-actions.ts` | What each live action sends and does next, which room answer a live checkout shows, and what each poll sends |
+| `src/client/live-actions.ts` | What each live action sends and does next, which room answer a live checkout shows, what each poll sends, where a shown room moves the viewer (`moveFor`, `pageMoves`, arrivals), and the causes this page heard |
 | `src/client/payment-check.ts` | Whether a signing payload is the payment the screen shows, before any wallet prompt |
 | `src/client/fixtures.ts` | Sample addresses, viewers, and the registry that the tests enumerate |
 | `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |
@@ -526,6 +559,7 @@ Add a row for every UI or UX change, newest first.
 
 | Date | Change | Why | Card or PR |
 | --- | --- | --- | --- |
+| 2026-11-07 | Add the stop reasons, what happened and what to do next, in place of the server's message, one notice per funding refusal built from the same words, **Try again** with **Starting…** and a notice when it is refused again, **Connect wallet** for a signed-out viewer of an in-progress, unresolved or needs-attention result, a connection line on both screens while OneTab can't be reached, one live region for the status line, the connection line and the reason, focus on that block after a move between screens, result lines during preparing and during approvals that point to the checkout page, unresolved lines that say who keeps checking, the **Payment expired** label and an expired line that holds whether or not the payment was sent, a failed line without the fee clause, decline copy that says the checkout stays on hold, result lines that keep to two sentences with the sign-in sentence, a sign-in line that keeps to two, the open-spots line's "so copy the link and send it to them" in the catalog, a move to the owner screen after this page's own action, from the room a reload loaded and from the screen a move opened, and on the next poll after an action whose own read failed, a notice that claims nothing about what changed when a start's room can't be read, a receipt only when it proves this checkout's payment, and **Finalizing** for a paid or paying room that dropped its attempt | F5 shows the confirmed result or an accurate account of what remains unresolved. A failure needs its real reason and a next step, a reference alone must never read as paid, and a reload or an outage must keep showing the same attempt | [F5](cards/F5.md), [#11](https://github.com/nefalos-tech/OneTab/issues/11) |
 | 2026-11-07 | Add the approval summary, the busy labels **Saving…**, **Starting…**, **Approving…** and **Declining…**, **Decline payment** after a refusal in the wallet, which lasts only while that attempt is on screen, a short note when a decline lands but the room can't be read, the payment prompt's status line with **Cancel**, **Approving…** only on the checkout the prompt is for, notices for a payment that doesn't match, can't start or can't be checked yet, and for an approval OneTab can't check after the wallet answers or the server refuses, after which Approve asks the wallet again, new status lines for getting ready and approving, including **You're ready.** while a spot is still open, so the status line announces each readiness change, a readiness toggle that keeps its button and focus when it flips while spots are open, **Approve in wallet** only for a payer in the room, a 409 notice that says the screen shows the latest only after the room was read again, a hero amount that keeps its digits on one line, wraps only before "test USDC" and takes the title size below 360px, and moves to the owner screen when a polled room changes owner | F4 asks each payer to approve one complete payment. The payer needs to see what they approve before the wallet opens, every wallet outcome needs words and a next step, and every screen follows the shared room | [F4](cards/F4.md), [#10](https://github.com/nefalos-tech/OneTab/issues/10) |
 | 2026-11-07 | Add the busy labels **Creating…** and **Joining…**, the request problem notices, the seller's status line, Connect wallet at the create review, outage words for creation unavailable, a title for the error page, and focus moves when an answer removes the focused control | F3 creates checkouts and joins rooms against the real routes. Each request outcome needs words and a next step, and creating needs a signed-in organizer | [F3](cards/F3.md), [#9](https://github.com/nefalos-tech/OneTab/issues/9) |
 | 2026-11-07 | Add the wallet control, the sample wallet, the wallet and sign-in states, and the words connect, sign in and sample wallet | F2 connects a wallet and signs in without moving money, and every outcome needs a visible status and a next action | [F2](cards/F2.md), [#8](https://github.com/nefalos-tech/OneTab/issues/8) |
