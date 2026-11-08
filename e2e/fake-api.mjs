@@ -137,16 +137,19 @@ export const goToStep = (id, name) => `${FAKE_API.rooms}/__script/${id}/to/${nam
 /** Fails the browser's room reads while on, and leaves the server render's reads answering. */
 export const failBrowserReads = (id, on) => `${FAKE_API.rooms}/__script/${id}/browser-reads/${on ? "fail" : "answer"}`;
 
+/** Holds the server render's reads of a room while on, so a page that reads it shows its loading skeleton. */
+export const holdServerReads = (id, on) => `${FAKE_API.rooms}/__script/${id}/server-reads/${on ? "hold" : "answer"}`;
+
 const json = (status, body) => ({ status, type: "application/json", body: JSON.stringify(body) });
 const error = (status, code) => json(status, { error: { code, message: "Shown nowhere." } });
 const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
-function respond(dataset, { reads, steps, failingReads }, method, path) {
+function respond(dataset, { reads, steps, failingReads, heldReads }, method, path) {
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
-  const control = /^\/__script\/([0-9a-f-]{36})\/(step|to\/[a-z_]+|browser-reads\/fail|browser-reads\/answer)$/.exec(path);
+  const control = /^\/__script\/([0-9a-f-]{36})\/(step|to\/[a-z_]+|browser-reads\/(?:fail|answer)|server-reads\/(?:hold|answer))$/.exec(path);
   const scripted = control && scriptOf(control[1]);
   if (method === "POST" && scripted) {
     const [, id, command] = control;
@@ -155,6 +158,15 @@ function respond(dataset, { reads, steps, failingReads }, method, path) {
       if (command === "browser-reads/fail") failingReads.add(id);
       else failingReads.delete(id);
       return json(200, { failingReads: failingReads.has(id) });
+    }
+    if (command === "server-reads/hold") {
+      if (!heldReads.has(id)) heldReads.set(id, Promise.withResolvers());
+      return json(200, { heldReads: true });
+    }
+    if (command === "server-reads/answer") {
+      heldReads.get(id)?.resolve();
+      heldReads.delete(id);
+      return json(200, { heldReads: false });
     }
     const step = command === "step" ? Math.min((steps.get(id) ?? 0) + 1, names.length - 1) : names.indexOf(command.slice("to/".length));
     if (step === -1) return json(404, { error: `no step ${command}` });
@@ -179,11 +191,15 @@ function respond(dataset, { reads, steps, failingReads }, method, path) {
   return snapshot ? json(200, { data: snapshot }) : error(404, "CHECKOUT_NOT_FOUND");
 }
 
+const serverRead = (method, path) => (method === "GET" ? /^\/api\/checkouts\/([0-9a-fA-F-]{36})$/.exec(path)?.[1].toLowerCase() : undefined);
+
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const state = { reads: new Map(), steps: new Map(), failingReads: new Set() };
-    createServer((req, res) => {
-      const { status, type, body } = respond(dataset, state, req.method, new URL(req.url ?? "/", origin).pathname);
+    const state = { reads: new Map(), steps: new Map(), failingReads: new Set(), heldReads: new Map() };
+    createServer(async (req, res) => {
+      const path = new URL(req.url ?? "/", origin).pathname;
+      await state.heldReads.get(serverRead(req.method, path))?.promise;
+      const { status, type, body } = respond(dataset, state, req.method, path);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
     }).listen(Number(new URL(origin).port));
   }

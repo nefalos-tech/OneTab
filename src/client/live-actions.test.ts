@@ -1046,6 +1046,42 @@ describe("where a page's move baseline starts, and where its first polled room t
   });
 });
 
+describe("which page a move opened, given the paths the app commits after the move", () => {
+  const { room, result } = checkoutLinks(ROOM);
+  type Row = readonly [label: string, committed: readonly string[], moved: boolean];
+  it.each<Row>([
+    ["the destination rendering with its own path is the move's arrival", [], true],
+    ["the destination rendering after its loading skeleton is the move's arrival", [result], true],
+    ["a link elsewhere while the destination loads ends the move, so Back to it later is not the arrival", [result, "/"], false],
+    ["a link elsewhere before the destination's path commits ends the move", ["/"], false],
+    ["Back while the destination loads ends the move, so Forward to it later is not the arrival", [result, room], false],
+    ["Back to the destination after a link elsewhere is not the arrival", [result, "/", result], false],
+  ])("%s", (_, committed, moved) => {
+    const { arrivals } = liveActions(checkoutApi(NO_REQUESTS));
+    arrivals.moveTo(result);
+    for (const pathname of committed) arrivals.seen(pathname);
+    expect(arrivals.movedTo(result)).toBe(moved);
+  });
+
+  it("the page a move opened is its arrival once, and a later page with the same address is not", () => {
+    const { arrivals } = liveActions(checkoutApi(NO_REQUESTS));
+    arrivals.moveTo(result);
+    arrivals.seen(result);
+    expect(arrivals.movedTo(result)).toBe(true);
+    arrivals.landed();
+    expect(arrivals.movedTo(result)).toBe(false);
+  });
+
+  it("a move after one that ended is its own arrival", () => {
+    const { arrivals } = liveActions(checkoutApi(NO_REQUESTS));
+    arrivals.moveTo(result);
+    arrivals.seen("/");
+    arrivals.moveTo(room);
+    arrivals.seen(room);
+    expect([arrivals.movedTo(result), arrivals.movedTo(room)]).toEqual([false, true]);
+  });
+});
+
 describe("what each poll sends", () => {
   const as = (wallet: string): Session => ({ wallet: wallet as Session["wallet"], expiresAt: PAYER.expiresAt });
   const PAID = FIXTURES.paid.snapshot;

@@ -411,6 +411,8 @@ export type Arrivals = {
   moveTo(href: string): void;
   movedTo(href: string): boolean;
   landed(): void;
+  /** Each path the app commits. Any path but the move's own ends the move, so a later Back to its page isn't the move. */
+  seen(pathname: string): void;
 };
 
 function arrivals(): Arrivals {
@@ -422,6 +424,9 @@ function arrivals(): Arrivals {
     movedTo: (href) => target === href,
     landed() {
       target = null;
+    },
+    seen(pathname) {
+      if (target !== null && new URL(target, "https://onetab.invalid").pathname !== pathname) target = null;
     },
   };
 }

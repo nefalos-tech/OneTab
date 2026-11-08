@@ -3,7 +3,7 @@ import type { APIRequestContext, Page } from "@playwright/test";
 import { ACTIONS, SITUATIONS, STOP_REASONS, WORDS } from "../src/client/catalog";
 import { parseRoomSnapshot } from "../src/client/contracts";
 import { expect, test } from "./browser-api";
-import { FAIL_SCRIPT, PAY_SCRIPT, REFERENCE, failBrowserReads, failingRoom, goToStep, scriptedRoom } from "./fake-api.mjs";
+import { FAIL_SCRIPT, PAY_SCRIPT, REFERENCE, failBrowserReads, failingRoom, goToStep, holdServerReads, scriptedRoom } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
@@ -44,6 +44,7 @@ function scripted<Script extends object>(id: string) {
 const payingRoom = () => scripted<typeof PAY_SCRIPT>(scriptedRoom());
 const failedRoom = () => scripted<typeof FAIL_SCRIPT>(failingRoom());
 const readsFail = (request: APIRequestContext, id: string, on: boolean) => request.post(failBrowserReads(id, on));
+const serverReadsHeld = (request: APIRequestContext, id: string, on: boolean) => request.post(holdServerReads(id, on));
 const wakeOnline = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
 
 /** Holds the first room read sent from the page at `path` until released, so the room can change before it answers. */
@@ -243,6 +244,34 @@ test("a viewer moved to the result is moved back when the room changes owner aga
   await expect(page).toHaveURL(room(id));
   await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
   expect(await attemptShown(page)).toMatch(/^b7/);
+});
+
+test("a viewer who leaves while a move's page loads, then goes Back to it, is neither moved nor focused there", async ({ page, request }) => {
+  test.setTimeout(60_000);
+  const { id, goTo } = failedRoom();
+  await goTo(request, "preparing");
+  const firstRead = readAnswered(page, id);
+  await page.goto(room(id));
+  await firstRead;
+  await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
+
+  await serverReadsHeld(request, id, true);
+  await goTo(request, "failed");
+  await expect(page).toHaveURL(result(id));
+  await expect(page.locator("main[aria-busy='true']"), "the result is still loading").toBeVisible();
+  await page.locator("header").getByRole("link", { name: WORDS.product }).click();
+  await expect(page).toHaveURL("/");
+  await serverReadsHeld(request, id, false);
+  await goTo(request, "replaced");
+
+  const backRead = readAnswered(page, id);
+  await page.goBack();
+  await expect(page).toHaveURL(result(id));
+  await backRead;
+  await readAnswered(page, id);
+  await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
+  await expect(page, "a page restored by Back stays where it was").toHaveURL(result(id));
+  expect(await focusedStatus(page), "only a move's own page focuses its status").toBe(false);
 });
 
 test("a viewer who reloads the result during an outage is moved to the room once the replacement can be read", async ({ page, request }) => {
