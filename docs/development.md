@@ -127,6 +127,6 @@ Use the card's Done when list and the [spec acceptance criteria](../spec.md#acce
 | Payments | Real browser signatures, validation failures, persisted submission identity and observed chain outcomes |
 | Deployment | Public URL works on separate profiles/computers and privileged credentials are absent from browser assets |
 
-P1 owns docs/evidence/payment-proof.md. B5 owns [docs/deployment.md](deployment.md). That page names the server variables and the migration order. It does not yet name a public URL, a provider project, or smoke-test evidence, because no OneTab host is published. B6 owns docs/demo.md for rehearsal and docs/submission.md for the public video, AI-tool disclosure and saved submission confirmation. Those two files do not exist yet.
+P1 owns docs/evidence/payment-proof.md. B5 owns [docs/deployment.md](deployment.md). That page names the public origin `https://onetab-khaki.vercel.app`, the Nefalos host, and the applied migration versions. Hosted wallet, database-mutation, cookie, and redeploy checks are still open. B6 owns docs/demo.md for rehearsal and docs/submission.md for the public video, AI-tool disclosure and saved submission confirmation. Those two files do not exist yet.
 
 Use the hour 4, 8, 12, 16 and 18 checkpoints in [spec.md](../spec.md#delivery-checkpoints-and-unresolved-choices). The board owns progress. A proposed setup or a document checklist is not completion evidence.
