@@ -5,6 +5,8 @@ import { observedPaymentError, PaymentFailure, paymentFailure } from "./errors";
 describe("payment errors", () => {
   it("keeps typed adapter codes and hides arbitrary store details", () => {
     expect(paymentFailure(new PaymentFailure("RETRY_BLOCKED"))).toMatchObject({ code: "RETRY_BLOCKED", status: 409 });
+    expect(paymentFailure(new Error("RETRY_BLOCKED"))).toMatchObject({ code: "RETRY_BLOCKED", status: 409 });
+    expect(paymentFailure(new Error("FORBIDDEN secret token")).message).not.toContain("secret");
     expect(paymentFailure(new Error("FORBIDDEN secret token"))).toMatchObject({ code: "CONFIGURATION_UNAVAILABLE", status: 503 });
     expect(observedPaymentError("secret signed bytes")).toMatchObject({ code: "RPC_UNAVAILABLE" });
     expect(JSON.stringify(observedPaymentError("secret signed bytes"))).not.toContain("secret");

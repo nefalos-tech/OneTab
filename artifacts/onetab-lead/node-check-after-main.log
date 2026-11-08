@@ -1,0 +1,38 @@
+NODE /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+NPM 11.19.1 /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+HEAD 40141c8818c83f56206f4ef1eacc0639eb33e1c0
+
+> onetab@0.1.0 check
+> npm run lint && npm run typecheck && npm run design:check && npm test
+
+
+> onetab@0.1.0 lint
+> eslint
+
+
+> onetab@0.1.0 typecheck
+> next typegen && tsc --noEmit
+
+Generating route types...
+✓ Types generated successfully
+
+> onetab@0.1.0 design:check
+> node scripts/design-system.mjs
+
+design system ok: 37 tokens, 14 contrast pairs, no arbitrary values, doc in step.
+
+> onetab@0.1.0 test
+> vitest run
+
+
+ RUN  v5.1.0 /workspace
+
+
+ Test Files  31 passed (31)
+      Tests  1630 passed (1630)
+   Start at  06:28:08
+   Duration  3.90s (tests 58%, import 34%, transform 7%, worker 1%)
+
+    Isolate  31 workers spawned · ~78ms startup each (spawn + environment, per file)
+             at least ~729ms faster with isolate: false — reuses workers across files instead of one per file
+

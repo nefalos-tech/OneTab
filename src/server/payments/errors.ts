@@ -52,6 +52,7 @@ export function paymentFailure(error: unknown): PaymentFailure {
       default: return new PaymentFailure("INVALID_PAYMENT");
     }
   }
+  if (error instanceof Error && isErrorCode(error.message)) return new PaymentFailure(error.message);
   return new PaymentFailure("CONFIGURATION_UNAVAILABLE");
 }
 

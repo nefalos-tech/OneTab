@@ -109,7 +109,11 @@ export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
   async declineAttempt(input: Parameters<PaymentLifecycle["declineAttempt"]>[0]) {
     const attempt = this.current(input.attemptId);
     if (!attempt.participants.some(payer => payer.wallet === input.signerWallet)) throw new PaymentFailure("FORBIDDEN");
-    if (attempt.state === "preparing" || attempt.state === "signing") attempt.state = "declined";
+    if (attempt.state === "preparing" || attempt.state === "signing") {
+      attempt.state = "declined";
+      attempt.preparationLease = null;
+      attempt.resolutionLease = null;
+    }
     return structuredClone(attempt);
   }
 
@@ -152,6 +156,18 @@ export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
 
   async recordOutcome(input: Parameters<AttemptStore["recordOutcome"]>[0]) {
     const attempt = this.current(input.attemptId);
+    if (attempt.resolutionLease?.token === input.leaseToken) {
+      this.owns(attempt.resolutionLease, input.leaseToken);
+      if (input.outcome.state !== "failed" && input.outcome.state !== "expired") throw new PaymentFailure("ATTEMPT_NOT_SIGNABLE");
+      if (attempt.submission || (attempt.state !== "signing" && attempt.state !== "declined") || !input.outcome.safelyResolved) {
+        throw new PaymentFailure("ATTEMPT_NOT_SIGNABLE");
+      }
+      attempt.state = input.outcome.state;
+      attempt.observedError = input.outcome.error;
+      attempt.safelyResolved = true;
+      attempt.resolutionLease = null;
+      return structuredClone(attempt);
+    }
     this.owns(attempt.submissionLease, input.leaseToken);
     if (attempt.safelyResolved || attempt.state === "confirmed") return structuredClone(attempt);
     attempt.state = input.outcome.state;

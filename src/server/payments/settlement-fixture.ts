@@ -51,7 +51,25 @@ export function submissionStore(initial: StoredAttempt, events: string[], now: (
   const terminal = () => current.state === "confirmed" || (["failed", "expired"].includes(current.state) && current.safelyResolved);
   const store: AttemptStore = {
     reserveAttempt: unused, claimPreparation: unused, freezeMessage: unused, putVerifiedSignature: unused,
-    failPreparation: unused, declineAttempt: unused, claimResolution: unused,
+    failPreparation: unused,
+    async declineAttempt(input) {
+      events.push("decline");
+      if (input.attemptId !== current.id) throw new Error("Unexpected store operation");
+      if (!current.participants.some(payer => payer.wallet === input.signerWallet)) throw new Error("Unexpected store operation");
+      if (current.state === "preparing" || current.state === "signing") {
+        current.state = "declined";
+        current.preparationLease = null;
+        current.resolutionLease = null;
+      }
+      return structuredClone(current);
+    },
+    async claimResolution(input) {
+      events.push("resolve");
+      if (input.attemptId !== current.id || current.submission || (current.state !== "signing" && current.state !== "declined")
+        || (current.resolutionLease && Date.parse(current.resolutionLease.expiresAt) > now().getTime())) return null;
+      current.resolutionLease = { token: `resolve-${++claims}`, expiresAt: new Date(now().getTime() + 30_000).toISOString() };
+      return structuredClone(current.resolutionLease);
+    },
     async getAttempt({ attemptId }) { return current.id === attemptId ? structuredClone(current) : null; },
     async claimSubmission(input) {
       events.push("claim");
@@ -66,7 +84,21 @@ export function submissionStore(initial: StoredAttempt, events: string[], now: (
       return structuredClone(current.submissionLease);
     },
     async recordOutcome({ attemptId, leaseToken, outcome }) {
-      if (current.id !== attemptId || current.submissionLease?.token !== leaseToken
+      if (current.id !== attemptId) throw new Error("Stale lease");
+      if (current.resolutionLease?.token === leaseToken) {
+        if (outcome.state !== "failed" && outcome.state !== "expired") throw new Error("Stale lease");
+        if (Date.parse(current.resolutionLease.expiresAt) <= now().getTime() || current.submission
+          || (current.state !== "signing" && current.state !== "declined") || terminal() || !outcome.safelyResolved) {
+          throw new Error("Stale lease");
+        }
+        events.push(`outcome:${outcome.state}`);
+        current.state = outcome.state;
+        current.safelyResolved = true;
+        current.observedError = outcome.error;
+        current.resolutionLease = null;
+        return structuredClone(current);
+      }
+      if (current.submissionLease?.token !== leaseToken
         || Date.parse(current.submissionLease.expiresAt) <= now().getTime() || terminal()) throw new Error("Stale lease");
       events.push(`outcome:${outcome.state}`);
       current.state = outcome.state;
@@ -77,5 +109,5 @@ export function submissionStore(initial: StoredAttempt, events: string[], now: (
       return structuredClone(current);
     },
   };
-  return { store, snapshot: () => structuredClone(current) };
+  return { store, snapshot: () => structuredClone(current), mutate(change: (attempt: StoredAttempt) => void) { change(current); } };
 }

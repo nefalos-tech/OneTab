@@ -18,6 +18,17 @@ export type ReconciliationDecision =
   | Readonly<{ kind: "failed"; safelyResolved: true; reason: "finalized_execution_error" }>
   | Readonly<{ kind: "finalized"; evidence: SettlementEvidence }>;
 
+export function blockhashExpired(input: Readonly<{
+  lastValidBlockHeight: bigint; finalizedSlot: bigint; finalizedBlockHeight: bigint;
+  statusContextSlot: bigint; afterLookupProcessedSlot: bigint; backendAssurance: BackendAssurance;
+}>): boolean {
+  const limit = input.lastValidBlockHeight;
+  const upperHeight = input.finalizedBlockHeight + input.afterLookupProcessedSlot - input.finalizedSlot;
+  return input.backendAssurance === "coherent_backend_and_retention_established" && limit >= 150n
+    && input.finalizedBlockHeight > limit && input.statusContextSlot >= input.finalizedSlot
+    && input.afterLookupProcessedSlot >= input.statusContextSlot && upperHeight - (limit - 150n) < 300n;
+}
+
 export function decideReconciliation(input: Readonly<{
   expected: KnownSubmission; observation: ChainObservation; backendAssurance: BackendAssurance;
 }>): ReconciliationDecision {
@@ -26,15 +37,11 @@ export function decideReconciliation(input: Readonly<{
     case "unavailable": case "inconsistent": return { kind: "unresolved", reason: o.reason };
     case "nonfinal": return { kind: "unresolved", reason: "awaiting_finalized_evidence" };
     case "absent": case "historical_absence": return { kind: "unresolved", reason: "absence_without_coverage" };
-    case "recent_absence": {
-      const limit = expected.lastValidBlockHeight;
-      const upperHeight = o.finalizedBlockHeight + o.afterLookupProcessedSlot - o.finalizedSlot;
-      if (backendAssurance === "coherent_backend_and_retention_established" && limit >= 150n
-        && o.finalizedBlockHeight > limit && o.statusContextSlot >= o.finalizedSlot
-        && o.afterLookupProcessedSlot >= o.statusContextSlot
-        && upperHeight - (limit - 150n) < 300n) return { kind: "expired", safelyResolved: true };
-      return { kind: "unresolved", reason: "absence_without_coverage" };
-    }
+    case "recent_absence": return blockhashExpired({
+      lastValidBlockHeight: expected.lastValidBlockHeight, finalizedSlot: o.finalizedSlot,
+      finalizedBlockHeight: o.finalizedBlockHeight, statusContextSlot: o.statusContextSlot,
+      afterLookupProcessedSlot: o.afterLookupProcessedSlot, backendAssurance,
+    }) ? { kind: "expired", safelyResolved: true } : { kind: "unresolved", reason: "absence_without_coverage" };
     case "finalized": {
       if (o.transactionSlot > o.contextSlot || typeof o.rawTransaction !== "object" || o.rawTransaction === null
         || !("slot" in o.rawTransaction) || typeof o.rawTransaction.slot !== "number"

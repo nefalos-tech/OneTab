@@ -1,10 +1,13 @@
+import { getAddressDecoder } from "@solana/kit";
 import { describe, expect, it } from "vitest";
 import type { StoredAttempt } from "../attempt-store/index";
+import { toBase64 } from "../../lib/payments/signing-payload";
 import type { PaymentRpc } from "./preflight";
 import { DEVNET_GENESIS_HASH } from "./preflight";
+import { projectAttempt } from "./service";
+import { serviceFixture } from "./test-fixtures";
 import { createPaymentProgress } from "./settlement";
 import { settlementFixture, submissionStore } from "./settlement-fixture";
-import { toBase64 } from "../../lib/payments/signing-payload";
 
 function deferred() {
   let resolve!: () => void;
@@ -246,15 +249,144 @@ describe("durable submission progress", () => {
     expect(f.events).toEqual([]);
   });
 
-  it("missing signatures cannot claim and declined authorization without submission has no invented lease", async () => {
+  it("missing signatures cannot claim and an unexpired pre-submission attempt stays blocking", async () => {
     const f = await setup();
-    for (const state of ["signing", "declined", "unresolved"] as const) {
+    for (const state of ["signing", "declined"] as const) {
       const attempt = { ...f.attempt, state, signatures: f.attempt.signatures.slice(1) };
       const events: string[] = [];
       const memory = submissionStore(attempt, events, f.deps.now);
-      expect(await createPaymentProgress({ ...f.deps, store: memory.store })(attempt.id)).toEqual(attempt);
-      expect(events).toEqual([]);
+      expect(await createPaymentProgress({ ...f.deps, store: memory.store, backendAssurance: "coherent_backend_and_retention_established" })(attempt.id)).toEqual(attempt);
+      expect(events).not.toContain("resolve");
+      expect(events).not.toContain("claim");
+      expect(events).not.toContain("sendTransaction");
     }
-    expect(f.events).toEqual([]);
+    expect(f.events).toContain("getEpochInfo");
+    const beforeUnresolved = f.events.length;
+    const unresolved = { ...f.attempt, state: "unresolved" as const, signatures: f.attempt.signatures.slice(1) };
+    const events: string[] = [];
+    const memory = submissionStore(unresolved, events, f.deps.now);
+    expect(await createPaymentProgress({ ...f.deps, store: memory.store })(unresolved.id)).toEqual(unresolved);
+    expect(events).toEqual([]);
+    expect(f.events).toHaveLength(beforeUnresolved);
+  });
+
+  it("expires a partial or declined attempt only with the same blockhash predicate and no send", async () => {
+    const assured = "coherent_backend_and_retention_established" as const;
+    const f = await setup();
+    f.mutate(attempt => { attempt.signatures = attempt.signatures.slice(1); });
+    f.setHeight(251);
+    const unverified = await f.progress(f.attempt.id);
+    expect(unverified.state).toBe("signing");
+    expect(unverified.safelyResolved).toBe(false);
+    expect(unverified.submission).toBeNull();
+    expect(f.events).not.toContain("resolve");
+    expect(f.events).not.toContain("sendTransaction");
+    const expired = await createPaymentProgress({ ...f.deps, backendAssurance: assured })(f.attempt.id);
+    expect(expired.state).toBe("expired");
+    expect(expired.safelyResolved).toBe(true);
+    expect(expired.submission).toBeNull();
+    expect(f.events).not.toContain("sendTransaction");
+    expect(f.events).not.toContain("claim");
+    const declined = await setup();
+    declined.mutate(attempt => { attempt.state = "declined"; attempt.signatures = attempt.signatures.slice(1); });
+    declined.setHeight(251);
+    const closed = await createPaymentProgress({ ...declined.deps, backendAssurance: assured })(declined.attempt.id);
+    expect(closed).toMatchObject({ state: "expired", safelyResolved: true, submission: null });
+    expect(declined.events).not.toContain("sendTransaction");
+  });
+
+  it("keeps a visible fee-payer signature blocking and treats unknown RPC as unresolved", async () => {
+    const assured = "coherent_backend_and_retention_established" as const;
+    const visible = await setup();
+    visible.mutate(attempt => { attempt.signatures = attempt.signatures.slice(0, 1); });
+    visible.setHeight(251);
+    visible.setStatus({ slot: 500, confirmationStatus: "finalized", err: null });
+    const found = await createPaymentProgress({ ...visible.deps, backendAssurance: assured })(visible.attempt.id);
+    expect(found).toMatchObject({ state: "signing", safelyResolved: false, submission: null });
+    expect(visible.events).not.toContain("resolve");
+    expect(visible.events).not.toContain("sendTransaction");
+    expect(visible.events).not.toContain("getTransaction");
+    const unknown = await setup();
+    unknown.mutate(attempt => { attempt.signatures = attempt.signatures.slice(1); });
+    unknown.setHeight(251);
+    unknown.setGenesis("wrong-cluster");
+    const blocked = await createPaymentProgress({ ...unknown.deps, backendAssurance: assured })(unknown.attempt.id);
+    expect(blocked.state).toBe("signing");
+    expect(blocked.safelyResolved).toBe(false);
+    expect(unknown.events).not.toContain("resolve");
+  });
+
+  it("a decline during resolution revokes the token, and a later pass can expire", async () => {
+    const f = await setup();
+    f.mutate(attempt => { attempt.signatures = attempt.signatures.slice(1); });
+    f.setHeight(251);
+    let slots = 0;
+    f.onCall(async method => {
+      if (method !== "getSlot") return;
+      slots += 1;
+      if (slots === 2) await f.store.declineAttempt({ attemptId: f.attempt.id, signerWallet: f.attempt.participants[0]!.wallet });
+    });
+    const blocked = await createPaymentProgress({ ...f.deps, backendAssurance: "coherent_backend_and_retention_established" })(f.attempt.id);
+    expect(blocked).toMatchObject({ state: "declined", safelyResolved: false, submission: null, resolutionLease: null });
+    expect(f.events).not.toContain("outcome:expired");
+    const expired = await createPaymentProgress({ ...f.deps, backendAssurance: "coherent_backend_and_retention_established" })(f.attempt.id);
+    expect(expired).toMatchObject({ state: "expired", safelyResolved: true, submission: null });
+    expect(f.events).not.toContain("sendTransaction");
+  });
+
+  it("a submission that arrives before resolution is reconciled instead of dropped", async () => {
+    const f = await setup();
+    f.mutate(attempt => { attempt.signatures = attempt.signatures.slice(1); });
+    f.setHeight(251);
+    let planted = false;
+    f.onCall(async method => {
+      if (method !== "getSlot" || planted) return;
+      planted = true;
+      f.mutate(attempt => {
+        attempt.signatures = structuredClone(f.attempt.signatures);
+        attempt.submission = { transactionBase64: toBase64(f.expected.transactionBytes), transactionReference: f.expected.reference };
+      });
+    });
+    const result = await createPaymentProgress({ ...f.deps, backendAssurance: "coherent_backend_and_retention_established" })(f.attempt.id);
+    expect(result.submission?.transactionReference).toBe(f.expected.reference);
+    expect(result.state).toBe("expired");
+    expect(result.safelyResolved).toBe(true);
+    expect(f.events).toContain("persisted");
+    expect(f.events).not.toContain("resolve");
+    expect(f.events).not.toContain("sendTransaction");
+  });
+
+  it("lets one fresh attempt replace an expired partial payment and rejects the old signature", async () => {
+    const f = await serviceFixture();
+    const latest = f.replies.getLatestBlockhash as { value: { blockhash: string } };
+    f.replies.getLatestBlockhash = { value: { blockhash: latest.value.blockhash, lastValidBlockHeight: 250 } };
+    await f.prepare();
+    const old = await f.upload(0);
+    await f.service.addSignature(old);
+    const rpc: PaymentRpc = { async call(method) {
+      if (method === "getGenesisHash") return DEVNET_GENESIS_HASH;
+      if (method === "getEpochInfo") return { absoluteSlot: 1000, blockHeight: 251 };
+      if (method === "getSignatureStatuses") return { context: { slot: 1001 }, value: [null] };
+      if (method === "getSlot") return 1002;
+      throw new Error(`Unexpected ${method}`);
+    } };
+    const expired = await createPaymentProgress({
+      store: f.store, readCheckout: async () => f.room.checkout, config: f.config, rpc,
+      now: () => new Date(f.store.now), backendAssurance: "coherent_backend_and_retention_established",
+    })(f.current().id);
+    expect(expired).toMatchObject({ state: "expired", safelyResolved: true, submission: null });
+    expect(projectAttempt({ attempt: expired, room: await f.store.readRoom() }).canRetry).toBe(true);
+    f.replies.getLatestBlockhash = { value: {
+      blockhash: getAddressDecoder().decode(new Uint8Array(32).fill(21)), lastValidBlockHeight: 250,
+    } };
+    const replacement = await f.service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: expired.id });
+    expect(replacement.id).not.toBe(expired.id);
+    expect(f.store.attempts.size).toBe(2);
+    expect(f.store.attempts.get(replacement.id)?.signatures).toEqual([]);
+    await expect(f.service.addSignature({ ...old, attemptId: replacement.id })).rejects.toMatchObject({ code: "MESSAGE_MISMATCH" });
+    expect(f.store.attempts.get(replacement.id)?.signatures).toEqual([]);
+    const duplicate = await f.service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: null });
+    expect(duplicate.id).toBe(replacement.id);
+    expect(f.store.attempts.size).toBe(2);
   });
 });

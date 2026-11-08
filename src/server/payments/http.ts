@@ -11,7 +11,7 @@ const empty = z.strictObject({});
 export interface PaymentHandlerDependencies {
   requireSession(): Promise<AuthResult<WalletSession>>;
   originAllowed(request: Request): boolean;
-  service(): PaymentService;
+  service(): PaymentService | Promise<PaymentService>;
 }
 
 async function body(request: Request): Promise<unknown> {
@@ -29,13 +29,14 @@ function parsed<T>(schema: z.ZodType<T>, input: unknown): T {
 
 export function createPaymentHandlers(dependencies: PaymentHandlerDependencies) {
   async function authenticated(input: {
-    request: Request; mutation: boolean; action(wallet: string): Promise<unknown>;
+    request: Request; mutation: boolean; action(service: PaymentService, wallet: string): Promise<unknown>;
   }): Promise<Response> {
     try {
       if (input.mutation && !dependencies.originAllowed(input.request)) throw new PaymentFailure("ORIGIN_MISMATCH");
       const session = await dependencies.requireSession();
       if (!session.ok) throw new PaymentFailure(session.code);
-      const data = await input.action(session.value.wallet);
+      const service = await dependencies.service();
+      const data = await input.action(service, session.value.wallet);
       return Response.json({ data }, { headers: { "Cache-Control": "no-store" } });
     } catch (error) {
       const failure = paymentFailure(error);
@@ -47,44 +48,44 @@ export function createPaymentHandlers(dependencies: PaymentHandlerDependencies) 
 
   return {
     prepare(request: Request, checkoutId: string) {
-      return authenticated({ request, mutation: true, action: async wallet => {
+      return authenticated({ request, mutation: true, action: async (service, wallet) => {
         const id = parsed(uuid, checkoutId);
         const input = parsed(preparation, await body(request));
-        return dependencies.service().prepare({ checkoutId: id, wallet, ...input });
+        return service.prepare({ checkoutId: id, wallet, ...input });
       } });
     },
     signingPayload(request: Request, attemptId: string) {
-      return authenticated({ request, mutation: false, action: wallet => {
+      return authenticated({ request, mutation: false, action: (service, wallet) => {
         const id = parsed(uuid, attemptId);
-        return dependencies.service().signingPayload({ attemptId: id, wallet });
+        return service.signingPayload({ attemptId: id, wallet });
       } });
     },
     addSignature(request: Request, attemptId: string) {
-      return authenticated({ request, mutation: true, action: async wallet => {
+      return authenticated({ request, mutation: true, action: async (service, wallet) => {
         const id = parsed(uuid, attemptId);
         const input = parsed(signature, await body(request));
-        return dependencies.service().addSignature({ attemptId: id, wallet, ...input });
+        return service.addSignature({ attemptId: id, wallet, ...input });
       } });
     },
     decline(request: Request, attemptId: string) {
-      return authenticated({ request, mutation: true, action: async wallet => {
+      return authenticated({ request, mutation: true, action: async (service, wallet) => {
         const id = parsed(uuid, attemptId);
         parsed(empty, await body(request));
-        return dependencies.service().decline({ attemptId: id, wallet });
+        return service.decline({ attemptId: id, wallet });
       } });
     },
     submit(request: Request, attemptId: string) {
-      return authenticated({ request, mutation: true, action: async wallet => {
+      return authenticated({ request, mutation: true, action: async (service, wallet) => {
         const id = parsed(uuid, attemptId);
         parsed(empty, await body(request));
-        return dependencies.service().submit({ attemptId: id, wallet });
+        return service.submit({ attemptId: id, wallet });
       } });
     },
     refresh(request: Request, attemptId: string) {
-      return authenticated({ request, mutation: true, action: async wallet => {
+      return authenticated({ request, mutation: true, action: async (service, wallet) => {
         const id = parsed(uuid, attemptId);
         parsed(empty, await body(request));
-        return dependencies.service().refresh({ attemptId: id, wallet });
+        return service.refresh({ attemptId: id, wallet });
       } });
     },
   };

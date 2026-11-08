@@ -1,8 +1,10 @@
+import { getBase58Decoder } from "@solana/kit";
 import { z } from "zod";
+import { fromBase64 } from "../../lib/payments/signing-payload";
 import { PaymentFailure } from "./errors";
 import { assertDevnet, type PaymentRpc } from "./preflight";
 import {
-  decideReconciliation, type BackendAssurance, type ChainObservation, type KnownSubmission,
+  blockhashExpired, decideReconciliation, type BackendAssurance, type ChainObservation, type KnownSubmission,
 } from "./reconciliation";
 
 const integer = z.number().int().nonnegative().safe();
@@ -106,4 +108,37 @@ export async function sendPayment(input: {
   }]);
   if (reference !== input.expected.reference) throw new PaymentFailure("RPC_UNAVAILABLE");
   return true;
+}
+
+export async function preSubmissionBlockhashExpired(input: {
+  rpc: PaymentRpc; lastValidBlockHeight: bigint; feePayerSignature: string | null; backendAssurance: BackendAssurance;
+}): Promise<boolean> {
+  try {
+    await assertDevnet(input.rpc);
+    const finalized = epoch.safeParse(await input.rpc.call("getEpochInfo", [{ commitment: "finalized" }]));
+    if (!finalized.success) return false;
+    const finalizedSlot = BigInt(finalized.data.absoluteSlot);
+    const finalizedBlockHeight = BigInt(finalized.data.blockHeight);
+    if (finalizedBlockHeight <= input.lastValidBlockHeight) return false;
+    let statusContextSlot = finalizedSlot;
+    if (input.feePayerSignature) {
+      let reference: string;
+      try { reference = getBase58Decoder().decode(fromBase64(input.feePayerSignature)); }
+      catch { return false; }
+      const status = parseChainStatus(await input.rpc.call("getSignatureStatuses", [
+        [reference], { searchTransactionHistory: false },
+      ]));
+      if (status.kind !== "absent") return false;
+      statusContextSlot = status.contextSlot;
+    }
+    if (statusContextSlot > BigInt(Number.MAX_SAFE_INTEGER)) return false;
+    const afterLookup = integer.safeParse(await input.rpc.call("getSlot", [{
+      commitment: "processed", minContextSlot: Number(statusContextSlot),
+    }]));
+    if (!afterLookup.success) return false;
+    return blockhashExpired({
+      lastValidBlockHeight: input.lastValidBlockHeight, finalizedSlot, finalizedBlockHeight, statusContextSlot,
+      afterLookupProcessedSlot: BigInt(afterLookup.data), backendAssurance: input.backendAssurance,
+    });
+  } catch { return false; }
 }
