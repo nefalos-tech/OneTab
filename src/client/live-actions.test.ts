@@ -36,7 +36,8 @@ import {
   type Track,
   type TrackerCallbacks,
 } from "./live-actions";
-import { paymentCheck, type CheckedPayment } from "./payment-check";
+import { keyedPayment } from "./test-support/keyed-payment";
+import { paymentCheck, walletRequest, type CheckedPayment, type MessageCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
 
 type Call = { readonly method: string; readonly path: string; readonly body: unknown };
@@ -181,7 +182,9 @@ function rememberingWallet() {
   return { prompts, signer };
 }
 
-const bytesMatch = paymentCheck(async () => "match", async () => "match");
+const KEYED = await keyedPayment();
+const validated: MessageCheck = async () => ({ ok: true, value: KEYED.validated });
+const bytesMatch = paymentCheck(validated, async () => "match");
 const approver = (fetch: FetchLike) => liveActions(checkoutApi(fetch), bytesMatch);
 const upload = (approval: PaymentApproval) => ({ messageHash: approval.messageHash, signatureBase64: approval.signature });
 
@@ -752,20 +755,68 @@ describe("a funding refusal explains only its own checkout, and only until the n
 });
 
 describe("approve", () => {
-  it("checks the payment, opens one prompt with its exact bytes, uploads only the signature, and shows the room", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: APPROVED.attempt }), () => json(200, { data: APPROVED }));
+  it("reads the payload, then the room it checks against, opens one prompt with Payments' bytes, uploads only the signature, and shows the room", async () => {
+    const { fetch, calls } = server(
+      () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
+      () => json(200, { data: APPROVED.attempt }),
+      () => json(200, { data: APPROVED }),
+    );
     const { track, shown } = shownBy();
     const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
     expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual({ kind: "done" });
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toMatchObject({ account: PAYER.wallet, attemptId: ATTEMPT, messageHash: WIRE.messageHash });
-    expect(Buffer.from(prompts[0]!.transaction).toString("base64")).toBe(WIRE.transactionBase64);
+    expect(walletRequest(prompts[0]!)!.transaction).toEqual(Uint8Array.from(KEYED.validated.message.transactionBytes));
     expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
       ["GET", `/api/attempts/${ATTEMPT}/signing-payload`, null],
+      ["GET", `/api/checkouts/${ROOM}`, null],
       ["POST", `/api/attempts/${ATTEMPT}/signatures`, { messageHash: WIRE.messageHash, signatureBase64: SIGNATURE }],
       ["GET", `/api/checkouts/${ROOM}`, null],
     ]);
-    expect(shown).toEqual([APPROVED]);
+    expect(shown, "the room the check read shows first").toEqual([SIGNING, APPROVED]);
+  });
+
+  it("a room that can't be read before the prompt opens nothing and says the payment couldn't be checked", async () => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")));
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("check_unavailable"));
+    expect(prompts).toHaveLength(0);
+    expect(requests(calls)).toEqual([
+      ["GET", `/api/attempts/${ATTEMPT}/signing-payload`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
+  });
+
+  it("a room that moved to a new attempt opens no prompt, shows that room, and says it moved on beside the new attempt's Approve", async () => {
+    const retried: RoomSnapshot = { ...SIGNING, attempt: { ...SIGNING.attempt!, id: DECLINED_ELSEWHERE } };
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: retried }));
+    const { track, shown } = shownBy();
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    const outcome = await approver(fetch).run(APPROVE, scope(track, signer));
+    expect(outcome).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.room_changed, followUp: null, about: DECLINED_ELSEWHERE });
+    expect(prompts).toHaveLength(0);
+    expect(shown).toEqual([retried]);
+    expect(calls).toHaveLength(2);
+    if (outcome.kind !== "notice") return;
+    const notice = noticeOf(outcome, { wallet: PAYER.wallet, raisedBy: APPROVE });
+    const offeredFor = (room: RoomSnapshot) => deriveRoomView(liveRoom(room, PAYER)).actions;
+    expect(noticeApplies(notice, { wallet: PAYER.wallet, actions: offeredFor(retried) }), "it shows while the new attempt's Approve is offered").toBe(true);
+    expect(noticeApplies(notice, { wallet: PAYER.wallet, actions: offeredFor(SIGNING) })).toBe(false);
+  });
+
+  it.each<[string, RoomSnapshot]>([
+    ["already has this payer's approval", APPROVED],
+    ["is sending with every approval", { ...SIGNING, attempt: { ...SIGNING.attempt!, state: "submitting", signedWallets: SIGNING.participants.map((p) => p.wallet) } }],
+    ["was declined", DECLINED],
+  ])("a room that %s opens no prompt, shows that room, and adds no notice, because its status line says what happened", async (_, fresh) => {
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: fresh }));
+    const { track, shown } = shownBy();
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual({ kind: "done" });
+    expect(prompts).toHaveLength(0);
+    expect(shown).toEqual([fresh]);
+    expect(calls).toHaveLength(2);
   });
 
   it("a poll while the wallet's prompt is open still updates the room, and the upload's room shows after it", async () => {
@@ -773,6 +824,7 @@ describe("approve", () => {
     const allApproved: RoomSnapshot = { ...SIGNING, attempt: { ...camApproved.attempt!, signedWallets: [...camApproved.attempt!.signedWallets, PAYER.wallet] } };
     const { fetch } = server(
       () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
       () => json(200, { data: camApproved }),
       () => json(200, { data: allApproved.attempt }),
       () => json(200, { data: allApproved }),
@@ -793,19 +845,22 @@ describe("approve", () => {
     });
     await prompted;
     await track("read", () => checkoutApi(fetch).readRoom(ROOM));
-    expect(shown, "the poll's room shows while the prompt is open").toEqual([camApproved]);
+    expect(shown, "the poll's room shows while the prompt is open").toEqual([SIGNING, camApproved]);
     answer({ messageHash: WIRE.messageHash as PaymentApproval["messageHash"], signature: SIGNATURE });
     expect(await approving).toEqual({ kind: "done" });
-    expect(shown).toEqual([camApproved, allApproved]);
+    expect(shown).toEqual([SIGNING, camApproved, allApproved]);
   });
 
   it("a payload that differs from the screen opens no prompt and sends nothing more", async () => {
     const tampered = { ...WIRE, payment: { ...(WIRE.payment as object), sellerWallet: SAMPLE_WALLETS.outsider } };
-    const { fetch, calls } = server(() => json(200, { data: tampered }));
+    const { fetch, calls } = server(() => json(200, { data: tampered }), () => json(200, { data: SIGNING }));
     const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
     expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("mismatch"));
     expect(prompts).toHaveLength(0);
-    expect(requests(calls)).toEqual([["GET", `/api/attempts/${ATTEMPT}/signing-payload`]]);
+    expect(requests(calls)).toEqual([
+      ["GET", `/api/attempts/${ATTEMPT}/signing-payload`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
   });
 
   const payment = WIRE.payment as Record<string, unknown> & { readonly contributions: readonly Record<string, unknown>[] };
@@ -815,25 +870,44 @@ describe("approve", () => {
     ["lists the payers out of slot order", { ...WIRE, payment: { ...payment, contributions: [...payment.contributions].reverse() } }],
     ["adds a fourth payer", { ...WIRE, payment: { ...payment, contributions: [...payment.contributions, { ...payment.contributions[2], slot: 3 }] } }],
   ])("a payload that %s opens no prompt and says it doesn't match", async (_, data) => {
-    const { fetch, calls } = server(() => json(200, { data }));
+    const { fetch, calls } = server(() => json(200, { data }), () => json(200, { data: SIGNING }));
     const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
     expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("mismatch"));
     expect(prompts).toHaveLength(0);
-    expect(calls).toHaveLength(1);
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
-  it("opens no prompt until Payments' byte check is wired", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
-    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
-    expect(await liveActions(checkoutApi(fetch)).run(APPROVE, scope(untracked, signer))).toEqual(said("unsupported"));
+  it("the live check opens one prompt for a real payment and none for a byte the screen can't show", async () => {
+    const terms = termsOf(KEYED.room, { wallet: KEYED.payers[1]!.address, expiresAt: PAYER.expiresAt })!;
+    const approve: LiveAction = { kind: "approve", terms };
+    const lastByte = KEYED.payload.transaction.length - 1;
+    const tampered = {
+      ...KEYED.wirePayload,
+      transactionBase64: btoa(String.fromCharCode(...KEYED.payload.transaction.map((b, i) => (i === lastByte ? b ^ 1 : b)))),
+    };
+    const { fetch } = server(
+      () => json(200, { data: tampered }),
+      () => json(200, { data: KEYED.wireRoom }),
+      () => json(200, { data: KEYED.wirePayload }),
+      () => json(200, { data: KEYED.wireRoom }),
+    );
+    const { prompts, signer } = wallet({ ok: false, failure: "rejected" });
+    const live = liveActions(checkoutApi(fetch));
+    expect(await live.run(approve, scope(untracked, signer))).toEqual(said("mismatch"));
     expect(prompts).toHaveLength(0);
-    expect(calls).toHaveLength(1);
+    expect(await live.run(approve, scope(untracked, signer))).toEqual(said("rejected", { kind: "decline", checkoutId: terms.checkoutId, attemptId: terms.attemptId }));
+    expect(prompts.map((p) => walletRequest(p)?.transaction)).toEqual([KEYED.payload.transaction]);
   });
 
   it("an approval that P3's check can't confirm uploads nothing, says so with no Decline, and isn't reused", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: WIRE }));
+    const { fetch, calls } = server(
+      () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
+      () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
+    );
     const { prompts, signer } = rememberingWallet();
-    const live = liveActions(checkoutApi(fetch), paymentCheck(async () => "match", async () => "unsupported"));
+    const live = liveActions(checkoutApi(fetch), paymentCheck(validated, async () => "unsupported"));
     expect(await live.run(APPROVE, scope(untracked, signer))).toEqual(said("unchecked"));
     expect(await live.run(APPROVE, scope(untracked, signer))).toEqual(said("unchecked"));
     expect(prompts, "each Approve asked the wallet").toHaveLength(2);
@@ -841,32 +915,34 @@ describe("approve", () => {
   });
 
   it("an answer that arrives after the sign-in changed uploads nothing and says nothing", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: SIGNING }));
     const { prompts, signer } = wallet({ ok: false, failure: "stale" });
     expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
     expect(prompts).toHaveLength(1);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("a refusal in the wallet sends nothing and offers Decline for this attempt", async () => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: SIGNING }));
     const { signer } = wallet({ ok: false, failure: "rejected" });
     expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said("rejected", DECLINE));
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it.each(["busy", "failed"] as const)("a %s wallet sends nothing and says so, with no Decline", async (failure) => {
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: SIGNING }));
     const { signer } = wallet({ ok: false, failure });
     expect(await approver(fetch).run(APPROVE, scope(untracked, signer))).toEqual(said(failure));
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
   });
 
   it("after an upload with no answer, Approve again resends the same approval without a second prompt", async () => {
     const { fetch, calls } = server(
       () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
       noAnswer,
       () => json(200, { data: WIRE }),
+      () => json(200, { data: SIGNING }),
       () => json(200, { data: APPROVED.attempt }),
       () => json(200, { data: APPROVED }),
     );
@@ -895,8 +971,10 @@ describe("approve", () => {
     async (code) => {
       const { fetch, calls } = server(
         () => json(200, { data: WIRE }),
+        () => json(200, { data: SIGNING }),
         () => json(400, errorBody(code)),
         () => json(200, { data: WIRE }),
+        () => json(200, { data: SIGNING }),
         () => json(200, { data: APPROVED.attempt }),
         () => json(200, { data: APPROVED }),
       );
@@ -913,10 +991,10 @@ describe("approve", () => {
 
   it("an approval whose sign-in ended before the upload is stale: nothing is uploaded or said", async () => {
     let signedIn = true;
-    const { fetch, calls } = server(() => json(200, { data: WIRE }));
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: SIGNING }));
     const { prompts, signer } = wallet({ ok: true, value: SIGNATURE }, () => signedIn);
     const switchesDuringTheReturnCheck = paymentCheck(
-      async () => "match",
+      validated,
       async () => {
         signedIn = false;
         return "match";
@@ -925,13 +1003,16 @@ describe("approve", () => {
     const live = liveActions(checkoutApi(fetch), switchesDuringTheReturnCheck);
     expect(await live.run(APPROVE, scope(untracked, signer))).toEqual({ kind: "done" });
     expect(prompts).toHaveLength(1);
-    expect(requests(calls)).toEqual([["GET", `/api/attempts/${ATTEMPT}/signing-payload`]]);
+    expect(requests(calls)).toEqual([
+      ["GET", `/api/attempts/${ATTEMPT}/signing-payload`],
+      ["GET", `/api/checkouts/${ROOM}`],
+    ]);
   });
 
   it("an ended sign-in at any step is signed_out", async () => {
     for (const responses of [
       [() => json(401, errorBody("UNAUTHENTICATED"))],
-      [() => json(200, { data: WIRE }), () => json(401, errorBody("UNAUTHENTICATED"))],
+      [() => json(200, { data: WIRE }), () => json(200, { data: SIGNING }), () => json(401, errorBody("UNAUTHENTICATED"))],
     ]) {
       const { fetch } = server(...responses);
       const { signer } = wallet({ ok: true, value: SIGNATURE });

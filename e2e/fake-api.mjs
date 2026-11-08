@@ -134,6 +134,14 @@ const scriptOf = (id) => Object.entries(SCRIPTS).find(([prefix]) => id.startsWit
 
 export const goToStep = (id, name) => `${FAKE_API.rooms}/__script/${id}/to/${name}`;
 
+const INSTALLED_PREFIX = "ec0ec0ec-";
+
+/** A fresh ID for a room a test installs. It keeps randomUUID's version and variant bits, which Payments checks. */
+export const installedRoom = () => `${INSTALLED_PREFIX}${randomUUID().slice(INSTALLED_PREFIX.length)}`;
+
+/** PUT a B1 room here, so the server render and every browser read show it. */
+export const installRoom = (id) => `${FAKE_API.rooms}/__script/rooms/${id}`;
+
 /** Fails the browser's room reads while on, and leaves the server render's reads answering. */
 export const failBrowserReads = (id, on) => `${FAKE_API.rooms}/__script/${id}/browser-reads/${on ? "fail" : "answer"}`;
 
@@ -146,7 +154,12 @@ const html404 = { status: 404, type: "text/html", body: "<h1>Not found</h1>" };
 
 export const browserRead = (origin, id) => `${origin}/__rooms/${id}`;
 
-function respond(dataset, { reads, steps, failingReads, heldReads }, method, path) {
+function respond(dataset, { reads, steps, failingReads, heldReads, installed }, method, path, body) {
+  const install = /^\/__script\/rooms\/([0-9a-f-]{36})$/.exec(path);
+  if (method === "PUT" && install && dataset === "rooms") {
+    installed.set(install[1], JSON.parse(body));
+    return json(200, { installed: install[1] });
+  }
   const counted = /^\/__reads\/([0-9a-f-]{36})$/.exec(path);
   if (method === "GET" && counted) return json(200, { count: reads.get(counted[1]) ?? 0 });
   const control = /^\/__script\/([0-9a-f-]{36})\/(step|to\/[a-z_]+|browser-reads\/(?:fail|answer)|server-reads\/(?:hold|answer))$/.exec(path);
@@ -185,6 +198,7 @@ function respond(dataset, { reads, steps, failingReads, heldReads }, method, pat
   if (dataset === "rooms" && id === LIVE.noRoute) return html404;
   if (dataset === "rooms" && id.startsWith(COUNTED_PREFIX)) return json(200, { data: cabin(id) });
   if (room[1] === "__rooms" && failingReads.has(id)) return error(503, "CONFIGURATION_UNAVAILABLE");
+  if (dataset === "rooms" && installed.has(id)) return json(200, { data: installed.get(id) });
   const script = dataset === "rooms" ? scriptOf(id) : undefined;
   if (script) return json(200, { data: Object.values(script)[steps.get(id) ?? 0](id) });
   const snapshot = dataset === "rooms" ? ROOMS[id] : undefined;
@@ -195,12 +209,19 @@ const serverRead = (method, path) => (method === "GET" ? /^\/api\/checkouts\/([0
 
 export function serve() {
   for (const [dataset, origin] of Object.entries(FAKE_API)) {
-    const state = { reads: new Map(), steps: new Map(), failingReads: new Set(), heldReads: new Map() };
+    const state = { reads: new Map(), steps: new Map(), failingReads: new Set(), heldReads: new Map(), installed: new Map() };
     createServer(async (req, res) => {
       const path = new URL(req.url ?? "/", origin).pathname;
       await state.heldReads.get(serverRead(req.method, path))?.promise;
-      const { status, type, body } = respond(dataset, state, req.method, path);
+      const sent = req.method === "PUT" ? await text(req) : null;
+      const { status, type, body } = respond(dataset, state, req.method, path, sent);
       res.writeHead(status, { "content-type": type, "cache-control": "no-store" }).end(body);
     }).listen(Number(new URL(origin).port));
   }
+}
+
+async function text(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8");
 }

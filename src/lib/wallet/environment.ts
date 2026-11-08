@@ -48,9 +48,10 @@ export interface PaymentSigner {
  * contracts.md's WalletBridge. One instance per environment.
  *
  * Contract every implementation keeps (the machine relies on it):
- * - `onAccountChange` reports each change of the selected address after `connect` resolves,
- *   including a change between the user's approval and the subscription, and reports `null` when the
- *   wallet disconnects or unregisters. Same-address events are not reported.
+ * - No switch during the connect prompt is lost: `connect` answers the address the wallet holds once
+ *   the bridge listens, or the bridge reports the switch after `connect` resolves. `onAccountChange`
+ *   reports each later change of the selected address, and `null` when the wallet disconnects or
+ *   unregisters. Same-address events are not reported.
  * - `signAuthentication` refuses without prompting when `account` is not the selected account.
  */
 export interface WalletBridge {
@@ -64,10 +65,10 @@ export interface WalletBridge {
     readonly message: AuthMessage;
   }): Promise<BridgeResult<SignatureBase64>>;
   /**
-   * Asks the wallet to approve `payment.transaction`, exactly as given, without sending it. Refuses
-   * without prompting when `payment.account` isn't the selected account. Returns only that account's
-   * signature, after checking the returned transaction has the same message and no other signature.
-   * The returned transaction never leaves the bridge.
+   * Asks the wallet to approve the transaction the payment check validated for `payment`, without
+   * sending it. Refuses without prompting when `payment` isn't the object the check made, a copy
+   * included, or `payment.account` isn't the selected account. Hands the returned transaction only to
+   * the check's copy of the server's return check, and returns the signature it answers.
    */
   signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>>;
   onAccountChange(listener: (account: Address | null) => void): () => void;
@@ -88,6 +89,14 @@ export interface SignInService {
 }
 
 export type WalletEnvironment = { readonly bridge: WalletBridge; readonly service: SignInService };
+
+/**
+ * Canonical padded base64 of a 64-byte Ed25519 signature, 88 characters, the only form the server accepts.
+ * Null for any other length.
+ */
+export function signatureBase64(bytes: Uint8Array): SignatureBase64 | null {
+  return bytes.length === 64 ? (btoa(String.fromCharCode(...bytes)) as SignatureBase64) : null;
+}
 
 export function capabilityFailure(c: WalletCapabilities): "wrong_network" | "cannot_sign" | null {
   if (!c.signMessage || !c.signTransaction) return "cannot_sign";

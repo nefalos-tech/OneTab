@@ -3,6 +3,7 @@ import { termsOf } from "@/client/checkout-view";
 import { parseSigningPayload, type Address, type Session } from "@/client/contracts";
 import { SAMPLE_WALLETS } from "@/client/fixture-data";
 import { FIXTURES } from "@/client/fixtures";
+import { keyedPayment } from "@/client/test-support/keyed-payment";
 import { paymentCheck, type CheckedPayment } from "@/client/payment-check";
 import { wirePayloadFor } from "@/client/payment-fixture";
 import {
@@ -249,10 +250,13 @@ describe("the payment prompt", () => {
   const APPROVED = "YXBwcm92ZWQ=" as SignatureBase64;
   const room = FIXTURES.signing.snapshot;
 
+  const validated = keyedPayment().then((k) => k.validated);
+
   async function payment(messageHash = "5a".repeat(32)): Promise<CheckedPayment> {
     const terms = termsOf(room, SESSION)!;
     const payload = parseSigningPayload({ ...wirePayloadFor(room), messageHash })!;
-    const checked = await paymentCheck(async () => "match", async () => "match").payload(payload, terms);
+    const value = await validated;
+    const checked = await paymentCheck(async () => ({ ok: true, value }), async () => "match").payload(payload, terms, room);
     if (!checked.ok) throw new Error("The sample payment didn't pass the check");
     return checked.value;
   }

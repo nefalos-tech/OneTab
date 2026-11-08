@@ -283,15 +283,16 @@ test("on the create screen, the organizer follows the wallet's signed-in account
   await capture(page, "create-as-bea");
 });
 
-test("a live page has no sample wallet, and Connect wallet says sign-in isn't available yet", async ({ page }) => {
+test("a live page has no sample wallet, and with no wallet installed Connect wallet points to Phantom", async ({ page }) => {
   const w = wallet(page);
   await page.goto("/");
   await expect(w.panel).toHaveCount(0);
   await w.connect.click();
-  await expect(w.line).toHaveText("Sign-in isn't available right now. Try again in a moment.");
-  await expect(w.action).toHaveText("Try again");
+  await expect(w.line).toHaveText("No Solana wallet found. Install Phantom, then reload this page.");
+  await expect(w.action).toHaveText(/^Get Phantom/);
+  await expect(w.action).toHaveAttribute("href", "https://phantom.com/download");
   await expect(w.connect).toBeVisible();
-  await capture(page, "live-unavailable");
+  await capture(page, "live-no-wallet");
 });
 
 async function moveFocus(page: Page, target: Locator, key: "Tab" | "Shift+Tab" = "Tab") {
