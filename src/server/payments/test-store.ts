@@ -65,7 +65,7 @@ export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
     }
     const attempt: StoredAttempt = {
       id: randomUUID(), checkoutId: input.checkoutId, state: "preparing", participants: structuredClone(this.room.participants),
-      safelyResolved: false, observedError: null, preparationLease: null, submissionLease: null,
+      safelyResolved: false, observedError: null, preparationLease: null, submissionLease: null, resolutionLease: null,
       signingPayload: null, signatures: [], submission: null, receipt: null,
     };
     this.currentId = attempt.id;
@@ -111,6 +111,14 @@ export class TestAttemptStore implements AttemptStore, PaymentLifecycle {
     if (!attempt.participants.some(payer => payer.wallet === input.signerWallet)) throw new PaymentFailure("FORBIDDEN");
     if (attempt.state === "preparing" || attempt.state === "signing") attempt.state = "declined";
     return structuredClone(attempt);
+  }
+
+  async claimResolution(input: Parameters<AttemptStore["claimResolution"]>[0]) {
+    const attempt = this.current(input.attemptId);
+    if (!['signing', 'declined'].includes(attempt.state) || attempt.submission
+      || (attempt.resolutionLease && Date.parse(attempt.resolutionLease.expiresAt) > this.now)) return null;
+    attempt.resolutionLease = this.lease();
+    return structuredClone(attempt.resolutionLease);
   }
 
   async failPreparation(input: Parameters<PaymentLifecycle["failPreparation"]>[0]) {

@@ -17,6 +17,7 @@ const fixtureAttempt: StoredAttempt = {
   observedError: null,
   preparationLease: null,
   submissionLease: null,
+  resolutionLease: null,
   signingPayload: signingPayloadFixture.data,
   signatures: fixtureSummary.signedWallets.map((signerWallet) => ({
     signerWallet,
@@ -47,8 +48,17 @@ export const fixtureAttemptStore: AttemptStore = {
   async claimSubmission() {
     return unsupported("claimSubmission");
   },
+  async failPreparation() {
+    return unsupported("failPreparation");
+  },
   async recordOutcome() {
     return unsupported("recordOutcome");
+  },
+  async declineAttempt() {
+    return unsupported("declineAttempt");
+  },
+  async claimResolution() {
+    return unsupported("claimResolution");
   },
   async getAttempt({ attemptId }) {
     return attemptId === fixtureAttempt.id ? fixtureAttempt : null;
