@@ -45,6 +45,25 @@ const failedRoom = () => scripted<typeof FAIL_SCRIPT>(failingRoom());
 const readsFail = (request: APIRequestContext, id: string, on: boolean) => request.post(failBrowserReads(id, on));
 const wakeOnline = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
 
+/** Holds the first room read sent from the page at `path` until released, so the room can change before it answers. */
+async function holdFirstRead(page: Page, id: string, path: string) {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  let holding!: () => void;
+  const held = new Promise<void>((resolve) => (holding = resolve));
+  let waiting = true;
+  await page.route(`**/api/checkouts/${id}`, async (route) => {
+    const from = await route.request().headerValue("referer");
+    if (waiting && from !== null && new URL(from).pathname === path) {
+      waiting = false;
+      holding();
+      await released;
+    }
+    await route.fallback();
+  });
+  return { held, release };
+}
+
 async function attemptShown(page: Page): Promise<string | null> {
   await expect(panel(page)).toBeVisible();
   return panel(page).getAttribute("data-attempt");
@@ -200,6 +219,29 @@ test("a payment that fails before sending moves viewers to an honest result, and
   const replacement = await attemptShown(page);
   expect(replacement).toMatch(/^b7/);
   expect(replacement).not.toBe(failed);
+});
+
+test("a viewer moved to the result is moved back when the room changes owner again before the result's first read answers", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const { id, goTo } = failedRoom();
+  await goTo(request, "preparing");
+  const firstRead = readAnswered(page, id);
+  await page.goto(room(id));
+  await firstRead;
+  await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
+
+  const resultRead = await holdFirstRead(page, id, result(id));
+  await goTo(request, "failed");
+  await expect(page).toHaveURL(result(id));
+  await resultRead.held;
+  await goTo(request, "replaced");
+  resultRead.release();
+  await expect(page).toHaveURL(room(id));
+  await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
+  expect(await attemptShown(page)).toMatch(/^b7/);
 });
 
 test("a viewer who reloads the result during an outage is moved to the room once the replacement can be read", async ({ page, request }) => {

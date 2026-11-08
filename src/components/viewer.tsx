@@ -3,10 +3,10 @@
 // across the client boundary.
 
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useState, useSyncExternalStore, type ReactNode } from "react";
 import type { Screen as ScreenName } from "@/client/catalog";
 import { NOTHING_HEARD, ownerOf, type CheckoutState, type CreateState, type Session } from "@/client/checkout-view";
-import { live, moveFor, type Intent } from "@/client/live-actions";
+import { live, pageMoves, type Intent } from "@/client/live-actions";
 import { RoomTrack } from "./actions";
 import { CreateScreen } from "./create-screen";
 import { ResultScreen } from "./result-screen";
@@ -37,18 +37,20 @@ const noChanges = () => () => {};
 function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly state: CheckoutState }): ReactNode {
   const [received, setReceived] = useState<{ readonly snapshot: CheckoutState["snapshot"]; readonly intent: Intent } | null>(null);
   const [roomUnreachable, setRoomUnreachable] = useState(false);
-  const [track] = useState(() =>
-    live.tracker(
-      (snapshot, intent) => setReceived({ snapshot, intent }),
-      (answered) => setRoomUnreachable(!answered),
-    ),
-  );
   const hydrating = useSyncExternalStore(noChanges, () => false, () => true);
+  const [arrived] = useState(() => live.arrivals.movedTo(state.source.links[screen]));
+  useEffect(() => live.arrivals.landed(), []);
+  const [moves] = useState(() => pageMoves(hydrating ? "loaded" : arrived ? "moved" : "navigated", screen, ownerOf(state.snapshot)));
+  const [track] = useState(() =>
+    live.tracker({
+      show: (snapshot, intent) => setReceived({ snapshot, intent }),
+      reached: (answered) => setRoomUnreachable(!answered),
+      acting: moves.acting,
+    }),
+  );
   const noted = useSyncExternalStore(live.noted.subscribe, live.noted.current, () => NOTHING_HEARD.noted);
   const { session, expired } = useWalletSession();
   const router = useRouter();
-  const [arrived] = useState(() => live.arrivals.movedTo(state.source.links[screen]));
-  useEffect(() => live.arrivals.landed(), []);
   const snapshot = received?.snapshot ?? state.snapshot;
   const id = state.snapshot.checkout.id;
 
@@ -56,18 +58,13 @@ function LiveCheckout({ screen, state }: { readonly screen: ScreenName; readonly
   const signedOut = useEffectEvent((ended: Session) => expired(ended));
   useEffect(() => live.watch({ id, track, now, signedOut }), [id, track]);
 
-  // A loaded or reloaded page starts from the room it loaded with. A client navigation starts from the
-  // first room it reads, because Back restores a page with the room it had then.
-  const lastOwner = useRef<ScreenName | null>(hydrating ? ownerOf(state.snapshot) : null);
   useEffect(() => {
     if (received === null) return;
-    const owner = ownerOf(received.snapshot);
-    const to = moveFor({ owner, intent: received.intent }, screen, lastOwner.current);
-    lastOwner.current = owner;
+    const to = moves.shown({ owner: ownerOf(received.snapshot), intent: received.intent });
     if (to === null) return;
     live.arrivals.moveTo(state.source.links[to]);
     router.push(state.source.links[to]);
-  }, [received, screen, router, state.source.links]);
+  }, [received, moves, router, state.source.links]);
 
   return (
     <RoomTrack value={track}>

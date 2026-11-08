@@ -22,8 +22,10 @@ import {
   isLiveAction,
   liveActions,
   moveFor,
+  pageMoves,
   pollPlan,
   untracked,
+  type Arrival,
   type Intent,
   type LiveAction,
   type LiveKind,
@@ -31,6 +33,7 @@ import {
   type PollEnv,
   type Scope,
   type Track,
+  type TrackerCallbacks,
 } from "./live-actions";
 import { paymentCheck, type CheckedPayment } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
@@ -56,8 +59,9 @@ function server(...responses: (() => Response | Promise<Response>)[]): { readonl
 }
 
 const NO_REQUESTS: FetchLike = (path) => Promise.reject(new Error(`Unexpected request ${path}`));
+const UNHEARD: TrackerCallbacks = { show: () => {}, reached: () => {}, acting: () => {} };
 const tracker = (show: (snapshot: RoomSnapshot) => void, reached: (answered: boolean) => void = () => {}): Track =>
-  liveActions(checkoutApi(NO_REQUESTS)).tracker(show, reached);
+  liveActions(checkoutApi(NO_REQUESTS)).tracker({ ...UNHEARD, show, reached });
 
 function shownBy(): { readonly track: Track; readonly shown: RoomSnapshot[] } {
   const shown: RoomSnapshot[] = [];
@@ -454,7 +458,7 @@ describe("a refused start is explained on the failed attempt it left", () => {
     const { fetch, calls } = server(...responses);
     const live = liveActions(checkoutApi(fetch));
     const notedWhenShown: unknown[] = [];
-    const track = live.tracker(() => notedWhenShown.push(live.noted.current()), () => {});
+    const track = live.tracker({ ...UNHEARD, show: () => notedWhenShown.push(live.noted.current()) });
     const poll = () => track("read", () => checkoutApi(fetch).readRoom(FAILED_ROOM));
     return { live, calls, track, poll, notedWhenShown };
   }
@@ -647,7 +651,7 @@ describe("what Start and Try again say, from how the start was answered and the 
       const { fetch, calls } = server(answer, room === null ? unread : () => json(200, { data: room }));
       const live = liveActions(checkoutApi(fetch));
       const shown: [RoomSnapshot, Intent][] = [];
-      const track = live.tracker((snapshot, intent) => shown.push([snapshot, intent]), () => {});
+      const track = live.tracker({ ...UNHEARD, show: (snapshot, intent) => shown.push([snapshot, intent]) });
       expect(await live.run(action, scope(track)), action.kind).toEqual(outcome);
       expect(requests(calls), action.kind).toEqual([
         ["POST", `/api/checkouts/${FAILED_ROOM}/attempts`],
@@ -671,7 +675,7 @@ describe("what Start and Try again say, from how the start was answered and the 
     const { fetch } = server(() => json(422, errorBody("INSUFFICIENT_SOL")), () => json(200, { data: FAILED }));
     const live = liveActions(checkoutApi(fetch));
     const shown: { owner: Screen; intent: Intent }[] = [];
-    const track = live.tracker((snapshot, intent) => shown.push({ owner: ownerOf(snapshot), intent }), () => {});
+    const track = live.tracker({ ...UNHEARD, show: (snapshot, intent) => shown.push({ owner: ownerOf(snapshot), intent }) });
     await live.run(START, scope(track));
     expect(shown.map((room) => moveFor(room, "room", null))).toEqual(["result"]);
   });
@@ -698,8 +702,8 @@ describe("a funding refusal explains only its own checkout, and only until the n
       () => json(200, { data: FAILED }),
     );
     const live = liveActions(checkoutApi(fetch));
-    const here = live.tracker(() => {}, () => {});
-    const there = live.tracker(() => {}, () => {});
+    const here = live.tracker(UNHEARD);
+    const there = live.tracker(UNHEARD);
     expect(await live.run(startHere, scope(here))).toEqual(said("short_usdc"));
     await there("read", () => checkoutApi(fetch).readRoom(OTHER));
     expect(live.noted.current()).toEqual([]);
@@ -716,9 +720,9 @@ describe("a funding refusal explains only its own checkout, and only until the n
       () => json(200, { data: otherFailed }),
     );
     const live = liveActions(checkoutApi(fetch));
-    expect(await live.run(startHere, scope(live.tracker(() => {}, () => {})))).toEqual(said("short_usdc"));
+    expect(await live.run(startHere, scope(live.tracker(UNHEARD)))).toEqual(said("short_usdc"));
     const startThere: LiveAction = { kind: "start_payment", checkoutId: OTHER };
-    expect(await live.run(startThere, scope(live.tracker(() => {}, () => {})))).toEqual({ kind: "done" });
+    expect(await live.run(startThere, scope(live.tracker(UNHEARD)))).toEqual({ kind: "done" });
     expect(live.noted.current()).toEqual([]);
     expect(reasonFor(live, otherFailed)).toBe("attempt");
   });
@@ -731,7 +735,7 @@ describe("a funding refusal explains only its own checkout, and only until the n
       () => json(200, { data: FAILED }),
     );
     const live = liveActions(checkoutApi(fetch));
-    const track = live.tracker(() => {}, () => {});
+    const track = live.tracker(UNHEARD);
     expect(await live.run(startHere, scope(track))).toEqual(said("short_usdc"));
     expect(await live.run(startHere, scope(track))).toEqual({ kind: "done" });
     expect(live.noted.current()).toEqual([]);
@@ -969,6 +973,68 @@ describe("where a shown room takes the viewer", () => {
     ["a polled room the screen already owns stays put", "result", "read", "result", "room", null],
   ])("%s", (_, owner, intent, here, before, to) => {
     expect(moveFor({ owner, intent }, here, before)).toBe(to);
+  });
+});
+
+describe("where a page's move baseline starts, and where its first polled room takes the viewer", () => {
+  type Row = readonly [label: string, arrival: Arrival, here: Screen, loaded: Screen, acted: boolean, shown: Screen, to: Screen | null];
+  it.each<Row>([
+    ["a reload of the result moves the viewer once a read shows the replacement", "loaded", "result", "result", false, "room", "room"],
+    ["a page loaded on the screen that doesn't own its room stays put", "loaded", "result", "room", false, "room", null],
+    ["a payer moved to the result goes back to the room when its first read already shows a new attempt", "moved", "result", "result", false, "room", "room"],
+    ["a payer moved to the room goes on to the result when its first read already shows the new attempt failed", "moved", "room", "room", false, "result", "result"],
+    ["a page a move opened stays when its first read shows the room it moved for", "moved", "result", "room", false, "result", null],
+    ["Back or Forward stays put when its first read shows the other screen's room, so Back never bounces", "navigated", "result", "result", false, "room", null],
+    ["a link stays put when its first read shows the other screen's room", "navigated", "room", "room", false, "result", null],
+    ["after Try again on a page reached inside the app, the first read that shows the room moves the organizer", "navigated", "result", "result", true, "room", "room"],
+    ["after Start on a page reached inside the app, the first read that shows the failure moves the organizer", "navigated", "room", "room", true, "result", "result"],
+    ["an action on a loaded page keeps the room it loaded with", "loaded", "result", "room", true, "room", null],
+    ["an action on a page a move opened keeps the screen it moved to", "moved", "room", "result", true, "result", "result"],
+  ])("%s", (_, arrival, here, loaded, acted, owner, to) => {
+    const moves = pageMoves(arrival, here, loaded);
+    if (acted) moves.acting();
+    expect(moves.shown({ owner, intent: "read" })).toBe(to);
+  });
+
+  it("after the first room shows, an action keeps the baseline that room set", () => {
+    const moves = pageMoves("navigated", "result", "result");
+    expect(moves.shown({ owner: "room", intent: "read" })).toBe(null);
+    moves.acting();
+    expect(moves.shown({ owner: "room", intent: "read" })).toBe(null);
+    expect(moves.shown({ owner: "result", intent: "read" })).toBe(null);
+    expect(moves.shown({ owner: "room", intent: "read" })).toBe("room");
+  });
+
+  it("the tracker says this page acted when its write starts, before it answers, and never for a read", async () => {
+    const heard: string[] = [];
+    const track = liveActions(checkoutApi(NO_REQUESTS)).tracker({ ...UNHEARD, show: () => heard.push("shown"), acting: () => heard.push("acting") });
+    await track("read", async () => ({ ok: true, value: OPEN }));
+    let answer!: (room: Result<RoomSnapshot, never>) => void;
+    const writing = track("write", () => new Promise((resolve) => (answer = resolve)));
+    expect(heard).toEqual(["shown", "acting"]);
+    answer({ ok: true, value: JOINED });
+    await writing;
+    expect(heard).toEqual(["shown", "acting", "shown"]);
+  });
+
+  it("a Try again whose own read fails, on a result page reached inside the app, moves the organizer when the next poll shows the room", async () => {
+    const preparing: RoomSnapshot = { ...FAILED, phase: "paying", attempt: { ...FIXTURES.preparing.snapshot.attempt!, id: FIXTURES.signing.snapshot.attempt!.id } };
+    const { fetch } = server(
+      () => json(201, { data: preparing.attempt }),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(200, { data: preparing }),
+    );
+    const live = liveActions(checkoutApi(fetch));
+    const moves = pageMoves("navigated", "result", ownerOf(FAILED));
+    const taken: (Screen | null)[] = [];
+    const track = live.tracker({
+      ...UNHEARD,
+      show: (snapshot, intent) => taken.push(moves.shown({ owner: ownerOf(snapshot), intent })),
+      acting: moves.acting,
+    });
+    expect(await live.run(RETRY, scope(track))).toEqual({ kind: "done" });
+    await track("read", () => checkoutApi(fetch).readRoom(FAILED_ROOM));
+    expect(taken).toEqual(["room"]);
   });
 });
 

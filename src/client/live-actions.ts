@@ -27,9 +27,14 @@ export type Track = <F extends string>(intent: Intent, request: () => Promise<Re
 
 export const untracked: Track = (_intent, request) => request();
 
-type Show = (snapshot: RoomSnapshot, intent: Intent) => void;
+/** What a page's tracker tells it: each room to show, whether the room was reached, and that its own write started. */
+export type TrackerCallbacks = {
+  readonly show: (snapshot: RoomSnapshot, intent: Intent) => void;
+  readonly reached: (answered: boolean) => void;
+  readonly acting: () => void;
+};
 
-function roomTracker(show: Show, reached: (answered: boolean) => void): Track {
+function roomTracker({ show, reached, acting }: TrackerCallbacks): Track {
   let sent = 0;
   let shown = 0;
   let reported = 0;
@@ -42,6 +47,7 @@ function roomTracker(show: Show, reached: (answered: boolean) => void): Track {
     if (intent === "write") {
       writesInFlight += 1;
       lastWrite = ticket;
+      acting();
     }
     try {
       const answer = await request();
@@ -241,14 +247,57 @@ function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnaps
   return c.track("read", () => c.api.readRoom(id));
 }
 
+type Shown = { readonly owner: Screen; readonly intent: Intent };
+
 /**
  * The screen a shown room takes the viewer to, or null to stay. This page's own write moves the viewer to
- * whichever screen owns its room. A polled room moves the viewer only when its owner changed from the one
- * before, so a page opened on the other screen, or restored there by Back, stays put.
+ * whichever screen owns its room. A polled room moves the viewer only when its owner differs from the
+ * baseline, so a page opened on the other screen, or restored there by Back, stays put.
  */
-export function moveFor(shown: { readonly owner: Screen; readonly intent: Intent }, here: Screen, before: Screen | null): Screen | null {
+export function moveFor(shown: Shown, here: Screen, before: Screen | null): Screen | null {
   if (shown.owner === here) return null;
   return shown.intent === "write" || (before !== null && shown.owner !== before) ? shown.owner : null;
+}
+
+/** How a page was reached: a full load or reload, an owner-change move, or any other client navigation. */
+export type Arrival = "loaded" | "moved" | "navigated";
+
+export type PageMoves = {
+  /** This page's own write started. */
+  acting(): void;
+  /** Where a room this page shows takes the viewer, or null to stay. */
+  shown(room: Shown): Screen | null;
+};
+
+/**
+ * A page's baseline is the owner its polled rooms are compared with. A load starts from the room it loaded
+ * with, and a move from the screen it moved to, so a room that changed owner again while the page opened
+ * still moves the viewer. Back, Forward and links start from their first read, so Back never bounces, unless
+ * the viewer acts before that read: then the screen they acted on is the baseline.
+ */
+export function pageMoves(arrival: Arrival, here: Screen, loaded: Screen): PageMoves {
+  let before: Screen | null = baselineAt(arrival, here, loaded);
+  return {
+    acting() {
+      before ??= here;
+    },
+    shown(room) {
+      const to = moveFor(room, here, before);
+      before = room.owner;
+      return to;
+    },
+  };
+}
+
+function baselineAt(arrival: Arrival, here: Screen, loaded: Screen): Screen | null {
+  switch (arrival) {
+    case "loaded":
+      return loaded;
+    case "moved":
+      return here;
+    case "navigated":
+      return null;
+  }
 }
 
 export const POLL_MS = 2_000;
@@ -352,7 +401,7 @@ export type NotedCauses = {
 export type Live = {
   run(action: LiveAction, scope: Scope): Promise<Outcome>;
   watch(room: Watched): () => void;
-  tracker(show: Show, reached: (answered: boolean) => void): Track;
+  tracker(callbacks: TrackerCallbacks): Track;
   readonly noted: NotedCauses;
   readonly arrivals: Arrivals;
 };
@@ -422,11 +471,14 @@ export function liveActions(api: CheckoutApi, check: PaymentCheck = checkPayment
   return {
     run: (action, scope) => run(action, { ...scope, api, check, expect: memory.expect }),
     watch: (room) => watch(api, env, room, refreshOnce),
-    tracker: (show, reached) =>
-      roomTracker((snapshot, intent) => {
-        memory.observe(snapshot);
-        show(snapshot, intent);
-      }, reached),
+    tracker: (callbacks) =>
+      roomTracker({
+        ...callbacks,
+        show: (snapshot, intent) => {
+          memory.observe(snapshot);
+          callbacks.show(snapshot, intent);
+        },
+      }),
     noted: { subscribe: memory.subscribe, current: memory.current },
     arrivals: arrivals(),
   };
