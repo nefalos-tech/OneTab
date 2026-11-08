@@ -162,10 +162,14 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
     }
     if (version !== started || outputs.length !== 1) return FAILED;
     const [output] = outputs;
+    if (!output) return FAILED;
+    // One copy of each, because a wallet's output can answer other bytes on each read.
+    const signed = Uint8Array.from(output.signedMessage);
+    const signature = Uint8Array.from(output.signature);
     // A wallet may prefix the message it signs, and the server verifies only the bytes it issued.
-    if (!output || !sameBytes(output.signedMessage, message.bytes) || (output.signatureType ?? "ed25519") !== "ed25519") return FAILED;
-    const signature = signatureBase64(output.signature);
-    return signature !== null && (await verifies(key, output.signature, message.bytes)) ? { ok: true, value: signature } : FAILED;
+    if (!sameBytes(signed, message.bytes) || (output.signatureType ?? "ed25519") !== "ed25519") return FAILED;
+    const encoded = signatureBase64(signature);
+    return encoded !== null && (await verifies(key, signature, message.bytes)) ? { ok: true, value: encoded } : FAILED;
   }
 
   async function signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>> {

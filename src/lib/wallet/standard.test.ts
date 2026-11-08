@@ -543,6 +543,20 @@ describe("signAuthentication", () => {
     ["a signature by another key", async (_, { message }) => [{ signedMessage: message, signature: await sign(await keyedAccount(), message) }], "failed"],
     ["a 63-byte signature", async (account, { message }) => [{ signedMessage: message, signature: (await sign(account, message)).slice(1) }], "failed"],
     [
+      "a signature that reads as other bytes the first time",
+      async (account, { message }) => {
+        const signature = await sign(account, message);
+        let reads = 0;
+        return [
+          Object.defineProperty({ signedMessage: message }, "signature", {
+            enumerable: true,
+            get: () => (++reads === 1 ? new Uint8Array(64).fill(7) : signature),
+          }) as SolanaSignMessageOutput,
+        ];
+      },
+      "failed",
+    ],
+    [
       "a signature type other than ed25519",
       async (account, { message }) => [{ signedMessage: message, signature: await sign(account, message), signatureType: "secp256k1" as "ed25519" }],
       "failed",
