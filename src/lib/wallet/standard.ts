@@ -29,6 +29,7 @@ import {
   type SignatureBase64,
   type WalletBridge,
 } from "./environment";
+import { clearSignInDiagnostic, noteSignInDiagnostic, type SignInDiagnostic } from "./sign-in-diagnostic";
 
 /**
  * Wallet discovery. live.ts passes `getWallets` uncalled, because building the bridge also runs during server
@@ -148,29 +149,34 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
 
   async function signAuthentication({ account, message }: { readonly account: Address; readonly message: AuthMessage }): Promise<BridgeResult<SignatureBase64>> {
     const started = version;
+    clearSignInDiagnostic();
     const held = heldFor(account);
-    if (held === null) return FAILED;
+    if (held === null) return signFailure("failed", "no_account");
     const signer = feature(held.wallet, SolanaSignMessage);
-    if (signer === null || !held.account.features.includes(SolanaSignMessage)) return CANNOT_SIGN;
+    if (signer === null || !held.account.features.includes(SolanaSignMessage)) return signFailure("cannot_sign", "cannot_sign");
     const key = await verifierFor(held.account.publicKey);
-    if (key === null) return CANNOT_SIGN;
-    if (version !== started) return FAILED;
+    if (key === null) return signFailure("cannot_sign", "cannot_verify");
+    if (version !== started) return signFailure("failed", "wallet_changed");
     let outputs: readonly SolanaSignMessageOutput[];
     try {
       outputs = await signer.signMessage({ account: held.account, message: Uint8Array.from(message.bytes) });
     } catch (error) {
-      return version === started ? failureOf(error) : FAILED;
+      if (version !== started) return signFailure("failed", "wallet_changed");
+      const code = providerCode(error);
+      return code === 4001 ? signFailure("rejected", "rejected", 4001) : signFailure("failed", "provider_error", code);
     }
-    if (version !== started || outputs.length !== 1) return FAILED;
+    if (version !== started) return signFailure("failed", "wallet_changed");
+    if (outputs.length !== 1) return signFailure("failed", "output_count");
     const [output] = outputs;
-    if (!output) return FAILED;
+    if (!output) return signFailure("failed", "output_missing");
     // One copy of each, because a wallet's output can answer other bytes on each read.
     const signed = Uint8Array.from(output.signedMessage);
     const signature = Uint8Array.from(output.signature);
     // A wallet may prefix the message it signs, and the server verifies only the bytes it issued.
-    if (!sameBytes(signed, message.bytes) || (output.signatureType ?? "ed25519") !== "ed25519") return FAILED;
+    if (!sameBytes(signed, message.bytes) || (output.signatureType ?? "ed25519") !== "ed25519") return signFailure("failed", "signed_bytes");
     const encoded = signatureBase64(signature);
-    return encoded !== null && (await verifies(key, signature, message.bytes)) ? { ok: true, value: encoded } : FAILED;
+    if (encoded === null) return signFailure("failed", "signature_form");
+    return (await verifies(key, signature, message.bytes)) ? { ok: true, value: encoded } : signFailure("failed", "signature_check");
   }
 
   async function signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>> {
@@ -309,6 +315,23 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
 /** `rejected` only for the provider's 4001. Anything else is `failed`. */
 function failureOf(error: unknown): { readonly ok: false; readonly failure: Extract<BridgeFailure, "rejected" | "failed"> } {
   return typeof error === "object" && error !== null && "code" in error && error.code === 4001 ? { ok: false, failure: "rejected" } : FAILED;
+}
+
+function providerCode(error: unknown): number | null {
+  if (typeof error !== "object" || error === null || !("code" in error)) return null;
+  return typeof error.code === "number" && Number.isInteger(error.code) ? error.code : null;
+}
+
+/** The wallet result stays the same. The note names which existing branch produced it. */
+function signFailure(
+  failure: "rejected" | "cannot_sign" | "failed",
+  reason: SignInDiagnostic["reason"],
+  code: number | null = null,
+): BridgeResult<never> {
+  noteSignInDiagnostic({ stage: "sign", reason, code });
+  if (failure === "rejected") return { ok: false, failure: "rejected" };
+  if (failure === "cannot_sign") return CANNOT_SIGN;
+  return FAILED;
 }
 
 /** Wallets are other people's code. Whatever they throw, every bridge call still resolves. */

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { WORDS } from "@/client/catalog";
 import type { WalletView } from "@/client/wallet-view";
+import { currentSignInNote } from "@/lib/wallet/sign-in-diagnostic";
 import { BUTTON } from "../button";
 import { Icon } from "../icon";
 import { WALLET_CONTROL_ID } from "./wallet-control";
@@ -15,6 +16,7 @@ export function WalletStatus(): ReactNode {
   const { view, cancel, connect } = useWalletSession();
   const { status } = view;
   const shown = status?.kind === "waiting" || status?.kind === "problem" ? status : null;
+  const note = shown ? currentSignInNote() : null;
   return (
     <div className="mx-auto max-w-content px-6">
       <div
@@ -29,6 +31,11 @@ export function WalletStatus(): ReactNode {
           {shown && <Icon name={shown.kind === "problem" ? "alert" : "spinner"} />}
           {status?.text}
         </p>
+        {note ? (
+          <p data-signin-note="" className="basis-full text-small text-muted">
+            {note}
+          </p>
+        ) : null}
         {shown && <StatusAction status={shown} onCancel={cancel} onFix={connect} />}
       </div>
     </div>

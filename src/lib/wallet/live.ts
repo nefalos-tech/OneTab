@@ -13,10 +13,10 @@ import {
   type Challenge,
   type ChallengeId,
   type ServiceFailure,
-  type ServiceResult,
   type SignInService,
   type WalletEnvironment,
 } from "./environment";
+import { clearSignInDiagnostic, noteSignInDiagnostic, type SignInDiagnostic } from "./sign-in-diagnostic";
 import { standardBridge } from "./standard";
 
 export function liveEnvironment(): WalletEnvironment {
@@ -40,19 +40,26 @@ const UNAVAILABLE = { ok: false, failure: "unavailable" } as const;
 export function liveSignInService(fetchImpl: FetchLike): SignInService {
   return {
     async readSession() {
+      clearSignInDiagnostic();
       const reply = await send(fetchImpl, "GET", SESSION_PATH);
       if (reply.kind === "error" && reply.status === 401) return { ok: true, value: null };
-      if (reply.kind !== "data") return failureOf(reply);
-      return reply.data === null ? { ok: true, value: null } : parsed(parseSession(reply.data));
+      if (reply.kind !== "data") return failureOf("session", reply);
+      if (reply.data === null) return { ok: true, value: null };
+      const session = parseSession(reply.data);
+      return session ? { ok: true, value: session } : unparsed("session");
     },
     async requestChallenge(wallet) {
       const reply = await send(fetchImpl, "POST", CHALLENGE_PATH, { wallet });
-      return reply.kind === "data" ? parsed(parseChallenge(reply.data)) : failureOf(reply);
+      if (reply.kind !== "data") return failureOf("challenge", reply);
+      const challenge = parseChallenge(reply.data);
+      return challenge ? { ok: true, value: challenge } : unparsed("challenge");
     },
     async verify({ challengeId, signature }) {
       const request: AuthVerifyRequest = { challengeId, signatureBase64: signature };
       const reply = await send(fetchImpl, "POST", VERIFY_PATH, request);
-      return reply.kind === "data" ? parsed(parseSession(reply.data)) : failureOf(reply);
+      if (reply.kind !== "data") return failureOf("verify", reply);
+      const session = parseSession(reply.data);
+      return session ? { ok: true, value: session } : unparsed("verify");
     },
     async endSession() {
       await send(fetchImpl, "DELETE", SESSION_PATH);
@@ -60,13 +67,19 @@ export function liveSignInService(fetchImpl: FetchLike): SignInService {
   };
 }
 
-function failureOf(reply: Reply): { readonly ok: false; readonly failure: ServiceFailure } {
+function failureOf(stage: SignInDiagnostic["stage"], reply: Reply): { readonly ok: false; readonly failure: ServiceFailure } {
   const failure = reply.kind === "error" && reply.code !== null ? FAILURE_BY_CODE[reply.code] : undefined;
+  noteSignInDiagnostic({
+    stage,
+    reason: reply.kind === "no_answer" ? "no_answer" : reply.kind === "error" && reply.code !== null ? reply.code : "unavailable",
+    code: reply.kind === "error" ? reply.status : null,
+  });
   return { ok: false, failure: failure ?? "unavailable" };
 }
 
-function parsed<T>(value: T | null): ServiceResult<T> {
-  return value === null ? UNAVAILABLE : { ok: true, value };
+function unparsed(stage: SignInDiagnostic["stage"]): { readonly ok: false; readonly failure: "unavailable" } {
+  noteSignInDiagnostic({ stage, reason: "unparsed", code: 200 });
+  return UNAVAILABLE;
 }
 
 function parseSession(data: unknown): Session | null {
