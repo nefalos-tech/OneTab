@@ -363,6 +363,25 @@ describe("connect", () => {
     expect(reports).toEqual([]);
   });
 
+  it("answers failed and keeps no connection when the wallet unregisters inside its connect answer", async () => {
+    const accounts = await twoAccounts();
+    const phantom = fakeWallet("Phantom", accounts);
+    const world = registryOf(phantom);
+    const reports = heard(world.bridge);
+    phantom.next("connect", async () => {
+      const answer = await phantom.approve.connect();
+      world.unregister(phantom);
+      return answer;
+    });
+    expect(await world.bridge.connect()).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.changeListeners()).toBe(0);
+    expect(world.unregisterListeners()).toBe(0);
+    expect(await world.bridge.signAuthentication({ account: accounts[0].address as Address, message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signMessage")).toEqual([]);
+    await laterTask();
+    expect(reports).toEqual([]);
+  });
+
   it("leaves nothing behind from a connect the page cancelled, whenever it resolves", async () => {
     const accounts = await twoAccounts();
     const phantom = fakeWallet("Phantom", accounts);

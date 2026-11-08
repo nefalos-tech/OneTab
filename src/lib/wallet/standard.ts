@@ -127,8 +127,9 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
     const of: Connection = { wallet, selected: null, stop: () => {} };
     connection = of;
     of.stop = subscribe(of);
-    // Read after subscribing: a switch between the approval and the subscription is this answer, not a lost event.
-    const selected = selectedIn(wallet);
+    // Read after subscribing: a switch or an unregister between the approval and the subscription is this answer,
+    // not a lost event.
+    const selected = registry().get().includes(wallet) ? selectedIn(wallet) : null;
     if (selected === null) {
       end();
       return FAILED;
