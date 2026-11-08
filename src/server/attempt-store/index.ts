@@ -9,6 +9,7 @@ export interface StoredAttempt {
   observedError: string | null;
   preparationLease: Lease | null;
   submissionLease: Lease | null;
+  resolutionLease: Lease | null;
   signingPayload: SigningPayload | null;
   signatures: Array<{ signerWallet: string; signatureBase64: Base64 }>;
   submission: {
@@ -21,6 +22,13 @@ export interface StoredAttempt {
 export interface Lease {
   token: string;
   expiresAt: string;
+}
+
+export type ResolutionLease = Lease;
+
+export interface SubmissionClaim {
+  lease: Lease | null;
+  submission: StoredAttempt["submission"];
 }
 
 export interface AttemptStore {
@@ -45,18 +53,13 @@ export interface AttemptStore {
     attemptId: string;
     transactionBase64: Base64;
     transactionReference: string;
-  }): Promise<Lease | null>;
-  recordOutcome(input: {
-    attemptId: string;
-    leaseToken: string;
-    outcome:
-      | { state: "unresolved"; error: string | null; safelyResolved: false }
-      | {
-          state: "failed" | "expired";
-          error: string | null;
-          safelyResolved: boolean;
-        }
-      | { state: "confirmed"; receipt: Receipt };
-  }): Promise<StoredAttempt>;
+  }): Promise<SubmissionClaim>;
+  declineAttempt(input: { attemptId: string; signerWallet: string }): Promise<StoredAttempt>;
+  claimResolution(input: { attemptId: string }): Promise<ResolutionLease | null>;
+  recordOutcome(input:
+    | { attemptId: string; leaseKind: "preparation"; leaseToken: string; outcome: { state: "failed" | "expired"; error: string | null; safelyResolved: true } }
+    | { attemptId: string; leaseKind: "submission"; leaseToken: string; outcome: { state: "unresolved"; error: string | null; safelyResolved: false } | { state: "failed" | "expired"; error: string | null; safelyResolved: true } | { state: "confirmed"; receipt: Receipt } }
+    | { attemptId: string; leaseKind: "resolution"; leaseToken: string; outcome: { state: "failed" | "expired"; error: string | null; safelyResolved: true } }
+  ): Promise<StoredAttempt>;
   getAttempt(input: { attemptId: string }): Promise<StoredAttempt | null>;
 }

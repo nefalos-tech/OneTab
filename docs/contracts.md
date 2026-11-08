@@ -116,13 +116,21 @@ These are required operation semantics. B1 owns the TypeScript signatures and B4
 | claimPreparation | Claim or recover a short lease for the same preparing attempt, returning a fencing token |
 | freezeMessage | Write the message and lifetime once, conditional on the current preparation token and no existing message |
 | putVerifiedSignature | Insert one verified signature per attempt/signer without losing concurrent signatures or accepting a closed collection |
-| claimSubmission | Check all signatures, freeze signed bytes/reference once and claim a short lease with a fencing token |
-| recordOutcome | Compare the current state/token, preserve definitive outcomes against stale responses, and commit the receipt and checkout-paid marker together |
+| claimSubmission | Check all signatures, freeze signed bytes/reference once, and return the canonical persisted submission with the current short fencing lease, if acquired |
+| recordOutcome | Compare the current preparation, submission or resolution token. Close a preparation failure only before message freeze, persist submission outcomes only with the submission lease, and commit a confirmed receipt with the checkout-paid marker |
 | getAttempt | Return the immutable snapshot, message, signatures and submission data to authorized server code |
+| declineAttempt | Lock checkout then attempt, and stop signature collection if submission has not started. A decline does not revoke signatures or resolve chain status |
+| claimResolution | Claim a short fencing lease for a signing or declined attempt that has no stored submission. The caller establishes the chain outcome outside the database |
 
 Decline, readiness changes and preparation use the same checkout/attempt locking rules. Every transition rechecks its preconditions inside the transaction. Network requests run outside database locks. Renewing a lease never changes a frozen message or transaction identity.
 
 Preparing leases can be reclaimed only with a new fencing token. A late prior worker cannot publish its message. Submission recovery first reads the stored reference and reconciles it. If rebroadcast is appropriate, it uses the identical stored bytes. Definitive outcomes cannot regress to submitting or unresolved.
+
+Calling `reserveAttempt` again without a retry ID returns the existing blocking attempt. A retry ID is required to create a replacement after safe resolution. `claimSubmission` always returns the stored transaction identity; callers submit only that returned identity and never their candidate bytes after a competing request.
+
+`attempts.transaction_bytes` stores the unsigned signable transaction in `SigningPayload.transactionBase64`. `submissions.transaction_bytes` stores the fully signed transaction used for submission. The records freeze at different transitions and are never interchangeable. Every mutation RPC locks the checkout before the attempt. SQL functions do not call Solana RPC or perform other network I/O.
+
+`claimResolution` returns a lease only while an attempt is signing or declined and has no stored submission. `recordOutcome` accepts a preparation lease only to close an attempt before message freeze as safely resolved. It accepts a resolution lease only for failed or expired pre-submission outcomes that are safely resolved. After submission, uncertain outcomes remain `unresolved`; failed or expired states are accepted only when safely resolved. Confirmed outcomes require a stored submission and its current submission lease. A lease timeout does not prove that a transaction cannot settle.
 
 ## Database constraints
 
