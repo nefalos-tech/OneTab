@@ -77,29 +77,47 @@ const NO_CHECK_FACTORY_IMPORT = {
 const NO_CHECK_FACTORY = { "no-restricted-imports": ["error", { patterns: [NO_CHECK_FACTORY_IMPORT] }] };
 const BROADCAST = "OneTab's browser only asks a wallet to approve. The server sends the one payment.";
 const NO_BROADCAST = [
-  {
-    name: "@solana/wallet-standard-features",
+  ...["@solana/wallet-standard", "@solana/wallet-standard-core", "@solana/wallet-standard-features"].map((name) => ({
+    name,
     importNames: ["SolanaSignAndSendTransaction", "SolanaSignAndSendTransactionFeature"],
     message: BROADCAST,
-  },
+  })),
   {
     name: "@solana/kit",
     importNames: [
+      "airdropFactory",
+      "createDefaultRpcTransport",
+      "createRpc",
       "createSolanaRpc",
+      "createSolanaRpcFromTransport",
       "createSolanaRpcSubscriptions",
+      "createSolanaRpcSubscriptionsFromTransport",
+      "sendAndConfirmDurableNonceTransactionFactory",
       "sendAndConfirmTransactionFactory",
       "sendTransactionWithoutConfirmingFactory",
+      "signAndSendTransactionMessageWithSigners",
+      "signAndSendTransactionWithSigners",
     ],
     message: BROADCAST,
   },
-  { name: "@solana/rpc", importNames: ["createSolanaRpc", "createSolanaRpcSubscriptions"], message: BROADCAST },
-  { name: "@solana/rpc-subscriptions", importNames: ["createSolanaRpcSubscriptions"], message: BROADCAST },
 ];
+/** Browser code uses kit's codecs but nothing from its RPC and signer packages, so it may not import them at all. */
+const NO_RPC_PACKAGES = { group: ["@solana/rpc", "@solana/rpc-*", "@solana/signers"], message: BROADCAST };
 /** The import ban can't see a feature named by its string key, so browser code may not spell the key at all. */
 const NO_SIGN_AND_SEND = ["Literal[value=/^solana:signAndSend/]", "TemplateElement[value.raw=/solana:signAndSend/]"].map((selector) => ({
   selector,
   message: BROADCAST,
 }));
+/**
+ * The import bans can't see import(), which hands over a whole package. This names only these packages, so
+ * payment-check.ts still loads Payments' modules with import().
+ */
+const SENDING_PACKAGE = "^@solana\\/(kit|rpc|rpc-[a-z-]+|signers|wallet-standard|wallet-standard-[a-z-]+)$";
+const NO_DYNAMIC_BROADCAST = [
+  `ImportExpression[source.value=/${SENDING_PACKAGE}/]`,
+  `ImportExpression > TemplateLiteral > TemplateElement[value.raw=/${SENDING_PACKAGE}/]`,
+].map((selector) => ({ selector, message: BROADCAST }));
+const NO_SENDING = [...NO_SIGN_AND_SEND, ...NO_DYNAMIC_BROADCAST];
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],
   message: "Components render views from @/client/checkout-view. Loading, wire types and samples stay in src/client.",
@@ -113,7 +131,8 @@ const CODE = "{ts,tsx,js,jsx,mjs,cjs}";
 
 /**
  * A file matched by several blocks gets only the last block's patterns, so each block lists its full set.
- * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment.
+ * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment, and
+ * src/lib/payments is Payments' own.
  * Tests and test fixtures in browser folders keep the browser bans except NO_PAYMENTS_UPFRONT and NO_SIGN_AND_SEND,
  * because they build real payments and fake wallets that must refuse to send.
  */
@@ -121,13 +140,13 @@ const restrictServer = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
 const restrictTest = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
-  ...restrictSyntax(),
+  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_RPC_PACKAGES, ...patterns] }],
+  ...restrictSyntax(...NO_DYNAMIC_BROADCAST),
 });
 const restrict = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": [
     "error",
-    { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_PAYMENTS_UPFRONT, ...patterns] },
+    { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_PAYMENTS_UPFRONT, NO_RPC_PACKAGES, ...patterns] },
   ],
 });
 
@@ -145,13 +164,13 @@ export default defineConfig([
   },
   {
     files: [`src/client/**/*.${CODE}`],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD), ...restrictSyntax(...NO_SIGN_AND_SEND) },
+    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD), ...restrictSyntax(...NO_SENDING) },
   },
   {
     files: [`src/components/**/*.${CODE}`],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SIGN_AND_SEND),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SENDING),
     },
   },
   {
@@ -159,7 +178,7 @@ export default defineConfig([
     ignores: ["src/app/api/**"],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SIGN_AND_SEND),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SENDING),
     },
   },
   {
@@ -174,7 +193,7 @@ export default defineConfig([
   },
   {
     files: [`src/lib/wallet/**/*.${CODE}`],
-    rules: { ...restrict(NO_API_CLIENT), ...restrictSyntax(...NO_SIGN_AND_SEND) },
+    rules: { ...restrict(NO_API_CLIENT), ...restrictSyntax(...NO_SENDING) },
   },
   {
     files: ["src/lib/wallet/live.ts"],
@@ -190,7 +209,7 @@ export default defineConfig([
   },
   {
     files: ["src/client/checkout-view.ts"],
-    rules: { "no-restricted-syntax": ["error", ...NO_SIGN_AND_SEND] },
+    rules: { "no-restricted-syntax": ["error", ...NO_SENDING] },
   },
   {
     files: ["src/client/catalog.ts"],

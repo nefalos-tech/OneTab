@@ -30,17 +30,57 @@ describe("the browser never sends a payment", () => {
     }
   });
 
-  it.each([
-    ["the sign-and-send feature", 'import { SolanaSignAndSendTransaction } from "@solana/wallet-standard-features";\nexport const k = SolanaSignAndSendTransaction;\n'],
-    ["an RPC client", 'import { createSolanaRpc } from "@solana/kit";\nexport const r = createSolanaRpc;\n'],
-  ])("refuses an import of %s in browser code", async (_, code) => {
-    for (const file of BROWSER) expect(await fenced(code, file, "broadcast"), file).toBe(true);
+  it.each<[string, string]>([
+    ["@solana/kit", "airdropFactory"],
+    ["@solana/kit", "createDefaultRpcTransport"],
+    ["@solana/kit", "createRpc"],
+    ["@solana/kit", "createSolanaRpc"],
+    ["@solana/kit", "createSolanaRpcFromTransport"],
+    ["@solana/kit", "createSolanaRpcSubscriptions"],
+    ["@solana/kit", "createSolanaRpcSubscriptionsFromTransport"],
+    ["@solana/kit", "sendAndConfirmDurableNonceTransactionFactory"],
+    ["@solana/kit", "sendAndConfirmTransactionFactory"],
+    ["@solana/kit", "sendTransactionWithoutConfirmingFactory"],
+    ["@solana/kit", "signAndSendTransactionMessageWithSigners"],
+    ["@solana/kit", "signAndSendTransactionWithSigners"],
+    ["@solana/rpc", "createSolanaRpcFromTransport"],
+    ["@solana/rpc-spec", "createRpc"],
+    ["@solana/rpc-subscriptions", "createSolanaRpcSubscriptions"],
+    ["@solana/rpc-transport-http", "createHttpTransport"],
+    ["@solana/signers", "signAndSendTransactionWithSigners"],
+    ["@solana/wallet-standard", "SolanaSignAndSendTransaction"],
+    ["@solana/wallet-standard", "SolanaSignAndSendTransactionFeature"],
+    ["@solana/wallet-standard-core", "SolanaSignAndSendTransaction"],
+    ["@solana/wallet-standard-core", "SolanaSignAndSendTransactionFeature"],
+    ["@solana/wallet-standard-features", "SolanaSignAndSendTransaction"],
+    ["@solana/wallet-standard-features", "SolanaSignAndSendTransactionFeature"],
+  ])("refuses an import from %s of %s in browser code and its tests", async (from, name) => {
+    const code = `import { ${name} } from "${from}";\nexport { ${name} };\n`;
+    for (const file of [...BROWSER, "src/lib/wallet/fence-probe.test.ts"]) expect(await fenced(code, file, "broadcast"), file).toBe(true);
   });
 
-  it("leaves the server and tests free to name it", async () => {
-    const code = 'export const key = "solana:signAndSendTransaction";\n';
-    expect(await fenced(code, "src/server/fence-probe.ts", "broadcast")).toBe(false);
-    expect(await fenced(code, "src/lib/wallet/fence-probe.test.ts", "broadcast")).toBe(false);
+  it.each(["@solana/kit", "@solana/rpc", "@solana/rpc-transport-http", "@solana/signers", "@solana/wallet-standard", "@solana/wallet-standard-core", "@solana/wallet-standard-features"])(
+    "refuses import() of %s in browser code and its tests, however the string is written",
+    async (from) => {
+      for (const code of [`export const load = () => import("${from}");\n`, `export const load = () => import(\`${from}\`);\n`]) {
+        for (const file of [...BROWSER, "src/client/checkout-view.ts", "src/client/payment-check.ts", "src/lib/wallet/live.ts", "src/lib/wallet/fence-probe.test.ts"]) {
+          expect(await fenced(code, file, "broadcast"), `${file}: ${code}`).toBe(true);
+        }
+      }
+    },
+  );
+
+  it("still lets payment-check.ts load Payments' code with import()", async () => {
+    expect(await fenced('export const load = () => import("@/lib/payments/signing-payload");\n', "src/client/payment-check.ts", "broadcast")).toBe(false);
+  });
+
+  it("leaves the server and tests free to name it, and Payments' own code to Payments", async () => {
+    const key = 'export const key = "solana:signAndSendTransaction";\n';
+    expect(await fenced(key, "src/server/fence-probe.ts", "broadcast")).toBe(false);
+    expect(await fenced(key, "src/lib/wallet/fence-probe.test.ts", "broadcast")).toBe(false);
+    const rpc = 'import { createSolanaRpc } from "@solana/kit";\nexport const r = createSolanaRpc;\n';
+    expect(await fenced(rpc, "src/server/fence-probe.ts", "broadcast")).toBe(false);
+    expect(await fenced(rpc, "src/lib/payments/fence-probe.ts", "broadcast")).toBe(false);
   });
 });
 
