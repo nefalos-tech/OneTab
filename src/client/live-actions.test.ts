@@ -788,14 +788,32 @@ describe("approve", () => {
     ]);
   });
 
+  it("a room that moved to a new attempt opens no prompt, shows that room, and says it moved on beside the new attempt's Approve", async () => {
+    const retried: RoomSnapshot = { ...SIGNING, attempt: { ...SIGNING.attempt!, id: DECLINED_ELSEWHERE } };
+    const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: retried }));
+    const { track, shown } = shownBy();
+    const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
+    const outcome = await approver(fetch).run(APPROVE, scope(track, signer));
+    expect(outcome).toEqual({ kind: "notice", text: REQUEST_PROBLEMS.room_changed, followUp: null, about: DECLINED_ELSEWHERE });
+    expect(prompts).toHaveLength(0);
+    expect(shown).toEqual([retried]);
+    expect(calls).toHaveLength(2);
+    if (outcome.kind !== "notice") return;
+    const notice = noticeOf(outcome, { wallet: PAYER.wallet, raisedBy: APPROVE });
+    const offeredFor = (room: RoomSnapshot) => deriveRoomView(liveRoom(room, PAYER)).actions;
+    expect(noticeApplies(notice, { wallet: PAYER.wallet, actions: offeredFor(retried) }), "it shows while the new attempt's Approve is offered").toBe(true);
+    expect(noticeApplies(notice, { wallet: PAYER.wallet, actions: offeredFor(SIGNING) })).toBe(false);
+  });
+
   it.each<[string, RoomSnapshot]>([
-    ["has moved on", DECLINED],
     ["already has this payer's approval", APPROVED],
-  ])("a room that %s opens no prompt, shows that room and says it moved on", async (_, fresh) => {
+    ["is sending with every approval", { ...SIGNING, attempt: { ...SIGNING.attempt!, state: "submitting", signedWallets: SIGNING.participants.map((p) => p.wallet) } }],
+    ["was declined", DECLINED],
+  ])("a room that %s opens no prompt, shows that room, and adds no notice, because its status line says what happened", async (_, fresh) => {
     const { fetch, calls } = server(() => json(200, { data: WIRE }), () => json(200, { data: fresh }));
     const { track, shown } = shownBy();
     const { prompts, signer } = wallet({ ok: true, value: SIGNATURE });
-    expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual(said("room_changed"));
+    expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual({ kind: "done" });
     expect(prompts).toHaveLength(0);
     expect(shown).toEqual([fresh]);
     expect(calls).toHaveLength(2);

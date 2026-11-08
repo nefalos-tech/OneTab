@@ -16,6 +16,8 @@ export type LiveBackend = {
   server(): Backend;
   /** From now on the signing payload carries this change. The room stays honest. */
   tamper(change: (payload: WirePayload) => WirePayload): void;
+  /** The next signing payload read installs this change to the room first, so the room the page reads next has moved on. */
+  moveOnAtPayload(change: (room: WireRoom) => WireRoom): void;
   /** Every challenge message the server issued, as bytes. */
   readonly issued: readonly Uint8Array[];
   readonly verifies: readonly string[];
@@ -42,6 +44,7 @@ export async function liveBackend(request: APIRequestContext, origin: string): P
   const issued: Uint8Array[] = [];
   const verifies: string[] = [];
   const uploads: Write[] = [];
+  let moveOn: ((room: WireRoom) => WireRoom) | null = null;
 
   const install = async (next: WireRoom) => {
     room = next;
@@ -58,6 +61,9 @@ export async function liveBackend(request: APIRequestContext, origin: string): P
     uploads,
     tamper(change) {
       payload = change(payload);
+    },
+    moveOnAtPayload(change) {
+      moveOn = change;
     },
     server() {
       let session: { readonly wallet: string; readonly expiresAt: string } | null = null;
@@ -91,8 +97,13 @@ export async function liveBackend(request: APIRequestContext, origin: string): P
           return json(200, { data: session });
         }
         if (url.pathname.startsWith("/api/attempts/") && session === null) return error(401, "UNAUTHENTICATED");
-        if (route === `GET /api/attempts/${attempt}/signing-payload`) return json(200, { data: payload });
-        if (route === `POST /api/attempts/${attempt}/refresh`) return json(200, { data: room.attempt });
+        if (route === `GET /api/attempts/${attempt}/signing-payload`) {
+          const change = moveOn;
+          moveOn = null;
+          if (change) await install(change(room));
+          return json(200, { data: payload });
+        }
+        if (route === `POST /api/attempts/${room.attempt?.id}/refresh`) return json(200, { data: room.attempt });
         if (route === `POST /api/attempts/${attempt}/signatures`) {
           const wallet = session!.wallet;
           if (body.messageHash !== payment.wirePayload.messageHash || !isCanonical64(body.signatureBase64)) return error(400, "INVALID_SIGNATURE");

@@ -124,6 +124,32 @@ live("a payload with one byte the screen can't show opens no prompt and says it 
   expect(world.backend.uploads).toEqual([]);
 });
 
+live("Approve for a room that moved to a new attempt opens no prompt and says it moved on beside the new Approve", async ({ openRoom }) => {
+  const world = await openRoom();
+  await signIn(world);
+  const { page, wallet, backend } = world;
+  backend.moveOnAtPayload((room) => ({ ...room, attempt: { ...room.attempt!, id: `b7${room.attempt!.id.slice(2)}` } }));
+  await approve(page).click();
+  await expect(page.getByText(REQUEST_PROBLEMS.room_changed)).toBeVisible();
+  await expect(approve(page), "the new attempt's Approve").toBeVisible();
+  expect(prompts(wallet)).toEqual(["Phantom connect", "Phantom signMessage"]);
+  expect(backend.uploads).toEqual([]);
+});
+
+live("Approve for a room where this payer already approved opens no prompt and leaves the status line to say so", async ({ openRoom }) => {
+  const world = await openRoom();
+  await signIn(world);
+  const { page, wallet, backend, payer } = world;
+  backend.moveOnAtPayload((room) => ({ ...room, attempt: { ...room.attempt!, signedWallets: [payer.address] } }));
+  await approve(page).click();
+  await expect(page.locator("[data-status-block]")).toContainText("You approved.");
+  await expect(approve(page)).toHaveCount(0);
+  await expect(approving(page)).toHaveCount(0);
+  await expect(page.getByText(REQUEST_PROBLEMS.room_changed)).toHaveCount(0);
+  expect(prompts(wallet)).toEqual(["Phantom connect", "Phantom signMessage"]);
+  expect(backend.uploads).toEqual([]);
+});
+
 live("refusing in the wallet offers Decline without sending it, and approving again then uploads", async ({ openRoom }) => {
   const world = await openRoom();
   await signIn(world);

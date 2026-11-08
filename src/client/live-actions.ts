@@ -105,7 +105,7 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
   const room = await readRoomAgain(c, terms.checkoutId);
   if (!room.ok) return notice("check_unavailable");
   const checked = await c.check.payload(payload.value, terms, room.value);
-  if (!checked.ok) return notice(checked.failure);
+  if (!checked.ok) return checked.failure === "room_changed" ? movedOn(terms, room.value) : notice(checked.failure);
   const approval = await c.signer.keptOrNewApproval(checked.value);
   if (!approval.ok) {
     if (approval.failure === "stale") return DONE;
@@ -125,6 +125,16 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
     return notice("approval_refused");
   }
   return outcomeOfWrite(c, terms.checkoutId, uploaded);
+}
+
+/**
+ * The pressed Approve is gone from the room on screen, so a notice about its attempt would clear at once. A room
+ * with a new attempt gets the notice about that attempt, which shows while its Approve is offered. Any other
+ * room's status line already says what happened.
+ */
+function movedOn(terms: ApprovalTerms, room: RoomSnapshot): Outcome {
+  const next = room.attempt;
+  return next !== null && next.id !== terms.attemptId ? { kind: "notice", text: REQUEST_PROBLEMS.room_changed, followUp: null, about: next.id } : DONE;
 }
 
 /**
