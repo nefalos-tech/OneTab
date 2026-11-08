@@ -311,6 +311,21 @@ describe("a receipt shows only when the room proves this checkout's payment", ()
       expect([view.actions.primary, ...view.actions.secondary].map((a) => a?.kind)).not.toContain("start_payment");
     }
   });
+
+  it("a paying room that lost its confirmed attempt reads Finalizing, offers no readiness or Start, and keeps polling", () => {
+    for (const viewer of ["spot-1", "spot-2", "signed-out"]) {
+      const lost = caseById(`paid-no-receipt as ${viewer}`).state;
+      const state: CheckoutState = { ...lost, snapshot: { ...lost.snapshot, phase: "paying" } };
+      const room = deriveRoomView(state);
+      const result = deriveResultView(state);
+      expect([room.status.situation, result.status.situation], viewer).toEqual(["confirming", "confirming"]);
+      expect(result.body.kind, viewer).toBe("in_progress");
+      for (const kind of [...offeredKinds(room), ...offeredKinds(result)]) {
+        expect(["mark_ready", "mark_not_ready", "start_payment", "retry"], viewer).not.toContain(kind);
+      }
+      expect(pollPlan(state.snapshot, state.session), viewer).toEqual({ stop: false, refresh: null });
+    }
+  });
 });
 
 describe("a live room", () => {
@@ -999,6 +1014,17 @@ describe("every room the generator builds keeps the honesty rules", () => {
     const allowed = (b: Built) => (b.session === null ? ["connect_wallet", "back_to_checkout"] : ["back_to_checkout"]).join();
     const settled = (kind: ResultView["body"]["kind"]) => kind !== "in_progress" && kind !== "unresolved";
     expect(breaking((b) => b.views.every((v) => settled(v.result.body.kind) || offeredKinds(v.result).join() === allowed(b)))).toEqual([]);
+  });
+
+  it("reads a paying or paid room that carries no attempt as Finalizing, never as not started or getting ready", () => {
+    const lost = (b: Built) => b.snapshot.attempt === null && (b.snapshot.phase === "paying" || b.snapshot.phase === "paid");
+    const finalizing = (v: Built["views"][number]) =>
+      v.room.status.situation === "confirming" &&
+      v.result.status.situation === "confirming" &&
+      v.result.body.kind === "in_progress" &&
+      ![...offeredKinds(v.room), ...offeredKinds(v.result)].some((k) => ["mark_ready", "mark_not_ready", "start_payment"].includes(k));
+    expect(built.filter(lost).length).toBeGreaterThan(0);
+    expect(breaking((b) => !lost(b) || b.views.every(finalizing))).toEqual([]);
   });
 
   it("never shows the server's message or explorer URL", () => {

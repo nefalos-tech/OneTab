@@ -484,6 +484,8 @@ function classify(snapshot: RoomSnapshot): Classified {
     return receipt !== null && a !== null ? { situation: "paid", attempt: a, receipt } : { situation: "confirming", attempt: a };
   }
   if (a === null) {
+    // The room drops a confirmed attempt whose receipt row isn't written yet, and its phase still says paying.
+    if (snapshot.phase === "paying") return { situation: "confirming", attempt: null };
     if (snapshot.phase === "ready") return { situation: "ready", attempt: null };
     const full = snapshot.participants.length >= snapshot.checkout.payerCount;
     return { situation: full ? "full_not_ready" : "open_spots", attempt: null };

@@ -71,7 +71,7 @@ export const SITUATIONS = {
     step: "paid",
     tone: "info",
     label: "Finalizing",
-    when: "phase paid without a receipt that proves it, or attempt confirmed before the phase is paid",
+    when: "phase paid without a receipt that proves it, phase paying with no attempt, or attempt confirmed before the phase is paid",
   },
   unresolved: {
     owner: "result",
