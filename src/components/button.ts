@@ -1,5 +1,5 @@
 const BASE =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-5 py-2 font-semibold transition-colors duration-200";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-control px-5 py-2 font-semibold transition-colors duration-200 focus-visible:transition-none";
 
 export const BUTTON = {
   primary: `${BASE} bg-brand text-white hover:bg-ink active:bg-ink`,
