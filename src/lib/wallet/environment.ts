@@ -66,9 +66,9 @@ export interface WalletBridge {
   }): Promise<BridgeResult<SignatureBase64>>;
   /**
    * Asks the wallet to approve `payment.transaction`, exactly as given, without sending it. Refuses
-   * without prompting when `payment.account` isn't the selected account. Returns only that account's
-   * signature, after checking the returned transaction has the same message and no other signature.
-   * The returned transaction never leaves the bridge.
+   * without prompting when `payment.account` isn't the selected account. Hands the returned transaction
+   * only to `payment.signatureIn`, the payment check's copy of the server's return check, and returns the
+   * signature it answers.
    */
   signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>>;
   onAccountChange(listener: (account: Address | null) => void): () => void;

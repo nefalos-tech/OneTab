@@ -1,25 +1,40 @@
 import type { IdentifierString, Wallet, WalletAccount } from "@wallet-standard/base";
 import type { StandardEventsChangeProperties } from "@wallet-standard/features";
-import type { SolanaSignMessageInput, SolanaSignMessageOutput } from "@solana/wallet-standard-features";
-import { getAddressDecoder } from "@solana/kit";
+import type {
+  SolanaSignMessageInput,
+  SolanaSignMessageOutput,
+  SolanaSignTransactionInput,
+  SolanaSignTransactionOutput,
+} from "@solana/wallet-standard-features";
+import { address, getAddressDecoder } from "@solana/kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Address } from "@/client/contracts";
-import { authMessage, type AuthMessage, type WalletBridge } from "./environment";
+import { termsOf } from "@/client/checkout-view";
+import type { Address, Session } from "@/client/contracts";
+import { keyedPayment, signedTransaction, type KeyedPayer, type KeyedPayment } from "@/client/keyed-payment-fixture";
+import { checkPayment, type CheckedPayment } from "@/client/payment-check";
+import { verifyPayerSignature } from "@/lib/payments/signature-core";
+import { authMessage, type AuthMessage, type ChallengeId, type SignInService, type WalletBridge } from "./environment";
+import { initialState } from "./machine";
 import { standardBridge, type WalletRegistry } from "./standard";
+import { createSessionStore } from "./store";
 
 type Keyed = WalletAccount & { readonly keys: CryptoKeyPair };
+const SIGNS: readonly IdentifierString[] = ["solana:signMessage", "solana:signTransaction"];
 
-async function keyedAccount(features: readonly IdentifierString[] = ["solana:signMessage", "solana:signTransaction"]): Promise<Keyed> {
-  const keys = await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]);
+async function accountOf(keys: CryptoKeyPair, features = SIGNS, chains: readonly IdentifierString[] = ["solana:devnet"]): Promise<Keyed> {
   const publicKey = new Uint8Array(await crypto.subtle.exportKey("raw", keys.publicKey));
-  return { address: getAddressDecoder().decode(publicKey), publicKey, chains: ["solana:devnet"], features, keys };
+  return { address: getAddressDecoder().decode(publicKey), publicKey, chains, features, keys };
+}
+
+async function keyedAccount(features = SIGNS): Promise<Keyed> {
+  return accountOf(await crypto.subtle.generateKey("Ed25519", true, ["sign", "verify"]), features);
 }
 
 async function sign(account: Keyed, bytes: Uint8Array): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.sign("Ed25519", account.keys.privateKey, Uint8Array.from(bytes)));
 }
 
-type Prompt = "connect" | "signMessage";
+type Prompt = "connect" | "signMessage" | "signTransaction";
 type Answer<I, O> = (input: I) => Promise<O>;
 type WalletOptions = {
   /** Grants every account on connect, as some wallets do, instead of only the one picked in the extension. */
@@ -52,8 +67,15 @@ function fakeWallet(name: string, accounts: readonly Keyed[], options: WalletOpt
     signMessage: async ({ account, message }: SolanaSignMessageInput): Promise<readonly SolanaSignMessageOutput[]> => [
       { signedMessage: message, signature: await sign(keyed(account), message) },
     ],
+    signTransaction: async ({ account, transaction }: SolanaSignTransactionInput): Promise<readonly SolanaSignTransactionOutput[]> => [
+      { signedTransaction: await signedTransaction(keyed(account) as Keyed & KeyedPayer, transaction) },
+    ],
   };
-  const answers = { connect: [] as Answer<void, { accounts: readonly WalletAccount[] }>[], signMessage: [] as Answer<SolanaSignMessageInput, readonly SolanaSignMessageOutput[]>[] };
+  const answers = {
+    connect: [] as Answer<void, { accounts: readonly WalletAccount[] }>[],
+    signMessage: [] as Answer<SolanaSignMessageInput, readonly SolanaSignMessageOutput[]>[],
+    signTransaction: [] as Answer<SolanaSignTransactionInput, readonly SolanaSignTransactionOutput[]>[],
+  };
   let disconnectWith: () => Promise<void> = async () => {
     granted = [];
     emit({ accounts: granted });
@@ -102,8 +124,10 @@ function fakeWallet(name: string, accounts: readonly Keyed[], options: WalletOpt
     "solana:signTransaction": {
       version: version("solana:signTransaction"),
       supportedTransactionVersions: options.transactionVersions ?? ["legacy", 0],
-      signTransaction: async () => {
-        throw new Error("No test in this file approves a payment");
+      signTransaction: async (...inputs: SolanaSignTransactionInput[]) => {
+        expect(inputs).toHaveLength(1);
+        prompts.push({ kind: "signTransaction", input: inputs[0] });
+        return (answers.signTransaction.shift() ?? approve.signTransaction)(inputs[0]!);
       },
     },
     "solana:signAndSendTransaction": {
@@ -550,5 +574,158 @@ describe("signAuthentication", () => {
     vi.spyOn(crypto.subtle, "importKey").mockRejectedValue(new DOMException("Unrecognized name.", "NotSupportedError"));
     expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure: "cannot_sign" });
     expect(phantom.prompts("signMessage")).toEqual([]);
+  });
+});
+
+describe("signPayment", () => {
+  const FAR = "2099-01-01T00:00:00.000Z";
+
+  async function checkedFor(k: KeyedPayment, slot: number): Promise<CheckedPayment> {
+    const result = await checkPayment.payload(k.payload, termsOf(k.room, { wallet: k.payers[slot]!.address, expiresAt: FAR })!, k.room);
+    if (!result.ok) throw new Error(`The keyed payment didn't pass the check: ${result.failure}`);
+    return result.value;
+  }
+
+  async function paying(account: (keys: CryptoKeyPair) => Promise<Keyed> = (keys) => accountOf(keys)) {
+    const k = await keyedPayment();
+    const accounts = [await account(k.payers[1]!.keys), await account(k.payers[2]!.keys)];
+    const phantom = fakeWallet("Phantom", accounts);
+    const world = registryOf(phantom);
+    expect(await world.bridge.connect()).toEqual({ ok: true, value: k.payers[1]!.address });
+    return { ...world, phantom, k, payment: await checkedFor(k, 1) };
+  }
+
+  it("asks the wallet once to approve exactly the checked bytes on Devnet, and answers a signature the server accepts", async () => {
+    const { bridge, phantom, k, payment } = await paying();
+    const answer = await bridge.signPayment(payment);
+    expect(answer.ok).toBe(true);
+    if (!answer.ok) return;
+    const [prompt, ...more] = phantom.prompts("signTransaction");
+    expect(more).toEqual([]);
+    const input = prompt!.input as SolanaSignTransactionInput;
+    expect(input).toEqual({
+      account: phantom.wallet.accounts[0],
+      transaction: payment.transaction,
+      chain: "solana:devnet",
+      options: { preflightCommitment: "confirmed" },
+    });
+    expect(input.transaction, "a copy, so the wallet can't change the checked bytes").not.toBe(payment.transaction);
+    expect(answer.value).toMatch(/^[A-Za-z0-9+/]{86}==$/);
+    const signatureBytes = Uint8Array.from(atob(answer.value), (c) => c.charCodeAt(0));
+    await expect(verifyPayerSignature(k.validated, { wallet: address(k.payers[1]!.address), signatureBytes })).resolves.toBeTruthy();
+  });
+
+  it.each<[string, (k: KeyedPayment, input: SolanaSignTransactionInput) => Promise<readonly SolanaSignTransactionOutput[]>, string]>([
+    ["a 4001", async () => Promise.reject(REJECTED), "rejected"],
+    ["another provider error", async () => Promise.reject(new Error("Transaction simulation failed")), "failed"],
+    [
+      "a changed message",
+      async (k, { transaction }) => {
+        const changed = Uint8Array.from(transaction, (b, i) => (i === transaction.length - 1 ? b ^ 1 : b));
+        return [{ signedTransaction: await signedTransaction(k.payers[1]!, changed) }];
+      },
+      "failed",
+    ],
+    [
+      "another payer's signature beside the payer's",
+      async (k, { transaction }) => [{ signedTransaction: await signedTransaction(k.payers[2]!, await signedTransaction(k.payers[1]!, transaction)) }],
+      "failed",
+    ],
+    ["no output", async () => [], "failed"],
+    [
+      "two outputs",
+      async (k, { transaction }) => {
+        const output = { signedTransaction: await signedTransaction(k.payers[1]!, transaction) };
+        return [output, output];
+      },
+      "failed",
+    ],
+  ])("answers %s as %s", async (_, answer, failure) => {
+    const { bridge, phantom, k, payment } = await paying();
+    phantom.next("signTransaction", (input) => answer(k, input));
+    expect(await bridge.signPayment(payment)).toEqual({ ok: false, failure });
+  });
+
+  it("answers failed when the payment's own check of the return answers null", async () => {
+    const { bridge, phantom, payment } = await paying();
+    expect(await bridge.signPayment({ ...payment, signatureIn: async () => null })).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signTransaction")).toHaveLength(1);
+  });
+
+  it("refuses a payment for an account that isn't selected, with no prompt", async () => {
+    const { bridge, phantom, k } = await paying();
+    expect(await bridge.signPayment(await checkedFor(k, 2))).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signTransaction")).toEqual([]);
+  });
+
+  it("answers failed when the wallet switches during the prompt, even if it approves, and even for a 4001", async () => {
+    for (const outcome of ["approve", "reject"] as const) {
+      const { bridge, phantom, payment } = await paying();
+      const prompt = deferred<readonly SolanaSignTransactionOutput[]>();
+      phantom.next("signTransaction", () => prompt.promise);
+      const answer = bridge.signPayment(payment);
+      await vi.waitFor(() => expect(phantom.prompts("signTransaction")).toHaveLength(1));
+      phantom.switchTo(1);
+      const [input] = phantom.prompts("signTransaction");
+      if (outcome === "approve") prompt.resolve(await phantom.approve.signTransaction(input!.input as SolanaSignTransactionInput));
+      else prompt.reject(REJECTED);
+      expect(await answer, outcome).toEqual({ ok: false, failure: "failed" });
+    }
+  });
+
+  it("answers cannot_sign with no prompt when the wallet stopped offering legacy transactions after connect", async () => {
+    const { bridge, phantom, payment } = await paying();
+    (phantom.wallet.features["solana:signTransaction"] as { supportedTransactionVersions: readonly (0 | "legacy")[] }).supportedTransactionVersions = [0];
+    expect(await bridge.signPayment(payment)).toEqual({ ok: false, failure: "cannot_sign" });
+    expect(phantom.prompts("signTransaction")).toEqual([]);
+  });
+
+  it.each<[string, (keys: CryptoKeyPair) => Promise<Keyed>, string]>([
+    ["can't approve transactions", (keys) => accountOf(keys, ["solana:signMessage"]), "cannot_sign"],
+    ["isn't on Devnet", (keys) => accountOf(keys, SIGNS, ["solana:mainnet"]), "wrong_network"],
+  ])("answers an account that %s as %s, with no prompt", async (_, account, failure) => {
+    const { bridge, phantom, payment } = await paying(account);
+    expect(await bridge.signPayment(payment)).toEqual({ ok: false, failure });
+    expect(phantom.prompts("signTransaction")).toEqual([]);
+  });
+});
+
+describe("the real check, the session store and this bridge together", () => {
+  it("sign in, approve and the return check end in exactly the upload body the server accepts", async () => {
+    const k = await keyedPayment();
+    const payer = k.payers[1]!;
+    const phantom = fakeWallet("Phantom", [await accountOf(payer.keys)]);
+    const { bridge } = registryOf(phantom);
+    const session: Session = { wallet: payer.address, expiresAt: "2099-01-01T00:00:00.000Z" };
+    const verified: string[] = [];
+    const service: SignInService = {
+      readSession: async () => ({ ok: true, value: null }),
+      requestChallenge: async () => ({ ok: true, value: { id: "c-1" as ChallengeId, message: CHALLENGE } }),
+      verify: async ({ signature }) => {
+        const bytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
+        const ok = await crypto.subtle.verify("Ed25519", payer.keys.publicKey, bytes, Uint8Array.from(CHALLENGE.bytes));
+        verified.push(signature);
+        return ok ? { ok: true, value: session } : { ok: false, failure: "unavailable" };
+      },
+      endSession: async () => {},
+    };
+    const store = createSessionStore({ bridge, service }, initialState({ account: null, session: null }));
+    store.start();
+    store.send({ type: "connect" });
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ kind: "signed_in", account: payer.address }));
+    expect(verified).toHaveLength(1);
+
+    const checked = await checkPayment.payload(k.payload, termsOf(k.room, session)!, k.room);
+    if (!checked.ok) throw new Error(checked.failure);
+    const approval = await store.keptOrNewApproval(store.getSnapshot().gen, checked.value);
+    if (!approval.ok) throw new Error(approval.failure);
+    const returned = await checkPayment.returned(checked.value, approval.value);
+    if (!returned.ok) throw new Error(returned.failure);
+
+    const body = { messageHash: returned.value.messageHash, signatureBase64: returned.value.signature };
+    expect(body).toEqual({ messageHash: k.wirePayload.messageHash, signatureBase64: expect.stringMatching(/^[A-Za-z0-9+/]{86}==$/) });
+    const signatureBytes = Uint8Array.from(atob(body.signatureBase64), (c) => c.charCodeAt(0));
+    await expect(verifyPayerSignature(k.validated, { wallet: address(payer.address), signatureBytes })).resolves.toBeTruthy();
+    expect(phantom.prompts().map((p) => p.kind)).toEqual(["connect", "signMessage", "signTransaction"]);
   });
 });

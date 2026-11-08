@@ -14,9 +14,11 @@ import {
   type SolanaSignMessageFeature,
   type SolanaSignMessageOutput,
   type SolanaSignTransactionFeature,
+  type SolanaSignTransactionOutput,
 } from "@solana/wallet-standard-features";
 import { getAddressDecoder } from "@solana/kit";
 import type { Address } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
 import {
   capabilityFailure,
   signatureBase64,
@@ -166,6 +168,31 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
     return signature !== null && (await verifies(key, output.signature, message.bytes)) ? { ok: true, value: signature } : FAILED;
   }
 
+  async function signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>> {
+    const started = version;
+    const held = heldFor(payment.account);
+    if (held === null) return FAILED;
+    const signer = feature(held.wallet, SolanaSignTransaction);
+    if (signer === null || !signer.supportedTransactionVersions.includes("legacy") || !held.account.features.includes(SolanaSignTransaction)) {
+      return CANNOT_SIGN;
+    }
+    if (!held.account.chains.includes(DEVNET)) return { ok: false, failure: "wrong_network" };
+    let outputs: readonly SolanaSignTransactionOutput[];
+    try {
+      outputs = await signer.signTransaction({
+        account: held.account,
+        transaction: Uint8Array.from(payment.transaction),
+        chain: DEVNET,
+        options: { preflightCommitment: "confirmed" },
+      });
+    } catch (error) {
+      return version === started ? failureOf(error) : FAILED;
+    }
+    if (outputs.length !== 1) return FAILED;
+    const signature = await payment.signatureIn(outputs[0]!.signedTransaction);
+    return signature !== null && version === started ? { ok: true, value: signature } : FAILED;
+  }
+
   function heldFor(wanted: Address): Held | null {
     if (connection === null || connection.selected !== wanted) return null;
     const account = connection.wallet.accounts.find((a) => a.address === wanted && addressOf(a) === wanted);
@@ -176,7 +203,7 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
     connect: () => settled(connect, FAILED),
     disconnect: () => settled(disconnect, undefined),
     signAuthentication: (input) => settled(() => signAuthentication(input), FAILED),
-    signPayment: async () => FAILED,
+    signPayment: (payment) => settled(() => signPayment(payment), FAILED),
     onAccountChange(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
