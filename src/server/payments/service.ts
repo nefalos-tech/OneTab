@@ -141,8 +141,18 @@ export function createPaymentService(dependencies: PaymentDependencies) {
         return summary(await attempt(stored.id));
       }
       if (stored.state !== "signing") throw new PaymentFailure("ATTEMPT_NOT_SIGNABLE");
-      const updated = await store.putVerifiedSignature({ attemptId: stored.id, signerWallet: input.wallet,
-        messageHash: input.messageHash, signatureBase64: input.signatureBase64 });
+      let updated: StoredAttempt;
+      try {
+        updated = await store.putVerifiedSignature({ attemptId: stored.id, signerWallet: input.wallet,
+          messageHash: input.messageHash, signatureBase64: input.signatureBase64 });
+      } catch (error) {
+        const failure = error instanceof PaymentFailure ? error : paymentFailure(error);
+        if (failure.code !== "ATTEMPT_NOT_SIGNABLE") throw failure;
+        const current = await attempt(stored.id);
+        const storedSignature = current.signatures.find(signature => signature.signerWallet === input.wallet);
+        if (current.signingPayload?.messageHash !== input.messageHash || storedSignature?.signatureBase64 !== input.signatureBase64) throw failure;
+        updated = current;
+      }
       const complete = updated.participants.every(payer => updated.signatures.some(signature => signature.signerWallet === payer.wallet));
       return summary(complete && updated.state === "signing" ? await progress(updated.id) : updated);
     },
