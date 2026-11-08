@@ -7,7 +7,7 @@ import { FAKE_API } from "./fake-api.mjs";
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
 const CONNECT_LINE = "Approve the connection in your wallet.";
-const SIGN_LINE = "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.";
+const SIGN_LINE = "Sign the sign-in message in your wallet. It proves the wallet is yours and can't move money.";
 const OUTSIDER = "SAMP…Gst4";
 const ORGANIZER = "SAMP…org1";
 const BEA = "SAMP…Bea2";

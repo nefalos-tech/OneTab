@@ -73,7 +73,7 @@ export const SAMPLE_WALLETS = {
 export const SAMPLE_SESSION_EXPIRY = "2099-01-01T00:00:00.000Z";
 
 const SPOT_WALLETS = [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam] as const;
-const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 88);
+const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 87);
 const LAST_VALID_BLOCK_HEIGHT = height("312345678");
 const CREATED_AT = "2026-11-07T09:00:00.000Z";
 const OBSERVED_AT = "2026-11-07T14:05:00.000Z";
@@ -85,24 +85,24 @@ const PURCHASES = {
 
 type Spots = "all" | readonly number[];
 
+type AttemptSpec = {
+  readonly state: AttemptState;
+  readonly approved?: Spots;
+  readonly canRetry?: boolean;
+  readonly sent?: boolean;
+  readonly receipt?: boolean;
+  readonly error?: AttemptError;
+};
+
 type Spec = {
   readonly purchase: keyof typeof PURCHASES;
   readonly joined?: number;
   readonly ready?: Spots;
-  readonly attempt?: {
-    readonly state: AttemptState;
-    readonly approved?: Spots;
-    readonly canRetry?: boolean;
-    readonly sent?: boolean;
-    readonly receipt?: boolean;
-    readonly error?: AttemptError;
-  };
+  readonly attempt?: AttemptSpec;
+  readonly paidMarker?: true;
 };
 
-const NOT_ENOUGH_USDC: AttemptError = {
-  code: "INSUFFICIENT_USDC",
-  message: "The wallet in spot 3 didn't hold enough test USDC for its share.",
-};
+const MASKED: AttemptError = { code: "INVALID_PAYMENT", message: "Payment attempt did not complete." };
 
 const SPECS = {
   "open-spots": { purchase: "cabin", joined: 2, ready: [0] },
@@ -111,20 +111,15 @@ const SPECS = {
   preparing: { purchase: "cabin", attempt: { state: "preparing" } },
   signing: { purchase: "cabin", attempt: { state: "signing", approved: [0] } },
   submitting: { purchase: "cabin", attempt: { state: "submitting", approved: "all", sent: true } },
-  confirming: { purchase: "cabin", attempt: { state: "confirmed", approved: "all", sent: true } },
-  unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true } },
-  "declined-on-hold": { purchase: "cabin", attempt: { state: "declined", approved: [0], canRetry: false } },
-  "declined-retry": { purchase: "cabin", attempt: { state: "declined", approved: [0], canRetry: true } },
-  "failed-on-hold": {
+  "paid-no-receipt": { purchase: "cabin", paidMarker: true },
+  unresolved: { purchase: "cabin", attempt: { state: "unresolved", approved: "all", sent: true, error: MASKED } },
+  declined: { purchase: "cabin", attempt: { state: "declined", approved: [0] } },
+  "failed-not-sent": { purchase: "cabin", attempt: { state: "failed", approved: [], canRetry: true, error: MASKED } },
+  "failed-on-chain": {
     purchase: "cabin",
-    attempt: { state: "failed", approved: "all", sent: true, canRetry: false, error: NOT_ENOUGH_USDC },
+    attempt: { state: "failed", approved: "all", sent: true, canRetry: true, error: MASKED },
   },
-  "failed-retry": {
-    purchase: "cabin",
-    attempt: { state: "failed", approved: "all", sent: true, canRetry: true, error: NOT_ENOUGH_USDC },
-  },
-  "expired-on-hold": { purchase: "cabin", attempt: { state: "expired", approved: [0, 1], canRetry: false } },
-  "expired-retry": { purchase: "cabin", attempt: { state: "expired", approved: [0, 1], canRetry: true } },
+  expired: { purchase: "cabin", attempt: { state: "expired", approved: "all", sent: true, canRetry: true } },
   paid: { purchase: "concert", attempt: { state: "confirmed", approved: "all", sent: true, receipt: true } },
 } as const satisfies Record<string, Spec>;
 
@@ -140,9 +135,9 @@ const includes = (spots: Spots | undefined, slot: number): boolean =>
   spots === "all" || (spots ?? []).includes(slot);
 
 /** contracts.md "Derive phase in this order". */
-function phaseOf(snapshot: Omit<RoomSnapshot, "phase">): Phase {
+function phaseOf(snapshot: Omit<RoomSnapshot, "phase">, paidMarker: boolean): Phase {
   const a = snapshot.attempt;
-  if (a?.receipt?.confirmationStatus === "finalized") return "paid";
+  if (paidMarker || a?.receipt?.confirmationStatus === "finalized") return "paid";
   if (a && (a.state === "declined" || a.state === "unresolved" || a.state === "failed" || a.state === "expired"))
     return "needs_attention";
   if (a) return "paying";
@@ -150,17 +145,21 @@ function phaseOf(snapshot: Omit<RoomSnapshot, "phase">): Phase {
   return full && snapshot.participants.every((p) => p.ready) ? "ready" : "open";
 }
 
+const frozen = (attempt: AttemptSpec): boolean =>
+  attempt.state !== "preparing" && !(attempt.state === "failed" && !attempt.sent);
+
 function build(index: number, spec: Spec): RoomSnapshot {
   const purchase = PURCHASES[spec.purchase];
   const totalUnits = units(purchase.total);
   const shares = splitEqually(totalUnits, purchase.payers);
   const attempt = spec.attempt;
-  const joined = attempt ? purchase.payers : (spec.joined ?? 1);
+  const started = attempt !== undefined || spec.paidMarker === true;
+  const joined = started ? purchase.payers : (spec.joined ?? 1);
   const participants = shares.slice(0, joined).map((shareUnits, slot) => ({
     slot,
     wallet: spotWallet(slot),
     shareUnits,
-    ready: attempt !== undefined || includes(spec.ready, slot),
+    ready: started || includes(spec.ready, slot),
   }));
   const checkout = {
     id: sampleId(index + 1),
@@ -180,7 +179,7 @@ function build(index: number, spec: Spec): RoomSnapshot {
         state: attempt.state,
         signedWallets: participants.filter((p) => includes(attempt.approved, p.slot)).map((p) => p.wallet),
         transactionReference: attempt.sent ? TRANSACTION_REFERENCE : null,
-        lastValidBlockHeight: attempt.state === "preparing" ? null : LAST_VALID_BLOCK_HEIGHT,
+        lastValidBlockHeight: frozen(attempt) ? LAST_VALID_BLOCK_HEIGHT : null,
         error: attempt.error ?? null,
         canRetry: attempt.canRetry ?? false,
         receipt: attempt.receipt
@@ -197,8 +196,10 @@ function build(index: number, spec: Spec): RoomSnapshot {
       }
     : null;
   const snapshot = { checkout, participants, attempt: summary };
-  return { ...snapshot, phase: phaseOf(snapshot) };
+  return { ...snapshot, phase: phaseOf(snapshot, spec.paidMarker === true) };
 }
+
+export const hasPaidMarker = (name: SampleName): boolean => "paidMarker" in SPECS[name];
 
 export const SNAPSHOTS = Object.fromEntries(
   Object.entries(SPECS).map(([name, spec], index) => [name, build(index, spec)]),

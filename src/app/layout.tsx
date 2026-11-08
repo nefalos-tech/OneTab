@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Atkinson_Hyperlegible_Mono, Atkinson_Hyperlegible_Next } from "next/font/google";
+import { ArrivalWatcher } from "@/components/arrival-watcher";
 import { LiveWalletProvider } from "@/components/wallet/wallet-scope";
 import "./globals.css";
 
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
+        <ArrivalWatcher />
         <LiveWalletProvider>{children}</LiveWalletProvider>
       </body>
     </html>

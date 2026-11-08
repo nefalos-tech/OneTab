@@ -160,6 +160,8 @@ The targets are a two-wallet proof by hour 4, integrated sessions/rooms by hour 
 
 P1 resolves wallet compatibility, library versions, the Devnet RPC and mint/account setup. B1 implements the documented contracts and coordinates corrections found during integration. F1 pins the application toolchain. B5 resolves the hosting provider and deployed session configuration. Their owners record these choices in the code and update the relevant documents when behavior changes.
 
+Whether the public room names why a payment stopped is still open. Today the room masks every stop code, so only the organizer's own page can name an underfunded wallet, and only until it reloads. Projecting the real code, F5's handoff H1 in [the F5 card](docs/cards/F5.md), would show every viewer the cause and its next step. It would also tell anyone with the link that a payer was underfunded, though not which one. The choice is deferred until after demo day or the next development decision, and the team agrees on it before Backend ships it.
+
 The demonstration shows one complete group checkout and one accurately described failure. MLH's standard digital-event rules call for a public video of at most two minutes, the event name at its start, public source code and AI-tool disclosure. The signed-in submission form must still be checked for event-specific fields.
 
 The official schedule lists initial submission on November 8, 2026 at 22:00 and final submission at 23:45 in Asia/Bangkok. The main event page lists a later cutoff. The team plans to the earlier schedule and checks for organizer updates.

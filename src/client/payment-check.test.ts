@@ -50,8 +50,8 @@ describe("the payment check before any wallet prompt", () => {
   });
 
   it.each<[string, SigningPayload]>([
-    ["another attempt", { ...payload, attemptId: FIXTURES["declined-on-hold"].snapshot.attempt!.id }],
-    ["another checkout", { ...payload, checkoutId: FIXTURES["declined-on-hold"].snapshot.checkout.id }],
+    ["another attempt", { ...payload, attemptId: FIXTURES.declined.snapshot.attempt!.id }],
+    ["another checkout", { ...payload, checkoutId: FIXTURES.declined.snapshot.checkout.id }],
     ["another network", withPayment({ network: "mainnet-beta" as Network })],
     ["another mint", withPayment({ mint: SAMPLE_WALLETS.outsider })],
     ["other decimals", withPayment({ tokenDecimals: 9 })],

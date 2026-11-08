@@ -46,25 +46,27 @@ const PAYMENT_CHECK_MESSAGE =
   "Approvals run through live.run in @/client/live-actions, which checks the payment before any wallet prompt.";
 const NO_PAYMENT_CHECK = { regex: PAYMENT_CHECK_PATH, message: PAYMENT_CHECK_MESSAGE };
 const NO_DYNAMIC_PAYMENT_CHECK = {
-  "no-restricted-syntax": [
-    "error",
-    { selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`, message: PAYMENT_CHECK_MESSAGE },
-  ],
+  selector: `ImportExpression[source.value=/${PAYMENT_CHECK_PATH.replaceAll("/", "\\/")}/]`,
+  message: PAYMENT_CHECK_MESSAGE,
 };
-const NO_CHECK_FACTORY = {
-  "no-restricted-imports": [
-    "error",
-    {
-      patterns: [
-        {
-          regex: PAYMENT_CHECK_PATH,
-          importNames: ["paymentCheck"],
-          message: "Only src/client/live-actions.ts and tests build a payment check. Everything else uses checkPayment, whose seams fail closed.",
-        },
-      ],
-    },
-  ],
+const BRAND_MESSAGE = "Only checkout-view.ts makes a Replaceable or VerifiedReceipt, through replaceable() and verifiedReceipt().";
+const NO_BRAND_CASTS = ["TSAsExpression", "TSTypeAssertion"].map((cast) => ({
+  selector: `${cast} > .typeAnnotation Identifier[name=/^(Replaceable|VerifiedReceipt)$/]`,
+  message: BRAND_MESSAGE,
+}));
+const NO_BRAND_IMPORTS = {
+  regex: "(^|/)checkout-view(\\.[cm]?[jt]sx?)?$",
+  importNames: ["Replaceable", "VerifiedReceipt"],
+  message: BRAND_MESSAGE,
 };
+/** ESLint keeps only the last matching block's options for a rule, so each block that sets this lists every entry. */
+const restrictSyntax = (...entries) => ({ "no-restricted-syntax": ["error", ...NO_BRAND_CASTS, ...entries] });
+const NO_CHECK_FACTORY_IMPORT = {
+  regex: PAYMENT_CHECK_PATH,
+  importNames: ["paymentCheck"],
+  message: "Only src/client/live-actions.ts and tests build a payment check. Everything else uses checkPayment, whose seams fail closed.",
+};
+const NO_CHECK_FACTORY = { "no-restricted-imports": ["error", { patterns: [NO_CHECK_FACTORY_IMPORT] }] };
 const BROADCAST = "OneTab's browser only asks a wallet to approve. The server sends the one payment.";
 const NO_BROADCAST = [
   {
@@ -101,10 +103,10 @@ const CODE = "{ts,tsx,js,jsx,mjs,cjs}";
  * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment.
  */
 const restrictServer = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, ...patterns] }],
+  "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
 const restrict = (...patterns) => ({
-  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, ...patterns] }],
+  "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
 
 export default defineConfig([
@@ -113,7 +115,7 @@ export default defineConfig([
   globalIgnores([".next/**", ".agents/**", ".local-setup/**", "out/**", "build/**", "next-env.d.ts", "playwright-report/**", "test-results/**", "spikes/payment-proof/**"]),
   {
     files: [`src/**/*.${CODE}`],
-    rules: { ...restrictServer(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT), ...NO_CHECK_FACTORY },
+    rules: { ...restrictServer(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT), ...NO_CHECK_FACTORY, ...restrictSyntax() },
   },
   {
     files: ["src/client/live-actions.ts", `src/**/*.test.${CODE}`],
@@ -125,17 +127,23 @@ export default defineConfig([
   },
   {
     files: [`src/components/**/*.${CODE}`],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK), ...NO_DYNAMIC_PAYMENT_CHECK },
+    rules: {
+      ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+    },
   },
   {
     files: [`src/app/**/*.${CODE}`],
     ignores: ["src/app/api/**"],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK), ...NO_DYNAMIC_PAYMENT_CHECK },
+    rules: {
+      ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+    },
   },
   {
     files: ["src/app/api/**/*.{ts,tsx}"],
     rules: {
-      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT] }],
+      "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_BRAND_IMPORTS, NO_WALLET_INTERNALS, NO_WALLET_STANDARD, NO_API_CLIENT] }],
     },
   },
   {
@@ -151,8 +159,15 @@ export default defineConfig([
     rules: restrict(),
   },
   {
+    files: ["src/client/checkout-view.ts"],
+    rules: { "no-restricted-syntax": "off" },
+  },
+  {
     files: ["src/client/catalog.ts"],
     rules: {
+      // typescript-eslint lets a type import through once its source matches an allowTypeImports pattern, and the
+      // pattern below matches every source, so the brand ban runs on the core rule here.
+      "no-restricted-imports": ["error", { patterns: [NO_CHECK_FACTORY_IMPORT, NO_BRAND_IMPORTS] }],
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {

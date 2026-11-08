@@ -1,4 +1,5 @@
 import type { PaymentApproval, Result } from "@/lib/wallet/environment";
+import { FUNDING_CAUSE_OF_CODE, type FundingCause } from "./catalog";
 import type { CreateRequest } from "./checkout-view";
 import {
   isErrorCode,
@@ -62,7 +63,7 @@ export type RequestProblem =
   | "signed_out"
   | "room_full"
   | "room_changed"
-  | "not_funded"
+  | FundingCause
   | "rate_limited"
   | "refused"
   | "unavailable";
@@ -73,7 +74,7 @@ export type CheckoutApi = {
   create(request: CreateRequest, clientRequestId: ClientRequestId): Promise<Result<RoomSnapshot, RequestProblem>>;
   join(id: CheckoutId): Promise<Result<RoomSnapshot, RequestProblem>>;
   setReady(id: CheckoutId, ready: boolean): Promise<Result<RoomSnapshot, RequestProblem>>;
-  startAttempt(id: CheckoutId): Promise<Result<AttemptSummary, RequestProblem>>;
+  startAttempt(id: CheckoutId, retryOf: AttemptId | null): Promise<Result<AttemptSummary, RequestProblem>>;
   /** A payload that arrives but doesn't parse, or names another attempt, is a `mismatch`, never an outage. */
   signingPayload(id: AttemptId): Promise<Result<SigningPayload, RequestProblem | "mismatch">>;
   uploadApproval(id: AttemptId, approval: PaymentApproval): Promise<Result<AttemptSummary, RequestProblem>>;
@@ -89,9 +90,7 @@ const REQUEST_PROBLEM_BY_CODE: Partial<Record<ErrorCode, Exclude<RequestProblem,
   SIGNATURES_INCOMPLETE: "room_changed",
   RETRY_BLOCKED: "room_changed",
   CHECKOUT_PAID: "room_changed",
-  INSUFFICIENT_USDC: "not_funded",
-  INSUFFICIENT_SOL: "not_funded",
-  TOKEN_ACCOUNT_MISSING: "not_funded",
+  ...FUNDING_CAUSE_OF_CODE,
   RATE_LIMITED: "rate_limited",
   INVALID_INPUT: "refused",
   FORBIDDEN: "refused",
@@ -138,8 +137,8 @@ export function checkoutApi(fetchImpl: FetchLike): CheckoutApi {
       const reply = await send(fetchImpl, "PUT", `/api/checkouts/${id}/readiness`, { ready });
       return reply.kind === "data" ? roomOf(reply.data, id) : failureOf(reply);
     },
-    async startAttempt(id) {
-      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: null });
+    async startAttempt(id, retryOf) {
+      const reply = await send(fetchImpl, "POST", `/api/checkouts/${id}/attempts`, { retryOfAttemptId: retryOf });
       return reply.kind === "data" ? startedAttempt(reply.data) : failureOf(reply);
     },
     async signingPayload(id) {

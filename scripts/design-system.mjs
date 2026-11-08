@@ -118,7 +118,7 @@ function renderStates({ SITUATIONS, SPOT_STATUSES }) {
   return `${situations}\n\n${spots}`;
 }
 
-function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS, REQUEST_PROBLEMS }) {
+function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS, REQUEST_PROBLEMS, STOP_REASONS }) {
   const actions = markdownTable(
     ["Action", "Label", "Needs", "Element", "Busy label"],
     Object.entries(ACTIONS).map(([id, a]) => [code(id), a.label, a.needs, a.element, a.busy ?? ""]),
@@ -126,6 +126,10 @@ function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS, REQUEST_PROBL
   const problems = markdownTable(
     ["Request problem", "Notice"],
     Object.entries(REQUEST_PROBLEMS).map(([id, text]) => [code(id), text]),
+  );
+  const reasons = markdownTable(
+    ["Stop reason", "What happened", "What to do next"],
+    Object.entries(STOP_REASONS).map(([id, r]) => [code(id), r.happened, r.next ?? "None. The status line says who can act."]),
   );
   const words = markdownTable(
     ["Word", "Text"],
@@ -135,7 +139,7 @@ function renderWords({ ACTIONS, FLOW_STEPS, WORDS, NETWORK_LABELS, REQUEST_PROBL
       [code("flow steps"), FLOW_STEPS.map((s) => s.label).join(", ")],
     ],
   );
-  return `${actions}\n\n${problems}\n\n${words}`;
+  return `${actions}\n\n${problems}\n\n${reasons}\n\n${words}`;
 }
 
 function renderWallet({ ACTIONS, WALLET_FIXES, WALLET_PROBLEMS, WALLET_WAITING, WORDS }) {

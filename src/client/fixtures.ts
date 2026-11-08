@@ -1,6 +1,14 @@
 import { parseCheckoutId, type CheckoutId, type RoomSnapshot, type Session } from "./contracts";
-import { SITUATIONS, type Screen, type Situation } from "./catalog";
-import { checkoutLinks, spotNumber, type CheckoutState, type CreateState, type ScreenLinks } from "./checkout-view";
+import { SITUATIONS, type FundingCause, type Screen, type Situation } from "./catalog";
+import {
+  NOTHING_HEARD,
+  checkoutLinks,
+  spotNumber,
+  type CheckoutState,
+  type CreateState,
+  type PageFacts,
+  type ScreenLinks,
+} from "./checkout-view";
 import { SAMPLE_CONFIG, SAMPLE_SESSION_EXPIRY, SAMPLE_WALLETS, SNAPSHOTS, type SampleName } from "./fixture-data";
 import type { SampleWalletSeed } from "@/lib/wallet/sample";
 
@@ -14,6 +22,7 @@ type FixtureEntry = {
   readonly situation: Situation;
   readonly snapshot: RoomSnapshot;
   readonly defaultPersona: Persona;
+  readonly organizerSaw?: FundingCause;
 };
 
 const ORGANIZER: Persona = { kind: "member", slot: 0 };
@@ -47,10 +56,10 @@ export const FIXTURES = {
     snapshot: SNAPSHOTS.submitting,
     defaultPersona: ORGANIZER,
   },
-  confirming: {
-    label: "Accepted, receipt pending",
+  "paid-no-receipt": {
+    label: "Finalizing, receipt not in the checkout yet",
     situation: "confirming",
-    snapshot: SNAPSHOTS.confirming,
+    snapshot: SNAPSHOTS["paid-no-receipt"],
     defaultPersona: ORGANIZER,
   },
   unresolved: {
@@ -59,41 +68,30 @@ export const FIXTURES = {
     snapshot: SNAPSHOTS.unresolved,
     defaultPersona: ORGANIZER,
   },
-  "declined-on-hold": {
+  declined: {
     label: "Declined, on hold",
     situation: "declined",
-    snapshot: SNAPSHOTS["declined-on-hold"],
+    snapshot: SNAPSHOTS.declined,
     defaultPersona: ORGANIZER,
   },
-  "declined-retry": {
-    label: "Declined, organizer can try again",
-    situation: "declined",
-    snapshot: SNAPSHOTS["declined-retry"],
-    defaultPersona: ORGANIZER,
-  },
-  "failed-on-hold": {
-    label: "Failed, on hold",
+  "failed-not-sent": {
+    label: "Failed before sending, organizer can try again",
     situation: "failed",
-    snapshot: SNAPSHOTS["failed-on-hold"],
+    snapshot: SNAPSHOTS["failed-not-sent"],
     defaultPersona: ORGANIZER,
+    organizerSaw: "short_usdc",
   },
-  "failed-retry": {
-    label: "Failed, organizer can try again",
+  "failed-on-chain": {
+    label: "Rejected by the network, organizer can try again",
     situation: "failed",
-    snapshot: SNAPSHOTS["failed-retry"],
+    snapshot: SNAPSHOTS["failed-on-chain"],
     defaultPersona: ORGANIZER,
   },
-  "expired-on-hold": {
-    label: "Approval window ended, on hold",
+  expired: {
+    label: "Expired after sending, organizer can try again",
     situation: "expired",
-    snapshot: SNAPSHOTS["expired-on-hold"],
+    snapshot: SNAPSHOTS.expired,
     defaultPersona: SPOT_2,
-  },
-  "expired-retry": {
-    label: "Approval window ended, organizer can try again",
-    situation: "expired",
-    snapshot: SNAPSHOTS["expired-retry"],
-    defaultPersona: ORGANIZER,
   },
   paid: { label: "Paid with receipt", situation: "paid", snapshot: SNAPSHOTS.paid, defaultPersona: SPOT_2 },
 } as const satisfies Record<SampleName, FixtureEntry>;
@@ -139,10 +137,11 @@ export function personaParam(persona: Persona): string {
 }
 
 export function sampleCheckoutState(ref: SampleRef): CheckoutState {
-  const entry = FIXTURES[ref.fixture];
+  const entry: FixtureEntry = FIXTURES[ref.fixture];
   const { snapshot } = entry;
   const session = sessionFor(ref.persona, snapshot);
   return {
+    page: pageFor(entry, session),
     snapshot,
     session,
     source: {
@@ -157,6 +156,13 @@ export function sampleCheckoutState(ref: SampleRef): CheckoutState {
       wallet: sampleWalletSeed(session),
     },
   };
+}
+
+function pageFor(entry: FixtureEntry, session: Session | null): PageFacts {
+  const attempt = entry.snapshot.attempt;
+  const organizer = session?.wallet === entry.snapshot.checkout.organizerWallet;
+  if (!organizer || entry.organizerSaw === undefined || attempt === null) return NOTHING_HEARD;
+  return { noted: [{ attemptId: attempt.id, cause: entry.organizerSaw }], roomUnreachable: false };
 }
 
 export function sampleCreateState(): CreateState {
