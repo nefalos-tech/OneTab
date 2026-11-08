@@ -240,7 +240,7 @@ function said(problem: RequestProblem): Outcome {
 }
 
 function notice(problem: ProblemWithWords, followUp: Action | null = null): Outcome {
-  return { kind: "notice", text: REQUEST_PROBLEMS[problem], followUp };
+  return { kind: "notice", text: REQUEST_PROBLEMS[problem], followUp, about: null };
 }
 
 function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnapshot, RoomReadProblem>> {

@@ -13,6 +13,7 @@ import {
   termsOf,
   type Action,
   type CheckoutState,
+  type Said,
 } from "./checkout-view";
 import type { AttemptId, CheckoutId, ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
@@ -81,6 +82,7 @@ const said = (problem: ProblemWithWords, followUp: Action | null = null): Outcom
   kind: "notice",
   text: REQUEST_PROBLEMS[problem],
   followUp,
+  about: null,
 });
 const requests = (calls: readonly Call[]) => calls.map((c) => [c.method, c.path]);
 
@@ -669,6 +671,12 @@ describe("what Start and Try again say, from how the start was answered and the 
     const offeredFor = (room: RoomSnapshot) => deriveResultView(liveRoom(room, { wallet: SAMPLE_WALLETS.organizer, expiresAt: PAYER.expiresAt })).actions;
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.organizer, actions: offeredFor(replacement) })).toBe(true);
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.organizer, actions: offeredFor(FAILED) })).toBe(false);
+  });
+
+  it("a notice outcome always says which attempt it is about, or none, so dropping that fails to type-check", () => {
+    expectTypeOf<{ readonly kind: "notice"; readonly text: string; readonly followUp: null }>().not.toExtend<Outcome>();
+    expectTypeOf<{ readonly text: string; readonly followUp: null }>().not.toExtend<Said>();
+    expectTypeOf<{ readonly text: string; readonly followUp: null; readonly about: null }>().toExtend<Said>();
   });
 
   it("a Start before any poll answers on a page reached inside the app moves the organizer to the result its room shows", async () => {

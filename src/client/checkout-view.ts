@@ -203,8 +203,8 @@ export type Notice = {
   readonly about: AttemptId | null;
 };
 
-/** What an action says: the words, a follow-up, and the attempt they are about when it isn't the action's own. */
-export type Said = { readonly text: string; readonly followUp: Action | null; readonly about?: AttemptId };
+/** What an action says: the words, a follow-up, and the attempt they are about, or null when it is the action's own. */
+export type Said = { readonly text: string; readonly followUp: Action | null; readonly about: AttemptId | null };
 
 export function noticeOf(said: Said, by: { readonly wallet: Address | null; readonly raisedBy: Action }): Notice {
   return { text: said.text, followUp: said.followUp, wallet: by.wallet, raisedBy: by.raisedBy, about: said.about ?? attemptOf(by.raisedBy) };

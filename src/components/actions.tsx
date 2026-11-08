@@ -71,7 +71,7 @@ export function ActionGroup({
         setNotice(null);
         break;
       case "noted":
-        raise({ text: outcome.text, followUp: null });
+        raise({ text: outcome.text, followUp: null, about: null });
         break;
       case "signed_out":
         if (sentAs) expired(sentAs);
@@ -85,7 +85,7 @@ export function ActionGroup({
 
   const run = async (action: Action) => {
     if (inFlight.current) return;
-    const say = (text: string, followUp: Action | null = null) => setNotice(noticeOf({ text, followUp }, { wallet, raisedBy: action }));
+    const say = (text: string, followUp: Action | null = null) => setNotice(noticeOf({ text, followUp, about: null }, { wallet, raisedBy: action }));
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`, actions.sample.followUp);

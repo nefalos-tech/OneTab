@@ -409,7 +409,7 @@ describe("a notice applies while its wallet is signed in and its action is offer
     sample: null,
   });
   const join = offering({ kind: "join", checkoutId: FIXTURES["open-spots"].snapshot.checkout.id });
-  const notice: Notice = noticeOf({ text: "Wait a few seconds, then try again.", followUp: null }, { wallet: SAMPLE_WALLETS.bea, raisedBy: join.primary! });
+  const notice: Notice = noticeOf({ text: "Wait a few seconds, then try again.", followUp: null, about: null }, { wallet: SAMPLE_WALLETS.bea, raisedBy: join.primary! });
 
   it("applies to the wallet that raised it while the action is the primary or a secondary one", () => {
     expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.bea, actions: join })).toBe(true);
@@ -436,7 +436,7 @@ describe("a notice applies while its wallet is signed in and its action is offer
     const next = { ...first, attempt: { ...first.attempt!, id: FIXTURES.declined.snapshot.attempt!.id } };
     const approve = (room: typeof first) => offering({ kind: "approve", terms: termsOf(room, bea)! });
     const rejected: Notice = noticeOf(
-      { text: REQUEST_PROBLEMS.rejected, followUp: { kind: "decline", checkoutId: first.checkout.id, attemptId: first.attempt!.id } },
+      { text: REQUEST_PROBLEMS.rejected, followUp: { kind: "decline", checkoutId: first.checkout.id, attemptId: first.attempt!.id }, about: null },
       { wallet: bea.wallet, raisedBy: approve(first).primary! },
     );
 
@@ -456,7 +456,7 @@ describe("a notice applies while its wallet is signed in and its action is offer
       const newer = { ...failed, attempt: { ...failed.attempt!, id: FIXTURES["failed-on-chain"].snapshot.attempt!.id } };
       const raisedBy = organizerSees(failed).primary!;
       const by = { wallet: SAMPLE_WALLETS.organizer, raisedBy };
-      const refused = noticeOf({ text: REQUEST_PROBLEMS.short_usdc, followUp: null }, by);
+      const refused = noticeOf({ text: REQUEST_PROBLEMS.short_usdc, followUp: null, about: null }, by);
       expect(raisedBy.kind).toBe("retry");
       expect(noticeApplies(refused, { wallet: SAMPLE_WALLETS.organizer, actions: organizerSees(failed) })).toBe(true);
       expect(organizerSees(newer).primary?.kind).toBe("retry");
@@ -896,7 +896,7 @@ describe("page facts change words, never actions", () => {
       busy: busyShown(null, state.snapshot.attempt?.id ?? null, v.actions),
       notices: offeredKinds(v).map((kind) =>
         views.map((w) =>
-          noticeApplies(noticeOf({ text: "", followUp: null }, { wallet, raisedBy: [v.actions.primary, ...v.actions.secondary].find((a) => a?.kind === kind)! }), {
+          noticeApplies(noticeOf({ text: "", followUp: null, about: null }, { wallet, raisedBy: [v.actions.primary, ...v.actions.secondary].find((a) => a?.kind === kind)! }), {
             wallet,
             actions: w.actions,
           }),
