@@ -30,18 +30,15 @@ export function readSignInDiagnostic(): SignInDiagnostic | null {
   return last;
 }
 
-export function debugFrom(env: { readonly search: string; readonly flag: string | null } | null): boolean {
-  if (!env) return false;
-  return new URLSearchParams(env.search).get(DEBUG_FLAG) === "1" || env.flag === "1";
+/** True only for the exact query `onetabDebug=1`. Storage is never read. */
+export function debugFrom(search: string | null): boolean {
+  if (search === null) return false;
+  return new URLSearchParams(search).get(DEBUG_FLAG) === "1";
 }
 
 function debugOn(): boolean {
   if (typeof window === "undefined") return false;
-  try {
-    return debugFrom({ search: window.location.search, flag: window.localStorage.getItem(DEBUG_FLAG) });
-  } catch {
-    return false;
-  }
+  return debugFrom(window.location.search);
 }
 
 export function signInDiagnosticMark(detail: SignInDiagnostic): string {
