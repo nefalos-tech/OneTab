@@ -16,6 +16,7 @@ import { checkPayment, walletRequest, type CheckedPayment } from "@/client/payme
 import { verifyPayerSignature } from "@/lib/payments/signature-core";
 import { authMessage, type AuthMessage, type ChallengeId, type PaymentSigner, type SignInService, type WalletBridge } from "./environment";
 import { initialState } from "./machine";
+import { readSignInDiagnostic } from "./sign-in-diagnostic";
 import { standardBridge, type WalletRegistry } from "./standard";
 import { createSessionStore } from "./store";
 
@@ -518,15 +519,18 @@ describe("signAuthentication", () => {
     expect(answer.value).toMatch(/^[A-Za-z0-9+/]{86}==$/);
     const signature = Uint8Array.from(atob(answer.value), (c) => c.charCodeAt(0));
     expect(await crypto.subtle.verify("Ed25519", accounts[0].keys.publicKey, signature, Uint8Array.from(CHALLENGE.bytes))).toBe(true);
+    expect(readSignInDiagnostic()).toBeNull();
   });
 
   it("refuses an account that isn't the selected one with no prompt", async () => {
     const { bridge, phantom, accounts } = await connected();
     expect(await bridge.signAuthentication({ account: asAccount(accounts[1]), message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "no_account", code: null });
     expect(await registryOf(phantom).bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({
       ok: false,
       failure: "failed",
     });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "no_account", code: null });
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 
@@ -534,6 +538,7 @@ describe("signAuthentication", () => {
     const { bridge, phantom, accounts } = await connected();
     Object.assign(accounts[0], { publicKey: (await keyedAccount()).publicKey });
     expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "no_account", code: null });
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 
@@ -552,9 +557,17 @@ describe("signAuthentication", () => {
     expect(phantom.prompts("signMessage")).toHaveLength(1);
   });
 
-  it.each<[string, (account: Keyed, input: SolanaSignMessageInput) => Promise<readonly SolanaSignMessageOutput[]>, string]>([
-    ["a 4001", async () => Promise.reject(REJECTED), "rejected"],
-    ["another provider error", async () => Promise.reject(new Error("locked")), "failed"],
+  it.each<
+    [
+      string,
+      (account: Keyed, input: SolanaSignMessageInput) => Promise<readonly SolanaSignMessageOutput[]>,
+      string,
+      string,
+      number | null,
+    ]
+  >([
+    ["a 4001", async () => Promise.reject(REJECTED), "rejected", "rejected", 4001],
+    ["another provider error", async () => Promise.reject(new Error("locked")), "failed", "provider_error", null],
     [
       "a prefixed message",
       async (account, { message }) => {
@@ -562,14 +575,30 @@ describe("signAuthentication", () => {
         return [{ signedMessage: prefixed, signature: await sign(account, prefixed) }];
       },
       "failed",
+      "signed_bytes",
+      null,
     ],
     [
       "a different signed message, even with a valid signature over the challenge",
       async (account, { message }) => [{ signedMessage: Uint8Array.from([...message, 10]), signature: await sign(account, message) }],
       "failed",
+      "signed_bytes",
+      null,
     ],
-    ["a signature by another key", async (_, { message }) => [{ signedMessage: message, signature: await sign(await keyedAccount(), message) }], "failed"],
-    ["a 63-byte signature", async (account, { message }) => [{ signedMessage: message, signature: (await sign(account, message)).slice(1) }], "failed"],
+    [
+      "a signature by another key",
+      async (_, { message }) => [{ signedMessage: message, signature: await sign(await keyedAccount(), message) }],
+      "failed",
+      "signature_check",
+      null,
+    ],
+    [
+      "a 63-byte signature",
+      async (account, { message }) => [{ signedMessage: message, signature: (await sign(account, message)).slice(1) }],
+      "failed",
+      "signature_form",
+      null,
+    ],
     [
       "a signature that reads as other bytes the first time",
       async (account, { message }) => {
@@ -583,13 +612,17 @@ describe("signAuthentication", () => {
         ];
       },
       "failed",
+      "signature_check",
+      null,
     ],
     [
       "a signature type other than ed25519",
       async (account, { message }) => [{ signedMessage: message, signature: await sign(account, message), signatureType: "secp256k1" as "ed25519" }],
       "failed",
+      "signed_bytes",
+      null,
     ],
-    ["no output", async () => [], "failed"],
+    ["no output", async () => [], "failed", "output_count", null],
     [
       "two outputs",
       async (account, { message }) => {
@@ -597,11 +630,23 @@ describe("signAuthentication", () => {
         return [output, output];
       },
       "failed",
+      "output_count",
+      null,
     ],
-  ])("answers %s as %s", async (_, answer, failure) => {
+  ])("answers %s as %s", async (_, answer, failure, reason, code) => {
     const { bridge, phantom, accounts } = await connected();
     phantom.next("signMessage", (input) => answer(accounts[0], input));
     expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason, code });
+  });
+
+  it("records a provider code and drops the provider message", async () => {
+    const { bridge, phantom, accounts } = await connected();
+    phantom.next("signMessage", () => Promise.reject({ code: -32000, message: "CANARY-SECRET-BYTES" }));
+    expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
+    const noted = readSignInDiagnostic();
+    expect(noted).toEqual({ stage: "sign", reason: "provider_error", code: -32000 });
+    expect(JSON.stringify(noted)).not.toContain("CANARY-SECRET-BYTES");
   });
 
   it("answers failed when the wallet switches during the prompt, even if it approves, and even for a 4001", async () => {
@@ -615,6 +660,7 @@ describe("signAuthentication", () => {
       if (outcome === "approve") prompt.resolve(await phantom.approve.signMessage({ account: accounts[0], message: CHALLENGE.bytes }));
       else prompt.reject(REJECTED);
       expect(await answer, outcome).toEqual({ ok: false, failure: "failed" });
+      expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "wallet_changed", code: null });
     }
   });
 
@@ -630,6 +676,7 @@ describe("signAuthentication", () => {
     phantom.switchTo(1);
     imported.resolve();
     expect(await answer).toEqual({ ok: false, failure: "failed" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "wallet_changed", code: null });
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 
@@ -639,6 +686,7 @@ describe("signAuthentication", () => {
     const { bridge } = registryOf(phantom);
     expect((await bridge.connect()).ok).toBe(true);
     expect(await bridge.signAuthentication({ account: asAccount(plain), message: CHALLENGE })).toEqual({ ok: false, failure: "cannot_sign" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "cannot_sign", code: null });
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 
@@ -646,6 +694,7 @@ describe("signAuthentication", () => {
     const { bridge, phantom, accounts } = await connected();
     vi.spyOn(crypto.subtle, "importKey").mockRejectedValue(new DOMException("Unrecognized name.", "NotSupportedError"));
     expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure: "cannot_sign" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "sign", reason: "cannot_verify", code: null });
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 });

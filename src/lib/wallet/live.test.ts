@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Address } from "@/client/contracts";
 import type { ChallengeId, SignatureBase64 } from "./environment";
 import { liveEnvironment, liveSignInService, type FetchLike } from "./live";
+import { readSignInDiagnostic } from "./sign-in-diagnostic";
 
 vi.mock(import("@wallet-standard/app"), async (actual) => ({ getWallets: vi.fn((await actual()).getWallets) }));
 
@@ -119,6 +120,32 @@ describe("live sign-in service", () => {
   it("never throws when ending a session fails", async () => {
     const service = liveSignInService(stubFetch(() => Promise.reject(new TypeError("fetch failed"))).fetch);
     await expect(service.endSession()).resolves.toBeUndefined();
+  });
+
+  it("classifies a swallowed auth failure without keeping the challenge or the signature", async () => {
+    const canary = "CANARY-MESSAGE-BYTES";
+    const unreadable = liveSignInService(stubFetch(() => json(200, challengeBody(base64(Uint8Array.from([0x80, 0xff]))))).fetch);
+    expect(await unreadable.requestChallenge(WALLET)).toEqual({ ok: false, failure: "unavailable" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "challenge", reason: "unparsed", code: 200 });
+
+    const limited = liveSignInService(stubFetch(() => json(429, errorBody("RATE_LIMITED"))).fetch);
+    expect(await limited.requestChallenge(WALLET)).toEqual({ ok: false, failure: "unavailable" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "challenge", reason: "RATE_LIMITED", code: 429 });
+
+    const signature = `c2ln${canary}` as SignatureBase64;
+    const invalid = liveSignInService(stubFetch(() => json(400, errorBody("INVALID_SIGNATURE"))).fetch);
+    expect(await invalid.verify({ challengeId: "c-1" as ChallengeId, signature })).toEqual({ ok: false, failure: "unavailable" });
+    const noted = readSignInDiagnostic();
+    expect(noted).toEqual({ stage: "verify", reason: "INVALID_SIGNATURE", code: 400 });
+    expect(JSON.stringify(noted)).not.toContain(canary);
+
+    const down = liveSignInService(stubFetch(() => Promise.reject(new TypeError("fetch failed"))).fetch);
+    expect(await down.readSession()).toEqual({ ok: false, failure: "unavailable" });
+    expect(readSignInDiagnostic()).toEqual({ stage: "session", reason: "no_answer", code: null });
+
+    const signedOut = liveSignInService(stubFetch(() => json(401, errorBody("UNAUTHENTICATED"))).fetch);
+    expect(await signedOut.readSession()).toEqual({ ok: true, value: null });
+    expect(readSignInDiagnostic()).toBeNull();
   });
 
   it("a verify answer that isn't a session is unavailable", async () => {
