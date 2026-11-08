@@ -45,7 +45,7 @@ F1 created the scaffold with create-next-app 16.4.5: Next.js 16.4.5, React 19.3.
 | `npm run typecheck` | Generate the route types, then check TypeScript without emitting files |
 | `npm test` | Run the Vitest unit tests |
 | `npm run test:e2e` | Build the app, run `bundle:check`, start a fake API, serve the app twice with sample data on and off, and run the Playwright suite with axe accessibility checks |
-| `npm run bundle:check` | After `next build`, print each route's First Load JS and fail when a chunk a route loads before a click holds Payments' code |
+| `npm run bundle:check` | After `next build`, print each route's First Load JS and fail when a chunk a route loads before a click holds Payments' code, or when any built file holds test support |
 | `npm run design:check` | Fail when the design system document and the code disagree |
 | `npm run design:write` | Regenerate the generated tables in the design system document |
 | `npm run check` | Run lint, typecheck, design:check and the unit tests, the same fast checks as CI |

@@ -61,7 +61,7 @@ describe("the browser never sends a payment", () => {
   });
 
   it.each(["@solana/kit", "@solana/rpc", "@solana/rpc-transport-http", "@solana/signers", "@solana/wallet-standard", "@solana/wallet-standard-core", "@solana/wallet-standard-features"])(
-    "refuses import() of %s in browser code and its tests, however the string is written",
+    "refuses import() of %s in browser code and its tests, as a plain or a template string",
     async (from) => {
       for (const code of [`export const load = () => import("${from}");\n`, `export const load = () => import(\`${from}\`);\n`]) {
         for (const file of [...BROWSER, "src/client/checkout-view.ts", "src/client/payment-check.ts", "src/lib/wallet/live.ts", "src/lib/wallet/fence-probe.test.ts"]) {
