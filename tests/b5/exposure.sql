@@ -12,6 +12,16 @@ declare
   admin_authenticated boolean;
   admin_public boolean;
 begin
+  begin
+    execute 'set local role postgres';
+    execute 'alter default privileges for role supabase_admin revoke execute on functions from public';
+    reasons := reasons || 'postgres_changed_supabase_admin_defaults ';
+    execute 'reset role';
+  exception
+    when insufficient_privilege then
+      execute 'reset role';
+  end;
+
   if exists (
     select 1
     from pg_proc p
@@ -123,13 +133,15 @@ begin
   end loop;
 
   execute 'reset role';
+  execute 'set local role postgres';
   execute $sql$create function public.onetab_future_probe() returns integer language sql set search_path = '' as $fn$ select 1 $fn$$sql$;
+  execute 'reset role';
   anon_future := has_function_privilege('anon', 'public.onetab_future_probe()', 'execute');
   authenticated_future := has_function_privilege('authenticated', 'public.onetab_future_probe()', 'execute');
   public_future := has_function_privilege('public', 'public.onetab_future_probe()', 'execute');
   execute 'drop function public.onetab_future_probe()';
   if anon_future or authenticated_future or public_future then
-    reasons := reasons || format('future_creator anon=%s authenticated=%s public=%s ', anon_future, authenticated_future, public_future);
+    reasons := reasons || format('future_postgres anon=%s authenticated=%s public=%s ', anon_future, authenticated_future, public_future);
   end if;
 
   if exists (select 1 from pg_roles where rolname = 'supabase_admin') then
@@ -140,8 +152,8 @@ begin
     admin_authenticated := has_function_privilege('authenticated', 'public.onetab_admin_probe()', 'execute');
     admin_public := has_function_privilege('public', 'public.onetab_admin_probe()', 'execute');
     execute 'drop function public.onetab_admin_probe()';
-    if admin_anon or admin_authenticated or admin_public then
-      reasons := reasons || format('future_admin anon=%s authenticated=%s public=%s ', admin_anon, admin_authenticated, admin_public);
+    if not admin_anon or not admin_authenticated or not admin_public then
+      reasons := reasons || format('admin_defaults_closed anon=%s authenticated=%s public=%s ', admin_anon, admin_authenticated, admin_public);
     end if;
   end if;
 

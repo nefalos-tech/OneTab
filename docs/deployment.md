@@ -44,13 +44,15 @@ Apply these files in order to a new OneTab database. Do not run a reset against 
 
 Apply each file as one transaction. Stop on the first error. Do not rerun an earlier file after a later file fails, and do not reset the database.
 
-The first four files create the tables and the server RPCs. The fifth makes those RPCs and `private.attempt_snapshot` security invoker. `service_role` can execute that snapshot and use the `private` schema. It cannot create objects there. `anon` and `authenticated` stay denied. Trigger functions stay invoker, and those two roles lose execute on them. `service_role` keeps execute so its writes still fire the triggers.
+The first four files create the tables and the server RPCs. The fifth makes those seventeen OneTab routines security invoker. `service_role` can execute `private.attempt_snapshot` and use the `private` schema. It cannot create objects there. `anon` and `authenticated` stay denied. The four OneTab trigger functions stay invoker. Those two roles lose execute on them, and `service_role` keeps execute so its writes still fire the triggers.
 
-For `postgres`, `supabase_admin`, and the role applying the file, new functions do not grant execute to `public`, `anon`, or `authenticated`. The same revoke is repeated inside `public` and `private`, because a schema grant would otherwise add those roles back. Leave the Data API exposed schemas at `public`. Do not add `private`.
+The fifth file changes default privileges only for the role applying it. Hosted `postgres` is not a superuser and is not a member of `supabase_admin`, so the file does not try to change `supabase_admin` defaults. A function created later by `supabase_admin` can still grant execute to `anon`. For the applying role, the execute revoke is global and then repeated in `public` and `private`. A schema-only revoke leaves PostgreSQL's built-in public execute grant. If `public` or `private` contains any other security definer or trigger function, the file stops and changes none of them.
+
+Leave the Data API exposed schemas at `public`. Do not add `private`.
 
 `service_role` still bypasses row level security and still has direct table writes. Keep the service key on the server.
 
-Local grant checks are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). `bash tests/b5/run-pg17.sh` applies every migration on disposable PostgreSQL 17.11, then runs `tests/b5/exposure.sql` and the existing B1 through B4 SQL files as `service_role`. Those results are local. They are not hosted evidence.
+Local grant checks are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). `bash tests/b5/run-pg17.sh` applies every migration on disposable PostgreSQL 17.11 as non-superuser `postgres`, one transaction per file. That role is not a member of `supabase_admin`. The script then runs `tests/b5/exposure.sql` and the existing B1 through B4 SQL files as `service_role`. Those results are local. They are not hosted evidence.
 
 ## Publish the app
 

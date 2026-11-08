@@ -208,8 +208,8 @@ async function main() {
     const created = spawnSync(tools[3], ["-h", sock, "-p", pgPort, "-U", "onetab", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `create database ${db}`], { encoding: "utf8" });
     if (created.status !== 0) throw new Error(created.stderr || created.stdout || "create database failed");
     psql(db, `create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator noinherit login password '${password}'; grant anon, authenticated, service_role to authenticator;`);
-    for (const file of ["20261107000000_b1_schema.sql", "20261107010000_b2_auth.sql", "20261107020000_b3_rooms.sql", "20261108000000_b4_attempt_store.sql"]) {
-      const applied = spawnSync(tools[3], ["-h", sock, "-p", pgPort, "-U", "onetab", "-d", db, "-v", "ON_ERROR_STOP=1", "-f", join(root, "supabase/migrations", file)], { encoding: "utf8" });
+    for (const file of ["20261107000000_b1_schema.sql", "20261107010000_b2_auth.sql", "20261107020000_b3_rooms.sql", "20261108000000_b4_attempt_store.sql", "20261108092756_harden_exposed_function_grants.sql"]) {
+      const applied = spawnSync(tools[3], ["-h", sock, "-p", pgPort, "-U", "onetab", "-d", db, "-v", "ON_ERROR_STOP=1", "-1", "-f", join(root, "supabase/migrations", file)], { encoding: "utf8" });
       if (applied.status !== 0) throw new Error(`${file}\n${applied.stderr}`);
     }
     if (psql(db, "show port") !== pgPort) throw new Error("postgres did not keep the requested loopback port");
