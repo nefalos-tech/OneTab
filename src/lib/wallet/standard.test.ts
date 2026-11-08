@@ -258,6 +258,37 @@ describe("connect", () => {
     expect(decoy.prompts()).toEqual([]);
   });
 
+  const failing = (wallet: Wallet, key: "chains" | "features" | "name"): Wallet =>
+    Object.defineProperty({ ...wallet }, key, {
+      get: () => {
+        throw new Error("A broken wallet");
+      },
+    });
+  const BROKEN: readonly [string, (wallet: Wallet) => Wallet][] = [
+    ["chains that throw", (wallet) => failing(wallet, "chains")],
+    ["no chains", (wallet) => ({ ...wallet, chains: undefined }) as unknown as Wallet],
+    ["a chain that isn't a string", (wallet) => ({ ...wallet, chains: [42] }) as unknown as Wallet],
+    ["features that throw", (wallet) => failing(wallet, "features")],
+    ["no features", (wallet) => ({ ...wallet, features: null }) as unknown as Wallet],
+    ["a name that throws", (wallet) => failing(wallet, "name")],
+  ];
+
+  it.each(BROKEN)("chooses Phantom when a wallet registered before it has %s", async (_, broken) => {
+    const decoy = fakeWallet("Decoy", await twoAccounts());
+    const phantom = fakeWallet("Phantom", await twoAccounts());
+    expect(await registryOf({ ...decoy, wallet: broken(decoy.wallet) }, phantom).bridge.connect()).toEqual({ ok: true, value: phantom.accounts[0]!.address });
+    expect(decoy.prompts()).toEqual([]);
+  });
+
+  it("answers no_wallet with no prompt when every registered wallet is broken", async () => {
+    const wallets = await Promise.all(BROKEN.map(async ([name, broken]) => {
+      const fake = fakeWallet(name, await twoAccounts());
+      return { ...fake, wallet: broken(fake.wallet) };
+    }));
+    expect(await registryOf(...wallets).bridge.connect()).toEqual({ ok: false, failure: "no_wallet" });
+    expect(wallets.flatMap((w) => w.prompts())).toEqual([]);
+  });
+
   it("chooses the first capable wallet when Phantom can't sign in", async () => {
     const phantom = fakeWallet("Phantom", await twoAccounts(), { without: ["solana:signMessage"] });
     const other = fakeWallet("Other", await twoAccounts());

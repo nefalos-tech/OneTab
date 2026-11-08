@@ -211,24 +211,41 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
   };
 }
 
+/** A registered Solana wallet, read once. */
+type Candidate = { readonly wallet: Wallet; readonly phantom: boolean; readonly failure: "wrong_network" | "cannot_sign" | null };
+
 /**
  * Phantom when it qualifies, else the first registered Solana wallet that does. With none: no Solana wallet is
  * `no_wallet`, one short only of Devnet is `wrong_network`, and anything else is `cannot_sign`.
  */
 function chooseWallet(wallets: readonly Wallet[]): Result<Wallet, "no_wallet" | "wrong_network" | "cannot_sign"> {
-  const solana = wallets.filter((w) => w.chains.some((chain) => chain.startsWith("solana:")));
-  const ordered = [...solana.filter((w) => w.name === PREFERRED), ...solana.filter((w) => w.name !== PREFERRED)];
-  const failures = ordered.map(walletFailure);
-  const usable = ordered.find((_, index) => failures[index] === null);
-  if (usable) return { ok: true, value: usable };
+  const solana = wallets.map(candidateOf).filter((c) => c !== null);
+  const ordered = [...solana.filter((c) => c.phantom), ...solana.filter((c) => !c.phantom)];
+  const usable = ordered.find((c) => c.failure === null);
+  if (usable) return { ok: true, value: usable.wallet };
   if (ordered.length === 0) return { ok: false, failure: "no_wallet" };
-  return { ok: false, failure: failures.includes("wrong_network") ? "wrong_network" : "cannot_sign" };
+  return { ok: false, failure: ordered.some((c) => c.failure === "wrong_network") ? "wrong_network" : "cannot_sign" };
 }
 
-function walletFailure(wallet: Wallet): "wrong_network" | "cannot_sign" | null {
+/**
+ * Null when the wallet isn't a Solana wallet. The registry accepts any object, so one whose fields throw or
+ * don't parse counts as no wallet at all instead of failing the choice among the others.
+ */
+function candidateOf(wallet: Wallet): Candidate | null {
+  try {
+    const chains: unknown = wallet.chains;
+    if (!Array.isArray(chains) || !chains.every((chain) => typeof chain === "string")) return null;
+    if (!chains.some((chain) => chain.startsWith("solana:"))) return null;
+    return { wallet, phantom: wallet.name === PREFERRED, failure: walletFailure(wallet, chains) };
+  } catch {
+    return null;
+  }
+}
+
+function walletFailure(wallet: Wallet, chains: readonly string[]): "wrong_network" | "cannot_sign" | null {
   if (feature(wallet, StandardConnect) === null || feature(wallet, StandardEvents) === null) return "cannot_sign";
   return capabilityFailure({
-    devnet: wallet.chains.includes(DEVNET),
+    devnet: chains.includes(DEVNET),
     signMessage: feature(wallet, SolanaSignMessage) !== null,
     signTransaction: feature(wallet, SolanaSignTransaction)?.supportedTransactionVersions.includes("legacy") === true,
   });
