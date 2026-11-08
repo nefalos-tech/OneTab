@@ -221,7 +221,8 @@ const toldInFull = (words: { readonly happened: string; readonly next: string })
 export type ProblemWithWords =
   | Exclude<RequestProblem | CheckFailure | ReturnFailure | SignFailure, "signed_out" | "stale">
   | "approval_refused"
-  | "room_changed_unread";
+  | "room_changed_unread"
+  | "start_unread";
 
 export const REQUEST_PROBLEMS = {
   room_full: "Someone took the last spot first. This checkout is full.",
@@ -233,6 +234,7 @@ export const REQUEST_PROBLEMS = {
   rate_limited: "Too many tries in a row. Wait a few seconds, then try again.",
   refused: "OneTab couldn't accept this, so nothing changed. Reload the page and try again.",
   unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",
+  start_unread: "OneTab couldn't confirm what happened to this payment. This page shows it as soon as it can read the checkout.",
   mismatch: "The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved.",
   unsupported: "Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved.",
   rejected:

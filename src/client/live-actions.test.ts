@@ -2,8 +2,19 @@ import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { PaymentApproval, PaymentSigner, Result, SignatureBase64, SignFailure } from "@/lib/wallet/environment";
 import { checkoutApi, type FetchLike } from "./api";
 import { ACTIONS, REQUEST_PROBLEMS, WORDS, type ActionKind, type ProblemWithWords, type Screen } from "./catalog";
-import { NOTHING_HEARD, checkoutLinks, deriveResultView, deriveRoomView, termsOf, type Action, type CheckoutState } from "./checkout-view";
-import type { AttemptId, ClientRequestId, RoomSnapshot, Session } from "./contracts";
+import {
+  NOTHING_HEARD,
+  checkoutLinks,
+  deriveResultView,
+  deriveRoomView,
+  noticeApplies,
+  noticeOf,
+  ownerOf,
+  termsOf,
+  type Action,
+  type CheckoutState,
+} from "./checkout-view";
+import type { AttemptId, CheckoutId, ClientRequestId, RoomSnapshot, Session } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES, sampleCheckoutState } from "./fixtures";
 import {
@@ -397,10 +408,10 @@ describe("try again", () => {
     expect(shown).toEqual([preparing]);
   });
 
-  it("with no answer, says trying again is safe, and trying again sends the same request", async () => {
+  it("with no answer and no room, says it couldn't confirm what happened, and trying again sends the same request", async () => {
     const { fetch, calls } = server(noAnswer, noAnswer, () => json(201, { data: preparing.attempt }), () => json(200, { data: preparing }));
     const live = liveActions(checkoutApi(fetch));
-    expect(await live.run(RETRY, scope())).toEqual(said("unavailable"));
+    expect(await live.run(RETRY, scope())).toEqual(said("start_unread"));
     expect(await live.run(RETRY, scope())).toEqual({ kind: "done" });
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ retryOfAttemptId: replaced }, { retryOfAttemptId: replaced }]);
   });
@@ -450,22 +461,46 @@ describe("a refused start is explained on the failed attempt it left", () => {
   });
 
   it.each<[string, Response]>([
-    ["answers later", json(200, { data: FAILED })],
+    ["answers", json(200, { data: FAILED })],
     ["fails", json(503, errorBody("CONFIGURATION_UNAVAILABLE"))],
-  ])("a poll that shows the failed room before Start's own read already carries the note, when that read %s", async (_, last) => {
+  ])("a poll sent while Start's own read is in flight never shows, and the cause is noted when the room first shows, when that read %s", async (_, last) => {
     const read = held();
     const { live, calls, track, poll, notedWhenShown } = noting(
       () => json(422, errorBody("INSUFFICIENT_USDC")),
       read.response,
       () => json(200, { data: FAILED }),
+      () => json(200, { data: FAILED }),
     );
     const started = live.run(START, scope(track));
     await vi.waitFor(() => expect(calls).toHaveLength(2));
     await poll();
-    expect(notedWhenShown).toEqual([noted(FAILED, "short_usdc")]);
+    expect(notedWhenShown).toEqual([]);
     read.answer(last);
     expect(await started).toEqual(last.ok ? { kind: "done" } : said("short_usdc"));
-    expect(notedWhenShown).toEqual([noted(FAILED, "short_usdc")]);
+    await poll();
+    expect(notedWhenShown[0]).toEqual(noted(FAILED, "short_usdc"));
+  });
+
+  it("Try again refused again while its own read fails leaves its notice on the attempt still on screen, and a poll sent meanwhile never shows", async () => {
+    const read = held();
+    const { live, calls, track, poll, notedWhenShown } = noting(
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      read.response,
+      () => json(200, { data: replacement }),
+      () => json(200, { data: replacement }),
+    );
+    const retried = live.run(RETRY, scope(track));
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    await poll();
+    read.answer(json(503, errorBody("CONFIGURATION_UNAVAILABLE")));
+    const outcome = await retried;
+    expect(outcome).toEqual(said("short_usdc"));
+    expect(notedWhenShown).toEqual([]);
+    if (outcome.kind !== "notice") throw new Error("Try again said nothing");
+    const stored = noticeOf({ text: outcome.text, followUp: outcome.followUp, wallet: SAMPLE_WALLETS.organizer, raisedBy: RETRY }, outcome.about);
+    expect(noticeApplies(stored, { wallet: SAMPLE_WALLETS.organizer, actions: ORGANIZER_SEES.actions })).toBe(true);
+    await poll();
+    expect(notedWhenShown).toEqual([noted(replacement, "short_usdc")]);
   });
 
   it("when Start's own read fails and nothing has shown, says why and notes the cause on the next room shown", async () => {
@@ -539,7 +574,7 @@ describe("a refused start is explained on the failed attempt it left", () => {
     const unchanged = noting(() => json(status, errorBody(code)), () => json(200, { data: FAILED }));
     expect(await unchanged.live.run(RETRY, scope(unchanged.track))).toEqual(said(problem));
     const unread = noting(() => json(status, errorBody(code)), noAnswer);
-    expect(await unread.live.run(START, scope(unread.track))).toEqual(said(problem));
+    expect(await unread.live.run(START, scope(unread.track))).toEqual(said("start_unread"));
   });
 
   it("keeps the first note for an attempt, and tells subscribers only about new ones", async () => {
@@ -561,6 +596,126 @@ describe("a refused start is explained on the failed attempt it left", () => {
     expect(first).toEqual(noted(FAILED, "short_sol"));
     expect(heard).toBe(1);
     unsubscribe();
+  });
+});
+
+describe("what Start and Try again say, from how the start was answered and the room read inside it", () => {
+  const START: LiveAction = { kind: "start_payment", checkoutId: FAILED_ROOM };
+  const ready: RoomSnapshot = { ...FAILED, phase: "ready", attempt: null };
+  const preparing: RoomSnapshot = { ...FAILED, phase: "paying", attempt: { ...FIXTURES.preparing.snapshot.attempt!, id: FIXTURES.signing.snapshot.attempt!.id } };
+  const replacement: RoomSnapshot = { ...FAILED, attempt: { ...FAILED.attempt!, id: FIXTURES.expired.snapshot.attempt!.id } };
+  const started = () => json(201, { data: preparing.attempt });
+  const unread = () => json(503, errorBody("CONFIGURATION_UNAVAILABLE"));
+  const refusals = [
+    ["a funding refusal", () => json(422, errorBody("INSUFFICIENT_USDC")), "short_usdc"],
+    ["a 400", () => json(400, errorBody("INVALID_PAYMENT")), "refused"],
+    ["a 503", () => json(503, errorBody("RPC_UNAVAILABLE")), "unavailable"],
+  ] as const;
+  type Row = readonly [
+    label: string,
+    answer: () => Response,
+    rooms: { readonly start: RoomSnapshot | null; readonly retry: RoomSnapshot | null },
+    start: Outcome,
+    retry: Outcome,
+  ];
+  const DONE: Outcome = { kind: "done" };
+  const leftBehind = { start: FAILED, retry: replacement };
+
+  it.each<Row>([
+    ["an answered start whose room shows a new attempt that already stopped, as a replay can", started, leftBehind, DONE, stoppedAgain(replacement)],
+    ["an answered start whose room shows anything else", started, { start: preparing, retry: preparing }, DONE, DONE],
+    ...refusals.map(([what, answer]): Row => [`${what} whose room shows a new attempt that stopped`, answer, leftBehind, DONE, stoppedAgain(replacement)]),
+    ...refusals.map(([what, answer, problem]): Row => [`${what} whose room shows no new attempt`, answer, { start: ready, retry: FAILED }, said(problem), said(problem)]),
+    ["an answered start whose room can't be read", started, { start: null, retry: null }, DONE, DONE],
+    ["a funding refusal whose room can't be read", refusals[0][1], { start: null, retry: null }, said("short_usdc"), said("short_usdc")],
+    ...refusals.slice(1).map(([what, answer]): Row => [`${what} whose room can't be read`, answer, { start: null, retry: null }, said("start_unread"), said("start_unread")]),
+  ])("%s", async (_, answer, rooms, start, retry) => {
+    for (const [action, room, outcome] of [
+      [START, rooms.start, start],
+      [RETRY, rooms.retry, retry],
+    ] as const) {
+      const { fetch, calls } = server(answer, room === null ? unread : () => json(200, { data: room }));
+      const live = liveActions(checkoutApi(fetch));
+      const shown: [RoomSnapshot, Intent][] = [];
+      const track = live.tracker((snapshot, intent) => shown.push([snapshot, intent]), () => {});
+      expect(await live.run(action, scope(track)), action.kind).toEqual(outcome);
+      expect(requests(calls), action.kind).toEqual([
+        ["POST", `/api/checkouts/${FAILED_ROOM}/attempts`],
+        ["GET", `/api/checkouts/${FAILED_ROOM}`],
+      ]);
+      expect(shown, action.kind).toEqual(room === null ? [] : [[room, "write"]]);
+    }
+  });
+
+  it("a Start before any poll answers on a page reached inside the app moves the organizer to the result its room shows", async () => {
+    const { fetch } = server(() => json(422, errorBody("INSUFFICIENT_SOL")), () => json(200, { data: FAILED }));
+    const live = liveActions(checkoutApi(fetch));
+    const shown: { owner: Screen; intent: Intent }[] = [];
+    const track = live.tracker((snapshot, intent) => shown.push({ owner: ownerOf(snapshot), intent }), () => {});
+    await live.run(START, scope(track));
+    expect(shown.map((room) => moveFor(room, "room", null))).toEqual(["result"]);
+  });
+});
+
+describe("a funding refusal explains only its own checkout, and only until the next press", () => {
+  const OTHER = "5d0c3f1e-8a2b-4c6d-9e7f-1a2b3c4d5e6f" as CheckoutId;
+  const otherFailed: RoomSnapshot = {
+    ...FAILED,
+    checkout: { ...FAILED.checkout, id: OTHER },
+    attempt: { ...FAILED.attempt!, id: FIXTURES.expired.snapshot.attempt!.id },
+  };
+  const startHere: LiveAction = { kind: "start_payment", checkoutId: FAILED_ROOM };
+  const reasonFor = (live: ReturnType<typeof liveActions>, room: RoomSnapshot) => {
+    const view = deriveResultView({ ...liveRoom(room, null), page: { noted: live.noted.current(), roomUnreachable: false } });
+    return view.body.kind === "failed" ? view.body.reason.from : null;
+  };
+
+  it("never explains another checkout's failed attempt that a poll shows, and ends there", async () => {
+    const { fetch } = server(
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(200, { data: otherFailed }),
+      () => json(200, { data: FAILED }),
+    );
+    const live = liveActions(checkoutApi(fetch));
+    const here = live.tracker(() => {}, () => {});
+    const there = live.tracker(() => {}, () => {});
+    expect(await live.run(startHere, scope(here))).toEqual(said("short_usdc"));
+    await there("read", () => checkoutApi(fetch).readRoom(OTHER));
+    expect(live.noted.current()).toEqual([]);
+    expect(reasonFor(live, otherFailed)).toBe("attempt");
+    await here("read", () => checkoutApi(fetch).readRoom(FAILED_ROOM));
+    expect(live.noted.current()).toEqual([]);
+  });
+
+  it("never explains another checkout's attempt left by a Start that Payments answered 503", async () => {
+    const { fetch } = server(
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(503, errorBody("RPC_UNAVAILABLE")),
+      () => json(200, { data: otherFailed }),
+    );
+    const live = liveActions(checkoutApi(fetch));
+    expect(await live.run(startHere, scope(live.tracker(() => {}, () => {})))).toEqual(said("short_usdc"));
+    const startThere: LiveAction = { kind: "start_payment", checkoutId: OTHER };
+    expect(await live.run(startThere, scope(live.tracker(() => {}, () => {})))).toEqual({ kind: "done" });
+    expect(live.noted.current()).toEqual([]);
+    expect(reasonFor(live, otherFailed)).toBe("attempt");
+  });
+
+  it("a later press clears a cause still waiting, so its 400 never picks it up", async () => {
+    const { fetch } = server(
+      () => json(422, errorBody("INSUFFICIENT_USDC")),
+      () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")),
+      () => json(400, errorBody("INVALID_PAYMENT")),
+      () => json(200, { data: FAILED }),
+    );
+    const live = liveActions(checkoutApi(fetch));
+    const track = live.tracker(() => {}, () => {});
+    expect(await live.run(startHere, scope(track))).toEqual(said("short_usdc"));
+    expect(await live.run(startHere, scope(track))).toEqual({ kind: "done" });
+    expect(live.noted.current()).toEqual([]);
+    expect(reasonFor(live, FAILED)).toBe("attempt");
   });
 });
 

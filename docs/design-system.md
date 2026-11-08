@@ -370,6 +370,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | `rate_limited` | Too many tries in a row. Wait a few seconds, then try again. |
 | `refused` | OneTab couldn't accept this, so nothing changed. Reload the page and try again. |
 | `unavailable` | OneTab couldn't confirm this went through. Trying again is safe. |
+| `start_unread` | OneTab couldn't confirm what happened to this payment. This page shows it as soon as it can read the checkout. |
 | `mismatch` | The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved. |
 | `unsupported` | Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved. |
 | `rejected` | You didn't approve in your wallet, so nothing was sent, and you can approve again. Declining stops this payment for everyone and keeps the checkout on hold until it's safely closed. |

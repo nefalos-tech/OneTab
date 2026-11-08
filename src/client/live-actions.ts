@@ -65,7 +65,7 @@ function roomTracker(show: Show, reached: (answered: boolean) => void): Track {
 export type Scope = { readonly track: Track; readonly signer: PaymentSigner };
 
 type RoomContext = { readonly api: CheckoutApi; readonly track: Track };
-type StartContext = RoomContext & { readonly expect: (refused: Refused) => void };
+type StartContext = RoomContext & { readonly expect: (refused: Refused | null) => void };
 /** Approve alone also reaches the wallet's signer and the payment check. */
 type ApproveContext = RoomContext & { readonly signer: PaymentSigner; readonly check: PaymentCheck };
 type Contexts = {
@@ -120,25 +120,42 @@ async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome
   return outcomeOfWrite(c, terms.checkoutId, uploaded);
 }
 
+/**
+ * Start and Try again read the room inside their own write, after a refusal too, so no poll shows a room
+ * while the action is still answering, and the room it read moves the viewer as this page's own write.
+ */
 async function startAttempt(c: StartContext, id: CheckoutId, retryOf: AttemptId | null): Promise<Outcome> {
+  c.expect(null);
+  let refused: StartRefusal | null = null;
   const answer = await writeThenReadRoom(c, id, async () => {
     const started = await c.api.startAttempt(id, retryOf);
-    if (!started.ok && isFundingCause(started.failure)) c.expect({ cause: started.failure, replacing: retryOf });
-    return started;
+    if (started.ok || !mayLeaveFailed(started.failure)) return started;
+    refused = started.failure;
+    if (isFundingCause(started.failure)) c.expect({ checkoutId: id, cause: started.failure, replacing: retryOf });
+    return { ok: true, value: null };
   });
-  if (answer.ok || answer.failure === "unseen") return DONE;
-  if (!mayLeaveFailed(answer.failure)) return settle(c, id, answer.failure);
-  const read = await readRoomAgain(c, id);
-  const left = read.ok ? read.value.attempt : null;
-  if (!stoppedUnsent(left, retryOf)) return notice(answer.failure);
-  return retryOf === null ? DONE : { kind: "notice", text: WORDS.retry_stopped, followUp: null, about: left.id };
+  if (!answer.ok && answer.failure !== "unseen") return settle(c, id, answer.failure);
+  return startOutcome(refused, answer.ok ? answer.value : null, retryOf);
 }
 
 const isFundingCause = (problem: RequestProblem): problem is FundingCause => (FUNDING_CAUSES as readonly string[]).includes(problem);
 
 /** Payments may have stored the new attempt as failed before it answered a start with one of these. */
-const mayLeaveFailed = (problem: RequestProblem): problem is FundingCause | "refused" | "unavailable" =>
+type StartRefusal = FundingCause | "refused" | "unavailable";
+
+const mayLeaveFailed = (problem: RequestProblem): problem is StartRefusal =>
   isFundingCause(problem) || problem === "refused" || problem === "unavailable";
+
+/** What a start says, from how it was answered and the room it read after, or null when that read failed. */
+function startOutcome(refused: StartRefusal | null, room: RoomSnapshot | null, retryOf: AttemptId | null): Outcome {
+  if (room === null) {
+    if (refused === null) return DONE;
+    return notice(isFundingCause(refused) ? refused : "start_unread");
+  }
+  const left = room.attempt;
+  if (stoppedUnsent(left, retryOf)) return retryOf === null ? DONE : { kind: "notice", text: WORDS.retry_stopped, followUp: null, about: left.id };
+  return refused === null ? DONE : notice(refused);
+}
 
 const stoppedUnsent = (attempt: AttemptSummary | null, replacing: AttemptId | null): attempt is AttemptSummary =>
   attempt !== null && attempt.state === "failed" && attempt.transactionReference === null && attempt.id !== replacing;
@@ -360,13 +377,14 @@ function arrivals(): Arrivals {
   };
 }
 
-type Refused = { readonly cause: FundingCause; readonly replacing: AttemptId | null };
+type Refused = { readonly checkoutId: CheckoutId; readonly cause: FundingCause; readonly replacing: AttemptId | null };
 
 /**
- * A funding refusal names no attempt, so the cause waits for the next room shown with an attempt other
- * than the one being replaced, and is noted on it only if that attempt stopped before it was sent.
+ * A funding refusal names no attempt, so the cause waits for the next room of its checkout shown with an
+ * attempt other than the one being replaced, and is noted on it only if that attempt stopped before it was
+ * sent. Another checkout's room, or the next press, ends the wait.
  */
-function notedMemory(): NotedCauses & { expect(refused: Refused): void; observe(snapshot: RoomSnapshot): void } {
+function notedMemory(): NotedCauses & { expect(refused: Refused | null): void; observe(snapshot: RoomSnapshot): void } {
   let noted: readonly NotedCause[] = NOTHING_HEARD.noted;
   let pending: Refused | null = null;
   const listeners = new Set<() => void>();
@@ -374,7 +392,8 @@ function notedMemory(): NotedCauses & { expect(refused: Refused): void; observe(
     expect(refused) {
       pending = refused;
     },
-    observe({ attempt }) {
+    observe({ checkout, attempt }) {
+      if (pending !== null && checkout.id !== pending.checkoutId) pending = null;
       if (pending === null || attempt === null || attempt.id === pending.replacing) return;
       const { cause } = pending;
       pending = null;
