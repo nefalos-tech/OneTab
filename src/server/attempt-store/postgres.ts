@@ -1,7 +1,7 @@
 import "server-only";
 import { isRecord, isTokenUnits, looksLikeAddress } from "@/client/contracts";
 import type { AttemptState, Base64, Participant, Receipt, SigningPayload } from "../../contracts";
-import type { AttemptStore, Lease, ResolutionLease, StoredAttempt, SubmissionClaim } from "./index";
+import type { AttemptStore, Lease, ResolutionLease, StoredAttempt } from "./index";
 
 type DbConfig = { readonly url: string; readonly key: string };
 type JsonRecord = Record<string, unknown>;
@@ -121,26 +121,14 @@ function parseReturnedAttempt(value: unknown): StoredAttempt {
   return parseAttempt(one(value));
 }
 
-function parseSubmissionClaim(value: unknown): SubmissionClaim {
-  const row = requiredRecord(one(value));
-  const lease = parseLease(row.lease);
-  const submissionValue = row.submission;
-  let submission: StoredAttempt["submission"] = null;
-  if (submissionValue !== null) {
-    const stored = requiredRecord(submissionValue);
-    if (!validBase64(stored.transactionBase64) || typeof stored.transactionReference !== "string" || !SIGNATURE_REFERENCE.test(stored.transactionReference)) throw new Error("CONFIGURATION_UNAVAILABLE");
-    submission = { transactionBase64: stored.transactionBase64, transactionReference: stored.transactionReference };
-  }
-  return { lease, submission };
-}
-
 export const postgresAttemptStore: AttemptStore = {
   async reserveAttempt(input) { return parseReturnedAttempt(await rpc("reserve_attempt", { p_checkout_id: input.checkoutId, p_organizer_wallet: input.organizerWallet, p_retry_of_attempt_id: input.retryOfAttemptId })); },
   async claimPreparation(input) { return parseLease(one(await rpc("claim_attempt_preparation", { p_attempt_id: input.attemptId }))); },
   async freezeMessage(input) { return parseReturnedAttempt(await rpc("freeze_attempt_message", { p_attempt_id: input.attemptId, p_lease_token: input.leaseToken, p_payload: input.payload })); },
   async putVerifiedSignature(input) { return parseReturnedAttempt(await rpc("put_attempt_signature", { p_attempt_id: input.attemptId, p_signer_wallet: input.signerWallet, p_message_hash: input.messageHash, p_signature: input.signatureBase64 })); },
-  async claimSubmission(input) { return parseSubmissionClaim(await rpc("claim_attempt_submission", { p_attempt_id: input.attemptId, p_transaction_bytes: input.transactionBase64, p_transaction_reference: input.transactionReference })); },
-  async recordOutcome(input) { return parseReturnedAttempt(await rpc("record_attempt_outcome", { p_attempt_id: input.attemptId, p_lease_kind: input.leaseKind, p_lease_token: input.leaseToken, p_outcome: input.outcome })); },
+  async claimSubmission(input) { return parseLease(one(await rpc("claim_attempt_submission", { p_attempt_id: input.attemptId, p_transaction_bytes: input.transactionBase64, p_transaction_reference: input.transactionReference }))); },
+  async failPreparation(input) { return parseReturnedAttempt(await rpc("record_attempt_outcome", { p_attempt_id: input.attemptId, p_lease_token: input.leaseToken, p_outcome: { state: "failed", safelyResolved: true, error: input.error } })); },
+  async recordOutcome(input) { return parseReturnedAttempt(await rpc("record_attempt_outcome", { p_attempt_id: input.attemptId, p_lease_token: input.leaseToken, p_outcome: input.outcome })); },
   async getAttempt(input) {
     const value = one(await rpc("get_attempt", { p_attempt_id: input.attemptId }));
     return value === null ? null : parseAttempt(value);

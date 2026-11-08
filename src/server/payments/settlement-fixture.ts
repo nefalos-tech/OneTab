@@ -26,7 +26,7 @@ export async function settlementFixture(count: 2 | 3 = 2) {
     reference: signed.reference, lastValidBlockHeight: 250n };
   const attempt: StoredAttempt = { id: payload.attemptId, checkoutId: payload.checkoutId, state: "signing",
     participants: f.room.participants, safelyResolved: false, observedError: null, preparationLease: null,
-    submissionLease: null, signingPayload: payload, signatures, submission: null, receipt: null };
+    submissionLease: null, resolutionLease: null, signingPayload: payload, signatures, submission: null, receipt: null };
   const message = getCompiledTransactionMessageDecoder().decode(expected.messageBytes);
   const balances = [
     ...plan.contributions.map(payer => ({ wallet: payer.wallet, token: payer.sourceTokenAccount, before: payer.units, after: 0n })),
@@ -51,6 +51,7 @@ export function submissionStore(initial: StoredAttempt, events: string[], now: (
   const terminal = () => current.state === "confirmed" || (["failed", "expired"].includes(current.state) && current.safelyResolved);
   const store: AttemptStore = {
     reserveAttempt: unused, claimPreparation: unused, freezeMessage: unused, putVerifiedSignature: unused,
+    failPreparation: unused, declineAttempt: unused, claimResolution: unused,
     async getAttempt({ attemptId }) { return current.id === attemptId ? structuredClone(current) : null; },
     async claimSubmission(input) {
       events.push("claim");

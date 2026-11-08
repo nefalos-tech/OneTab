@@ -117,11 +117,9 @@ begin
   if not exists(select 1 from public.submissions where attempt_id=p_attempt_id) then
     insert into public.submissions(attempt_id,transaction_bytes,transaction_reference) values(p_attempt_id,pg_catalog.decode(p_transaction_bytes,'base64'),p_transaction_reference);
   elsif exists(select 1 from public.submissions where attempt_id=p_attempt_id and (transaction_bytes <> pg_catalog.decode(p_transaction_bytes,'base64') or transaction_reference <> p_transaction_reference)) then raise exception 'ATTEMPT_NOT_SIGNABLE' using errcode='P0001'; end if;
-  if a.state='submitting' and a.submission_expires_at > pg_catalog.clock_timestamp() then
-    return jsonb_build_object('lease',null,'submission',jsonb_build_object('transactionBase64',pg_catalog.replace(pg_catalog.encode((select transaction_bytes from public.submissions where attempt_id=p_attempt_id),'base64'),pg_catalog.chr(10),''),'transactionReference',(select transaction_reference from public.submissions where attempt_id=p_attempt_id)));
-  end if;
+  if a.state='submitting' and a.submission_expires_at > pg_catalog.clock_timestamp() then return null; end if;
   update public.attempts set state='submitting', submission_token=token, submission_expires_at=expiry where id=p_attempt_id;
-  return jsonb_build_object('lease',jsonb_build_object('token',token,'expiresAt',expiry),'submission',jsonb_build_object('transactionBase64',pg_catalog.replace(pg_catalog.encode((select transaction_bytes from public.submissions where attempt_id=p_attempt_id),'base64'),pg_catalog.chr(10),''),'transactionReference',(select transaction_reference from public.submissions where attempt_id=p_attempt_id)));
+  return jsonb_build_object('token',token,'expiresAt',expiry);
 end $$;
 
 create function public.claim_attempt_resolution(p_attempt_id uuid) returns jsonb
@@ -138,7 +136,7 @@ begin
   return jsonb_build_object('token',token,'expiresAt',expiry);
 end $$;
 
-create function public.record_attempt_outcome(p_attempt_id uuid,p_lease_kind text,p_lease_token uuid,p_outcome jsonb) returns jsonb
+create function public.record_attempt_outcome(p_attempt_id uuid,p_lease_token uuid,p_outcome jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare a public.attempts%rowtype; c public.checkouts%rowtype; receipt jsonb := p_outcome->'receipt';
 begin
@@ -147,10 +145,10 @@ begin
   perform 1 from public.checkouts where id=a.checkout_id for update;
   select * into c from public.checkouts where id=a.checkout_id;
   select * into a from public.attempts where id=p_attempt_id for update;
-  if p_lease_kind='preparation' and a.preparation_token=p_lease_token and a.preparation_expires_at > pg_catalog.clock_timestamp() and a.state='preparing' and a.message_bytes is null and p_outcome->>'state' in ('failed','expired') and (p_outcome->>'safelyResolved')::boolean then
+  if p_lease_token is not null and a.preparation_token=p_lease_token and a.preparation_expires_at > pg_catalog.clock_timestamp() and a.state='preparing' and a.message_bytes is null and p_outcome->>'state' in ('failed','expired') and (p_outcome->>'safelyResolved')::boolean then
     update public.attempts set state=p_outcome->>'state',safely_resolved=true,observed_error=p_outcome->>'error',preparation_token=null,preparation_expires_at=null where id=p_attempt_id;
-  elsif p_lease_kind='submission' and a.submission_token=p_lease_token then
-    if a.submission_expires_at <= pg_catalog.clock_timestamp() or p_outcome->>'state'='confirmed' and (receipt->>'confirmationStatus' <> 'finalized' or not exists(select 1 from public.submissions where attempt_id=p_attempt_id and transaction_reference=receipt->>'transactionReference') or (c.paid_attempt_id is not null and c.paid_attempt_id <> p_attempt_id) or receipt->>'sellerWallet' <> c.seller_wallet or (receipt->>'totalUnits')::numeric <> c.total_units or (receipt->>'observedAt') is null or jsonb_typeof(receipt->'contributions') <> 'array') then raise exception 'ATTEMPT_NOT_SIGNABLE' using errcode='P0001'; end if;
+  elsif p_lease_token is not null and a.submission_token=p_lease_token then
+    if a.submission_expires_at is null or a.submission_expires_at <= pg_catalog.clock_timestamp() or p_outcome->>'state'='confirmed' and (receipt->>'confirmationStatus' <> 'finalized' or not exists(select 1 from public.submissions where attempt_id=p_attempt_id and transaction_reference=receipt->>'transactionReference') or (c.paid_attempt_id is not null and c.paid_attempt_id <> p_attempt_id) or receipt->>'sellerWallet' <> c.seller_wallet or (receipt->>'totalUnits')::numeric <> c.total_units or (receipt->>'observedAt') is null or jsonb_typeof(receipt->'contributions') <> 'array') then raise exception 'ATTEMPT_NOT_SIGNABLE' using errcode='P0001'; end if;
     if p_outcome->>'state'='confirmed' then
       insert into public.receipts(attempt_id,transaction_reference,confirmation_status,execution_result,payment_summary,observed_at)
       select p_attempt_id,s.transaction_reference,'finalized',jsonb_build_object('err',null),a.payment_summary,(receipt->>'observedAt')::timestamptz from public.submissions s where s.attempt_id=p_attempt_id and s.transaction_reference=receipt->>'transactionReference' on conflict(attempt_id) do nothing;
@@ -163,7 +161,7 @@ begin
       update public.attempts set state=p_outcome->>'state',safely_resolved=true,observed_error=p_outcome->>'error',submission_token=null,submission_expires_at=null where id=p_attempt_id;
     else raise exception 'ATTEMPT_NOT_SIGNABLE' using errcode='P0001';
     end if;
-  elsif p_lease_kind='resolution' and a.resolution_token=p_lease_token and a.resolution_expires_at > pg_catalog.clock_timestamp() and a.state in ('signing','declined') and not exists(select 1 from public.submissions where attempt_id=p_attempt_id) and p_outcome->>'state' in ('failed','expired') and (p_outcome->>'safelyResolved')::boolean then
+  elsif p_lease_token is not null and a.resolution_token=p_lease_token and a.resolution_expires_at > pg_catalog.clock_timestamp() and a.state in ('signing','declined') and not exists(select 1 from public.submissions where attempt_id=p_attempt_id) and p_outcome->>'state' in ('failed','expired') and (p_outcome->>'safelyResolved')::boolean then
     update public.attempts set state=p_outcome->>'state',safely_resolved=coalesce((p_outcome->>'safelyResolved')::boolean,false),observed_error=p_outcome->>'error',resolution_token=null,resolution_expires_at=null where id=p_attempt_id;
   else raise exception 'ATTEMPT_NOT_SIGNABLE' using errcode='P0001'; end if;
   return private.attempt_snapshot(p_attempt_id);
@@ -179,9 +177,9 @@ begin
   return private.attempt_snapshot(p_attempt_id);
 end $$;
 
-revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,text,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from public;
+revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from public;
 do $$ begin
-  if exists(select 1 from pg_roles where rolname='anon') then execute 'revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,text,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from anon'; end if;
-  if exists(select 1 from pg_roles where rolname='authenticated') then execute 'revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,text,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from authenticated'; end if;
-  if exists(select 1 from pg_roles where rolname='service_role') then execute 'grant execute on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,text,uuid,jsonb), public.get_attempt(uuid) to service_role'; end if;
+  if exists(select 1 from pg_roles where rolname='anon') then execute 'revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from anon'; end if;
+  if exists(select 1 from pg_roles where rolname='authenticated') then execute 'revoke all on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,uuid,jsonb), public.get_attempt(uuid), private.attempt_snapshot(uuid) from authenticated'; end if;
+  if exists(select 1 from pg_roles where rolname='service_role') then execute 'grant execute on function public.reserve_attempt(uuid,text,uuid), public.claim_attempt_preparation(uuid), public.freeze_attempt_message(uuid,uuid,jsonb), public.put_attempt_signature(uuid,text,text,text), public.decline_attempt(uuid,text), public.claim_attempt_submission(uuid,text,text), public.claim_attempt_resolution(uuid), public.record_attempt_outcome(uuid,uuid,jsonb), public.get_attempt(uuid) to service_role'; end if;
 end $$;

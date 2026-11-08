@@ -103,7 +103,9 @@ end $$;
   if (($claimJobs | Where-Object State -ne "Completed").Count -ne 0) { throw "Concurrent submission claims did not finish." }
   $claims = @($claimJobs | ForEach-Object { (Receive-Job $_ | Select-Object -Last 1) | ConvertFrom-Json })
   $claimJobs | Remove-Job
-  if ($claims.Count -ne 2 -or @($claims | Where-Object { $null -ne $_.lease }).Count -ne 1 -or @($claims | Where-Object { $_.submission.transactionReference -eq ("3" * 87) }).Count -ne 2) { throw "Submission claims did not yield one lease and the same canonical transaction." }
+  if ($claims.Count -ne 2 -or @($claims | Where-Object { $null -ne $_.token }).Count -ne 1) { throw "Submission claims did not yield exactly one lease." }
+  $canonicalReference = (docker exec $Container psql -U postgres -d $Database -Atc "select public.get_attempt('$attemptId')->'submission'->>'transactionReference'").Trim()
+  if ($LASTEXITCODE -ne 0 -or $canonicalReference -ne ("3" * 87)) { throw "The canonical transaction identity was not persisted." }
 
   docker restart $Container | Out-Null
   if ($LASTEXITCODE -ne 0) { throw "Could not restart the disposable database container." }

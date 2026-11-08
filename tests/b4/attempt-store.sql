@@ -38,15 +38,25 @@ do $$ declare result jsonb; begin
   perform public.put_attempt_signature((select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001'),'payer',repeat('0',64),repeat('B',86)||'==');
 end $$;
 
-do $$ declare claim jsonb; outcome jsonb; receipt jsonb; begin
+do $$ declare claim jsonb; outcome jsonb; receipt jsonb; target_id uuid := (select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001'); begin
   claim := public.claim_attempt_submission(
-    (select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001'),
+    target_id,
     'AQ==',repeat('2',87)
   );
-  if claim->'lease'->>'token' is null or claim->'submission'->>'transactionReference' <> repeat('2',87) then raise exception 'submission identity was not persisted with a lease'; end if;
+  if claim->>'token' is null or (public.get_attempt(target_id)->'submission'->>'transactionReference') <> repeat('2',87) then raise exception 'submission identity was not persisted with a lease'; end if;
   receipt := jsonb_build_object('transactionReference',repeat('2',87),'confirmationStatus','finalized','sellerWallet','seller','totalUnits','10','contributions',jsonb_build_array(jsonb_build_object('slot',0,'wallet','organizer','amountUnits','5'),jsonb_build_object('slot',1,'wallet','payer','amountUnits','5')),'observedAt',pg_catalog.clock_timestamp());
-  outcome := public.record_attempt_outcome((select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001'),'submission',(claim->'lease'->>'token')::uuid,jsonb_build_object('state','confirmed','receipt',receipt));
-  if outcome->>'state' <> 'confirmed' or (select paid_attempt_id from public.checkouts where id='20000000-0000-4000-8000-000000000001') is distinct from (select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001') or not exists(select 1 from public.receipts where attempt_id=(select id from public.attempts where checkout_id='20000000-0000-4000-8000-000000000001')) then raise exception 'confirmed receipt and paid checkout were not persisted atomically'; end if;
+  outcome := public.record_attempt_outcome(target_id,(claim->>'token')::uuid,jsonb_build_object('state','unresolved','safelyResolved',false,'error','temporary observation gap'));
+  if outcome->>'state' <> 'unresolved' then raise exception 'unresolved outcome was not persisted'; end if;
+  begin
+    perform public.record_attempt_outcome(target_id,null,jsonb_build_object('state','confirmed','receipt',receipt));
+    raise exception 'null fencing token accepted a confirmed outcome';
+  exception when raise_exception then
+    if sqlerrm='null fencing token accepted a confirmed outcome' then raise; end if;
+  end;
+  claim := public.claim_attempt_submission(target_id,'AQ==',repeat('2',87));
+  if claim->>'token' is null then raise exception 'submission lease was not renewed for reconciliation'; end if;
+  outcome := public.record_attempt_outcome(target_id,(claim->>'token')::uuid,jsonb_build_object('state','confirmed','receipt',receipt));
+  if outcome->>'state' <> 'confirmed' or (select paid_attempt_id from public.checkouts where id='20000000-0000-4000-8000-000000000001') is distinct from target_id or not exists(select 1 from public.receipts r where r.attempt_id=target_id) then raise exception 'confirmed receipt and paid checkout were not persisted atomically'; end if;
 end $$;
 
 do $$ begin
@@ -72,7 +82,7 @@ do $$ declare attempt jsonb; lease jsonb; payload jsonb; declined jsonb; resolut
   begin perform public.put_attempt_signature((attempt->>'id')::uuid,'payer-3',repeat('4',64),repeat('B',86)||'=='); raise exception 'signature accepted after decline'; exception when raise_exception then if sqlerrm='signature accepted after decline' then raise; end if; end;
   resolution := public.claim_attempt_resolution((attempt->>'id')::uuid);
   if resolution->>'token' is null then raise exception 'pre-submission resolution lease was not issued'; end if;
-  outcome := public.record_attempt_outcome((attempt->>'id')::uuid,'resolution',(resolution->>'token')::uuid,jsonb_build_object('state','expired','safelyResolved',true,'error','no submission exists'));
+  outcome := public.record_attempt_outcome((attempt->>'id')::uuid,(resolution->>'token')::uuid,jsonb_build_object('state','expired','safelyResolved',true,'error','no submission exists'));
   if outcome->>'state' <> 'expired' or outcome->>'safelyResolved' <> 'true' then raise exception 'safe resolution did not close the declined attempt'; end if;
   replacement := public.reserve_attempt('20000000-0000-4000-8000-000000000005','organizer-3',(attempt->>'id')::uuid);
   if replacement->>'id' = attempt->>'id' or replacement->>'state' <> 'preparing' then raise exception 'safe resolution did not permit a replacement attempt'; end if;

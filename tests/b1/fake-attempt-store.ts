@@ -48,6 +48,9 @@ export const fixtureAttemptStore: AttemptStore = {
   async claimSubmission() {
     return unsupported("claimSubmission");
   },
+  async failPreparation() {
+    return unsupported("failPreparation");
+  },
   async recordOutcome() {
     return unsupported("recordOutcome");
   },
