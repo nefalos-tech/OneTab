@@ -124,7 +124,6 @@ const NO_DYNAMIC_TEST_SUPPORT = {
   selector: `ImportExpression[source.value=/${TEST_SUPPORT_PATH.replaceAll("/", "\\/")}/]`,
   message: TEST_SUPPORT_MESSAGE,
 };
-/** The syntax bans every non-test browser file gets. */
 const BROWSER_SYNTAX = [...NO_SIGN_AND_SEND, ...NO_DYNAMIC_BROADCAST, NO_DYNAMIC_TEST_SUPPORT];
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],

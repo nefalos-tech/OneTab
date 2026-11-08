@@ -217,7 +217,6 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
   };
 }
 
-/** A registered Solana wallet, read once. */
 type Candidate = { readonly wallet: Wallet; readonly phantom: boolean; readonly failure: "wrong_network" | "cannot_sign" | null };
 
 /**
