@@ -1,6 +1,6 @@
 # Payment application integration
 
-P3 lets authenticated frozen payers contribute verified signatures to the current payment attempt. This implementation connects the promoted signature core to the B1 store interface, B2 session and origin guards, and B3 configuration and room reader. The production routes fail with `CONFIGURATION_UNAVAILABLE` until a durable store, lifecycle adapter, and RPC are supplied.
+P3 lets authenticated frozen payers contribute verified signatures to the current payment attempt. This implementation connects the promoted signature core to the B1 store interface, B2 session and origin guards, and B3 configuration and room reader. The production routes use the Postgres attempt store only when `SUPABASE_URL`, `SUPABASE_SECRET_KEY` and `SOLANA_RPC_URL` are present and valid. Otherwise they fail with `CONFIGURATION_UNAVAILABLE`. There is no memory store.
 
 ## Application interface
 
@@ -27,7 +27,7 @@ Signature collection requires the session wallet in frozen membership and the at
 
 All operations require the B2 wallet session. Mutations require B2's matching origin. Payload GET does not require an Origin header. Body fields cannot override the session wallet. Unknown body fields, malformed UUIDs, invalid hashes, and oversized encodings fail at the HTTP boundary.
 
-`readPaymentRoom` unwraps the real B3 result union. It preserves service failures and maps only `CHECKOUT_NOT_FOUND` to null. It copies readonly participant, signed-wallet, and receipt-contribution arrays into the B1 shape. `createPaymentRuntime` takes explicit store, lifecycle, and RPC ports, then supplies B3's real reader and public configuration. It constructs P4 progress with the same store, config, and RPC, using B3 for the checkout read. The production route composition currently supplies no persistence ports and therefore fails closed. There is no production memory store or process-global adapter registration.
+`readPaymentRoom` unwraps the real B3 result union. It preserves service failures and maps only `CHECKOUT_NOT_FOUND` to null. It copies readonly participant, signed-wallet, and receipt-contribution arrays into the B1 shape. `createPaymentRuntime` accepts explicit store, lifecycle, and RPC ports for tests. With no ports, it reads the durable environment and supplies B3's reader and public configuration. It constructs P4 progress with that store, config, and RPC. The production handler calls this only after the session and origin guards. There is no production memory store or process-global adapter registration.
 
 Public attempt responses project only B1 summary fields. They omit signature bytes, lease tokens, frozen transaction bytes, and signed submission bytes. Unknown observed error text becomes a fixed `RPC_UNAVAILABLE` message. `canRetry` requires a safely resolved failed or expired current attempt and an unpaid room. Reservation must enforce the same rule atomically.
 
@@ -59,7 +59,7 @@ Decline atomically rechecks frozen membership and current attempt. It closes col
 
 Preparation failure requires the current, unexpired preparation fencing token, preparing state, and no frozen payload. It can mark the attempt failed and safely resolved only before a usable authorization is exposed. Stale workers cannot close a newly frozen or recovered attempt. No B1 `recordOutcome` token-domain assumption substitutes for this operation.
 
-The Payments composition adapter translates B4's documented structured failures into `new PaymentFailure(code)` from `src/server/payments/errors.ts`, using the B1 `ErrorCode` vocabulary. Database helpers do not import Payments. Unknown adapter exceptions become `CONFIGURATION_UNAVAILABLE` at the HTTP boundary. Arbitrary exception text and unvalidated database messages are never public error codes.
+`boundAttemptStore` in `src/server/payments/store-boundary.ts` translates an exact B4 `Error` message that is a B1 `ErrorCode` into `new PaymentFailure(code)`. Database helpers do not import Payments. Any other adapter exception becomes `CONFIGURATION_UNAVAILABLE`. Arbitrary exception text is not a public error code.
 
 The B1 insertion result has no `inserted` flag. Concurrent identical final-signature uploads can both observe completeness after atomic idempotent insertion. P4 must fence submission and network progress through its store claim. This is also required for concurrent submit and refresh requests. P3 does not claim exactly one network send from a request count.
 

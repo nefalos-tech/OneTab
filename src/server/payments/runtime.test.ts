@@ -2,13 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRoomSnapshot } from "../../client/contracts";
 import { DEVNET_USDC } from "../../lib/payments/payment-core";
 
-const { getRoom, requireWalletSession, expectedOrigin } = vi.hoisted(() => ({
-  getRoom: vi.fn(), requireWalletSession: vi.fn(), expectedOrigin: vi.fn(),
+const { getRoom, requireWalletSession, expectedOrigin, storeError } = vi.hoisted(() => ({
+  getRoom: vi.fn(), requireWalletSession: vi.fn(), expectedOrigin: vi.fn(), storeError: { message: "RETRY_BLOCKED" },
 }));
 vi.mock("../rooms/service", async importOriginal => ({
   ...await importOriginal<typeof import("../rooms/service")>(), getRoom,
 }));
 vi.mock("../auth/service", () => ({ requireWalletSession, expectedOrigin }));
+vi.mock("../attempt-store/postgres", () => ({
+  postgresAttemptStore: { reserveAttempt: async () => { throw new Error(storeError.message); } },
+}));
 
 import { POST as prepare } from "../../app/api/checkouts/[id]/attempts/route";
 import { GET as signingPayload } from "../../app/api/attempts/[attemptId]/signing-payload/route";
@@ -22,8 +25,8 @@ import { serviceFixture } from "./test-fixtures";
 afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); });
 
 describe("payment runtime composition", () => {
-  it("requires explicit persistence and lifecycle ports with no in-memory production fallback", () => {
-    expect(() => createPaymentRuntime()).toThrow(expect.objectContaining({ code: "CONFIGURATION_UNAVAILABLE" }));
+  it("requires explicit persistence and lifecycle ports with no in-memory production fallback", async () => {
+    await expect(createPaymentRuntime()).rejects.toMatchObject({ code: "CONFIGURATION_UNAVAILABLE" });
   });
 
   it("uses real B3 configuration and converts readonly room arrays to independent B1 values", async () => {
@@ -36,7 +39,7 @@ describe("payment runtime composition", () => {
     vi.stubEnv("SOLANA_CLUSTER", "devnet");
     vi.stubEnv("USDC_MINT", DEVNET_USDC);
     vi.stubEnv("USDC_DECIMALS", "6");
-    const service = createPaymentRuntime(f.dependencies);
+    const service = await createPaymentRuntime(f.dependencies);
     const payload = await service.signingPayload({ attemptId: f.current().id, wallet: f.organizer.wallet });
     expect(payload.attemptId).toBe(f.current().id);
     expect(getRoom).toHaveBeenCalledWith(f.room.checkout.id);
@@ -47,7 +50,7 @@ describe("payment runtime composition", () => {
     copied?.participants.pop();
     expect(snapshot.participants).toHaveLength(2);
     vi.stubEnv("SOLANA_CLUSTER", "mainnet");
-    expect(() => createPaymentRuntime(f.dependencies)).toThrow(expect.objectContaining({ code: "CONFIGURATION_UNAVAILABLE" }));
+    await expect(createPaymentRuntime(f.dependencies)).rejects.toMatchObject({ code: "CONFIGURATION_UNAVAILABLE" });
   });
 
   it("distinguishes B3 missing checkout from service unavailability", async () => {
@@ -81,5 +84,27 @@ describe("payment runtime composition", () => {
     expect(requireWalletSession).toHaveBeenCalledTimes(6);
     expect(expectedOrigin).toHaveBeenCalledTimes(5);
     expect(getRoom).not.toHaveBeenCalled();
+  });
+
+  it("uses the Postgres store only when durable configuration is complete and maps its exact code", async () => {
+    const f = await serviceFixture();
+    getRoom.mockResolvedValue({ ok: true, value: await f.store.readRoom() });
+    vi.stubEnv("SUPABASE_URL", "https://db.example.test");
+    vi.stubEnv("SOLANA_RPC_URL", "https://api.devnet.solana.com");
+    vi.stubEnv("SOLANA_CLUSTER", "devnet");
+    vi.stubEnv("USDC_MINT", DEVNET_USDC);
+    vi.stubEnv("USDC_DECIMALS", "6");
+    await expect(createPaymentRuntime()).rejects.toMatchObject({ code: "CONFIGURATION_UNAVAILABLE" });
+    expect(getRoom).not.toHaveBeenCalled();
+    vi.stubEnv("SUPABASE_SECRET_KEY", "local-test-key");
+    storeError.message = "postgres password=secret";
+    const hidden = await createPaymentRuntime();
+    await expect(hidden.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: null }))
+      .rejects.toSatisfy((error: unknown) => error instanceof Error && error.message === "Payment configuration is unavailable."
+        && !error.message.includes("password") && !error.message.includes("secret"));
+    storeError.message = "RETRY_BLOCKED";
+    const service = await createPaymentRuntime();
+    await expect(service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: null }))
+      .rejects.toMatchObject({ code: "RETRY_BLOCKED", status: 409 });
   });
 });

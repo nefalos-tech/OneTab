@@ -1,0 +1,117 @@
+NODE /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+NPM 11.19.1 /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+POSTGREST PostgREST 16.5
+psql (PostgreSQL) 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)
+Ver Cluster Port Status Owner    Data directory              Log file
+16  main    5432 online postgres /var/lib/postgresql/16/main /var/log/postgresql/postgresql-16-main.log
+                                                                 version                                                                  
+------------------------------------------------------------------------------------------------------------------------------------------
+ PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+(1 row)
+
+DO
+ALTER ROLE
+GRANT ROLE
+ pg_terminate_backend 
+----------------------
+ t
+ t
+(2 rows)
+
+DROP DATABASE
+CREATE DATABASE
+GRANT
+           create_checkout            
+--------------------------------------
+ 20000000-0000-4000-8000-000000000001
+(1 row)
+
+ join_checkout 
+---------------
+             1
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+           create_checkout            
+--------------------------------------
+ 20000000-0000-4000-8000-000000000003
+(1 row)
+
+ join_checkout 
+---------------
+             1
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+           create_checkout            
+--------------------------------------
+ 20000000-0000-4000-8000-000000000005
+(1 row)
+
+ join_checkout 
+---------------
+             1
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+ set_checkout_readiness 
+------------------------
+ t
+(1 row)
+
+MIGRATIONS_AND_SQL_FIXTURE ok
+CONCURRENT_RESERVE db2b3fe4-5e65-4a57-afb6-10c18f48b6ea db2b3fe4-5e65-4a57-afb6-10c18f48b6ea
+DO
+CONCURRENT_SIGNATURES 2
+CONCURRENT_CLAIMS token_rows 1
+CANONICAL_REFERENCE t
+POSTGREST_LISTENING upstream 54928 proxy 54929
+
+ RUN  v5.1.0 /workspace
+
+progress-node /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  06:26:25
+   Duration  443ms (tests 38%, transform 33%, import 28%, worker 1%)
+
+PAYMENT_EXPIRED 1ddcc27e-216a-4cba-a7b9-1f177980ff93
+POSTGRES_PID_BEFORE 10013 2026-11-08 06:25:53.117875+00
+POSTGRES_PID_AFTER 10348 2026-11-08 06:26:26.261967+00
+ready
+RESTART_CONFIRMED t
+RESTART_CONCURRENT t
+
+ RUN  v5.1.0 /workspace
+
+progress-node /home/ubuntu/.nvm/versions/node/v24.22.1/bin/node v24.22.1
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  06:26:28
+   Duration  237ms (import 63%, tests 21%, transform 14%, worker 1%)
+
+B4 local Postgres concurrency, process restart, and Payments PostgREST progress passed.

@@ -6,7 +6,7 @@ import type { AttemptStore, StoredAttempt } from "../attempt-store/index";
 import { PaymentFailure } from "./errors";
 import type { PaymentRpc } from "./preflight";
 import { decideReconciliation, type BackendAssurance, type KnownSubmission } from "./reconciliation";
-import { observePayment, sendPayment } from "./rpc";
+import { observePayment, preSubmissionBlockhashExpired, sendPayment } from "./rpc";
 
 export type PaymentProgressDependencies = Readonly<{
   store: AttemptStore; readCheckout: (checkoutId: string) => Promise<Checkout | null>;
@@ -27,22 +27,26 @@ export function createPaymentProgress(deps: PaymentProgressDependencies): (attem
     if (attempt.id !== attemptId) throw new PaymentFailure("INVALID_PAYMENT");
     return attempt;
   };
-  return async attemptId => {
-    const attempt = await read(attemptId);
-    if (definitive(attempt) || attempt.state === "preparing") return attempt;
-    if (!attempt.submission && attempt.state !== "signing") return attempt;
-    if (!attempt.signingPayload) throw new PaymentFailure("INVALID_PAYMENT");
+  const validatedPayload = async (attempt: StoredAttempt) => {
     const checkout = await deps.readCheckout(attempt.checkoutId);
     if (!checkout) throw new PaymentFailure("CHECKOUT_NOT_FOUND");
+    if (!attempt.signingPayload) throw new PaymentFailure("INVALID_PAYMENT");
+    try {
+      if (checkout.id !== attempt.checkoutId) throw new Error();
+      return await validateFrozenSigningPayload({
+        payload: attempt.signingPayload, checkout, participants: attempt.participants, attemptId: attempt.id,
+        lastValidBlockHeight: attempt.signingPayload.lastValidBlockHeight, config: deps.config,
+      });
+    } catch { throw new PaymentFailure("INVALID_PAYMENT"); }
+  };
+  const reconcileSubmission = async (attemptId: string): Promise<StoredAttempt> => {
+    const attempt = await read(attemptId);
+    if (definitive(attempt)) return attempt;
+    const validated = await validatedPayload(attempt);
+    if (!attempt.submission && attempt.signatures.length < validated.plan.contributions.length) return attempt;
     let expected: KnownSubmission;
     let transactionBase64: string;
     try {
-      if (checkout.id !== attempt.checkoutId) throw new Error();
-      const validated = await validateFrozenSigningPayload({
-        payload: attempt.signingPayload, checkout, participants: attempt.participants, attemptId,
-        lastValidBlockHeight: attempt.signingPayload.lastValidBlockHeight, config: deps.config,
-      });
-      if (!attempt.submission && attempt.signatures.length < validated.plan.contributions.length) return attempt;
       const signed = await assembleSignedPayment(validated, attempt.signatures.map(signature => ({
         wallet: address(signature.signerWallet), signatureBytes: fromBase64(signature.signatureBase64),
       })));
@@ -53,7 +57,6 @@ export function createPaymentProgress(deps: PaymentProgressDependencies): (attem
         transactionBytes: signed.transactionBytes, reference: signed.reference,
         lastValidBlockHeight: validated.target.lastValidBlockHeight };
     } catch { throw new PaymentFailure("INVALID_PAYMENT"); }
-
     const lease = await store.claimSubmission({ attemptId, transactionBase64, transactionReference: expected.reference });
     if (!lease) return read(attemptId);
     const ownsLease = async () => {
@@ -92,5 +95,71 @@ export function createPaymentProgress(deps: PaymentProgressDependencies): (attem
       catch { return record({ state: "unresolved", error: "RPC_UNAVAILABLE", safelyResolved: false }); }
     }
     return record({ state: "unresolved", error: "RPC_UNAVAILABLE", safelyResolved: false });
+  };
+  const expiryFacts = async (attemptId: string, messageHash: string) => {
+    const current = await read(attemptId);
+    if (current.submission || definitive(current) || !current.signingPayload || current.signingPayload.messageHash !== messageHash
+      || (current.state !== "signing" && current.state !== "declined")) return { expired: false };
+    const validated = await validatedPayload(current);
+    const feePayerSignature = current.signatures.find(signature => signature.signerWallet === validated.plan.feePayer)?.signatureBase64 ?? null;
+    return { expired: await preSubmissionBlockhashExpired({
+      rpc, lastValidBlockHeight: validated.target.lastValidBlockHeight, feePayerSignature, backendAssurance,
+    }) };
+  };
+  const expireWithoutSubmission = async (attemptId: string): Promise<StoredAttempt> => {
+    const attempt = await read(attemptId);
+    if (attempt.submission) return reconcileSubmission(attemptId);
+    if (!attempt.signingPayload || (attempt.state !== "signing" && attempt.state !== "declined")) return attempt;
+    const messageHash = attempt.signingPayload.messageHash;
+    if (!(await expiryFacts(attemptId, messageHash)).expired) {
+      const current = await read(attemptId);
+      return current.submission ? reconcileSubmission(attemptId) : current;
+    }
+    const raced = await read(attemptId);
+    if (raced.submission) return reconcileSubmission(attemptId);
+    if (definitive(raced) || raced.signingPayload?.messageHash !== messageHash
+      || (raced.state !== "signing" && raced.state !== "declined")) return raced;
+    const lease = await store.claimResolution({ attemptId });
+    if (!lease) {
+      const missed = await read(attemptId);
+      return missed.submission ? reconcileSubmission(attemptId) : missed;
+    }
+    const ownsResolution = async () => {
+      const owned = await read(attemptId);
+      return !owned.submission && !definitive(owned) && owned.resolutionLease?.token === lease.token
+        && (owned.state === "signing" || owned.state === "declined")
+        && owned.signingPayload?.messageHash === messageHash
+        && Date.parse(owned.resolutionLease.expiresAt) > now().getTime();
+    };
+    if (!await ownsResolution()) {
+      const missed = await read(attemptId);
+      return missed.submission ? reconcileSubmission(attemptId) : missed;
+    }
+    const stillExpired = (await expiryFacts(attemptId, messageHash)).expired;
+    if (!stillExpired || !await ownsResolution()) {
+      const missed = await read(attemptId);
+      return missed.submission ? reconcileSubmission(attemptId) : missed;
+    }
+    try {
+      return await store.recordOutcome({ attemptId, leaseToken: lease.token,
+        outcome: { state: "expired", error: null, safelyResolved: true } });
+    } catch (error) {
+      const missed = await read(attemptId);
+      if (missed.submission) return reconcileSubmission(attemptId);
+      if (definitive(missed) || missed.resolutionLease?.token !== lease.token) return missed;
+      throw error;
+    }
+  };
+  return async attemptId => {
+    const attempt = await read(attemptId);
+    if (definitive(attempt) || attempt.state === "preparing") return attempt;
+    if (attempt.submission) return reconcileSubmission(attemptId);
+    if (attempt.state !== "signing" && attempt.state !== "declined") return attempt;
+    if (!attempt.signingPayload) return attempt;
+    const validated = await validatedPayload(attempt);
+    if (attempt.state === "signing" && attempt.signatures.length >= validated.plan.contributions.length) {
+      return reconcileSubmission(attemptId);
+    }
+    return expireWithoutSubmission(attemptId);
   };
 }
