@@ -203,8 +203,11 @@ export type Notice = {
   readonly about: AttemptId | null;
 };
 
-export function noticeOf(notice: Omit<Notice, "about">, about?: AttemptId): Notice {
-  return { ...notice, about: about ?? attemptOf(notice.raisedBy) };
+/** What an action says: the words, a follow-up, and the attempt they are about when it isn't the action's own. */
+export type Said = { readonly text: string; readonly followUp: Action | null; readonly about?: AttemptId };
+
+export function noticeOf(said: Said, by: { readonly wallet: Address | null; readonly raisedBy: Action }): Notice {
+  return { text: said.text, followUp: said.followUp, wallet: by.wallet, raisedBy: by.raisedBy, about: said.about ?? attemptOf(by.raisedBy) };
 }
 
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {

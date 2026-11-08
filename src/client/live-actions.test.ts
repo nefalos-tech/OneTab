@@ -241,17 +241,27 @@ describe("live actions", () => {
     expect(shown).toEqual([]);
   });
 
-  it("is live exactly for the actions with a busy label, and runs each of them", async () => {
+  it("is live exactly for the actions with a busy label, and each sends its requests, with Start and Try again reading the room after an answer they can't use", async () => {
     expectTypeOf<LiveKind>().toEqualTypeOf<
       "create_checkout" | "join" | "mark_ready" | "mark_not_ready" | "start_payment" | "approve" | "decline" | "retry"
     >();
     for (const kind of Object.keys(ACTIONS) as ActionKind[]) {
       expect(isLiveAction({ kind } as Action), kind).toBe(kind in EXAMPLES);
     }
+    const sends: { readonly [K in LiveKind]: number } = {
+      create_checkout: 1,
+      join: 1,
+      mark_ready: 1,
+      mark_not_ready: 1,
+      start_payment: 2,
+      approve: 1,
+      decline: 1,
+      retry: 2,
+    };
     for (const action of Object.values(EXAMPLES)) {
       const { fetch, calls } = server(() => json(200, { data: OPEN }));
       await liveActions(checkoutApi(fetch)).run(action, scope());
-      expect(calls.length, action.kind).toBeGreaterThan(0);
+      expect(calls, action.kind).toHaveLength(sends[action.kind]);
     }
   });
 });
@@ -497,7 +507,7 @@ describe("a refused start is explained on the failed attempt it left", () => {
     expect(outcome).toEqual(said("short_usdc"));
     expect(notedWhenShown).toEqual([]);
     if (outcome.kind !== "notice") throw new Error("Try again said nothing");
-    const stored = noticeOf({ text: outcome.text, followUp: outcome.followUp, wallet: SAMPLE_WALLETS.organizer, raisedBy: RETRY }, outcome.about);
+    const stored = noticeOf(outcome, { wallet: SAMPLE_WALLETS.organizer, raisedBy: RETRY });
     expect(noticeApplies(stored, { wallet: SAMPLE_WALLETS.organizer, actions: ORGANIZER_SEES.actions })).toBe(true);
     await poll();
     expect(notedWhenShown).toEqual([noted(replacement, "short_usdc")]);
@@ -645,6 +655,16 @@ describe("what Start and Try again say, from how the start was answered and the 
       ]);
       expect(shown, action.kind).toEqual(room === null ? [] : [[room, "write"]]);
     }
+  });
+
+  it("the notice built from a Try again that stopped again applies while Try again is for the new attempt, and not for the replaced one", async () => {
+    const { fetch } = server(started, () => json(200, { data: replacement }));
+    const outcome = await liveActions(checkoutApi(fetch)).run(RETRY, scope());
+    if (outcome.kind !== "notice") throw new Error("Try again said nothing");
+    const notice = noticeOf(outcome, { wallet: SAMPLE_WALLETS.organizer, raisedBy: RETRY });
+    const offeredFor = (room: RoomSnapshot) => deriveResultView(liveRoom(room, { wallet: SAMPLE_WALLETS.organizer, expiresAt: PAYER.expiresAt })).actions;
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.organizer, actions: offeredFor(replacement) })).toBe(true);
+    expect(noticeApplies(notice, { wallet: SAMPLE_WALLETS.organizer, actions: offeredFor(FAILED) })).toBe(false);
   });
 
   it("a Start before any poll answers on a page reached inside the app moves the organizer to the result its room shows", async () => {

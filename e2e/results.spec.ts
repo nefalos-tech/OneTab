@@ -30,8 +30,18 @@ function countReads(page: Page, id: string): { readonly count: () => number } {
   return { count: () => reads };
 }
 
-const goTo = (request: APIRequestContext, id: string, step: keyof typeof PAY_SCRIPT | keyof typeof FAIL_SCRIPT) =>
-  request.post(goToStep(id, step));
+/** A scripted room whose steps can only be named from its own script, and whose step change must answer OK. */
+function scripted<Script extends object>(id: string) {
+  return {
+    id,
+    goTo: async (request: APIRequestContext, step: keyof Script & string) => {
+      const answer = await request.post(goToStep(id, step));
+      expect(answer.ok(), `step ${step} of ${id}: ${await answer.text()}`).toBe(true);
+    },
+  };
+}
+const payingRoom = () => scripted<typeof PAY_SCRIPT>(scriptedRoom());
+const failedRoom = () => scripted<typeof FAIL_SCRIPT>(failingRoom());
 const readsFail = (request: APIRequestContext, id: string, on: boolean) => request.post(failBrowserReads(id, on));
 const wakeOnline = (page: Page) => page.evaluate(() => window.dispatchEvent(new Event("online")));
 
@@ -47,8 +57,8 @@ test("every failing-room step is a snapshot the contract allows", () => {
 
 test("a transaction reference alone is never a receipt, and the receipt stops the polling", async ({ page, request }) => {
   test.setTimeout(60_000);
-  const id = scriptedRoom();
-  await goTo(request, id, "unresolved");
+  const { id, goTo } = payingRoom();
+  await goTo(request, "unresolved");
   await page.goto(result(id));
   await expect(panel(page)).toHaveAttribute("data-situation", "unresolved");
   await expect(panel(page)).toContainText(REFERENCE);
@@ -58,7 +68,7 @@ test("a transaction reference alone is never a receipt, and the receipt stops th
   await capture(page, "unresolved-signed-out");
 
   const reads = countReads(page, id);
-  await goTo(request, id, "paid");
+  await goTo(request, "paid");
   await expect(panel(page)).toHaveAttribute("data-situation", "paid");
   await expect(page.getByRole("heading", { name: WORDS.receipt })).toBeVisible();
   await expect(page.getByRole("link", { name: ACTIONS.view_on_explorer.label })).toHaveAttribute(
@@ -78,8 +88,8 @@ for (const [name, step, screen] of [
   ["the result is unknown", "unresolved", "result"],
 ] as const) {
   test(`reloading while ${name} shows the same attempt`, async ({ page, request }) => {
-    const id = scriptedRoom();
-    await goTo(request, id, step);
+    const { id, goTo } = payingRoom();
+    await goTo(request, step);
     await page.goto(screen === "room" ? room(id) : result(id));
     const before = await attemptShown(page);
     expect(before).toMatch(/^a7/);
@@ -94,8 +104,8 @@ for (const [name, step, screen] of [
 
 test("losing the connection keeps the same transaction on screen and says so until it's back", async ({ page, request }) => {
   test.setTimeout(90_000);
-  const id = scriptedRoom();
-  await goTo(request, id, "unresolved");
+  const { id, goTo } = payingRoom();
+  await goTo(request, "unresolved");
   await page.goto(result(id));
   const attempt = await attemptShown(page);
   const line = await page.locator("[data-status-line]").textContent();
@@ -117,14 +127,14 @@ test("losing the connection keeps the same transaction on screen and says so unt
   await readsFail(request, id, false);
   await wakeOnline(page);
   await expect(page.locator("[data-connection]"), "online reads at once, well inside the back-off").toHaveCount(0, { timeout: 2_000 });
-  await goTo(request, id, "paid");
+  await goTo(request, "paid");
   await expect(panel(page)).toHaveAttribute("data-situation", "paid");
   await expect(page.getByRole("heading", { name: WORDS.receipt })).toBeVisible();
 });
 
 test("an unresolved payment offers nothing that starts another, on either screen", async ({ page, request }) => {
-  const id = scriptedRoom();
-  await goTo(request, id, "unresolved");
+  const { id, goTo } = payingRoom();
+  await goTo(request, "unresolved");
   for (const path of [room(id), result(id)]) {
     await page.goto(path);
     await expect(panel(page)).toHaveAttribute("data-situation", "unresolved");
@@ -136,15 +146,15 @@ test("an unresolved payment offers nothing that starts another, on either screen
 
 test("sending, unresolved and sending again never show Try again, a receipt or the server's message", async ({ page, request }) => {
   test.setTimeout(60_000);
-  const id = scriptedRoom();
-  await goTo(request, id, "sent");
+  const { id, goTo } = payingRoom();
+  await goTo(request, "sent");
   await page.goto(result(id));
   for (const [step, situation] of [
     ["sent", "submitting"],
     ["unresolved", "unresolved"],
     ["sent_again", "submitting"],
   ] as const) {
-    await goTo(request, id, step);
+    await goTo(request, step);
     await expect(panel(page)).toHaveAttribute("data-situation", situation);
     await expect(panel(page)).toHaveAttribute("data-attempt", /^a7/);
     await expect(page.getByRole("button", { name: ACTIONS.retry.label })).toHaveCount(0);
@@ -158,18 +168,18 @@ test("a payment that fails before sending moves viewers to an honest result, and
   request,
 }) => {
   test.setTimeout(60_000);
-  const id = failingRoom();
+  const { id, goTo } = failedRoom();
   const firstRead = readAnswered(page, id);
   await page.goto(room(id));
   await firstRead;
   await expect(panel(page)).toHaveAttribute("data-situation", "ready");
 
-  await goTo(request, id, "preparing");
+  await goTo(request, "preparing");
   await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
   await expect(page).toHaveURL(room(id));
   const failed = await attemptShown(page);
 
-  await goTo(request, id, "failed");
+  await goTo(request, "failed");
   await expect(page).toHaveURL(result(id));
   await expect(panel(page)).toHaveAttribute("data-situation", "failed");
   await expect(panel(page)).toHaveAttribute("data-attempt", failed!);
@@ -183,7 +193,7 @@ test("a payment that fails before sending moves viewers to an honest result, and
   await capture(page, "failed-not-sent-signed-out");
   await readAnswered(page, id);
 
-  await goTo(request, id, "replaced");
+  await goTo(request, "replaced");
   await expect(page).toHaveURL(room(id));
   await expect(panel(page)).toHaveAttribute("data-situation", "preparing");
   await expect(page.locator("[data-surface='brand']")).toContainText("0 of 3 approved");
@@ -194,8 +204,8 @@ test("a payment that fails before sending moves viewers to an honest result, and
 
 test("a viewer who reloads the result during an outage is moved to the room once the replacement can be read", async ({ page, request }) => {
   test.setTimeout(60_000);
-  const id = failingRoom();
-  await goTo(request, id, "failed");
+  const { id, goTo } = failedRoom();
+  await goTo(request, "failed");
   await page.goto(result(id));
   const failed = await attemptShown(page);
   await readsFail(request, id, true);
@@ -203,7 +213,7 @@ test("a viewer who reloads the result during an outage is moved to the room once
   expect(await attemptShown(page)).toBe(failed);
   await expect(page.locator("[data-connection]")).toHaveText(WORDS.room_unreachable, { timeout: 5_000 });
 
-  await goTo(request, id, "replaced");
+  await goTo(request, "replaced");
   await readsFail(request, id, false);
   await wakeOnline(page);
   await expect(page).toHaveURL(room(id));
@@ -213,8 +223,8 @@ test("a viewer who reloads the result during an outage is moved to the room once
 
 test("the checkout page says when OneTab can't be reached while approvals are open, and keeps the same attempt", async ({ page, request }) => {
   test.setTimeout(60_000);
-  const id = scriptedRoom();
-  await goTo(request, id, "one_approved");
+  const { id, goTo } = payingRoom();
+  await goTo(request, "one_approved");
   await page.goto(room(id));
   const attempt = await attemptShown(page);
   await readsFail(request, id, true);

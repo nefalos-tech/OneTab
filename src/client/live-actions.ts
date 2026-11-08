@@ -1,7 +1,7 @@
 import type { PaymentSigner, Result } from "@/lib/wallet/environment";
 import { checkoutApi, type CheckoutApi, type RequestProblem, type RoomReadProblem } from "./api";
 import { ACTIONS, FUNDING_CAUSES, REQUEST_PROBLEMS, WORDS, type ActionKind, type FundingCause, type ProblemWithWords, type Screen } from "./catalog";
-import { NOTHING_HEARD, checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms, type NotedCause } from "./checkout-view";
+import { NOTHING_HEARD, checkoutLinks, situationOf, type Action, type ActionOf, type ApprovalTerms, type NotedCause, type Said } from "./checkout-view";
 import type { AttemptId, AttemptSummary, CheckoutId, RoomSnapshot, Session } from "./contracts";
 import { checkPayment, type PaymentCheck } from "./payment-check";
 
@@ -19,7 +19,7 @@ export type Outcome =
   | { readonly kind: "noted"; readonly text: string }
   | { readonly kind: "open"; readonly href: string }
   | { readonly kind: "signed_out" }
-  | { readonly kind: "notice"; readonly text: string; readonly followUp: Action | null; readonly about?: AttemptId };
+  | ({ readonly kind: "notice" } & Said);
 
 export type Intent = "read" | "write";
 
