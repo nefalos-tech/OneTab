@@ -19,12 +19,14 @@ const SERVER = ["@/server", "@/server/*", "**/src/server", "**/src/server/*", ".
 const WALLET_INTERNALS = [
   "@/lib/wallet/live",
   "@/lib/wallet/sample",
+  "@/lib/wallet/standard",
   "@/lib/wallet/store",
   "**/lib/wallet/live",
   "**/lib/wallet/sample",
+  "**/lib/wallet/standard",
   "**/lib/wallet/store",
 ];
-const WALLET_STANDARD = ["@wallet-standard/*", "@solana/wallet-standard-*", "@solana/wallet-adapter-*"];
+const WALLET_STANDARD = ["@wallet-standard/*", "@solana/wallet-standard", "@solana/wallet-standard-*", "@solana/wallet-adapter-*"];
 
 const NO_SERVER = { group: SERVER, message: "Browser and page code never imports src/server." };
 const NO_WALLET_INTERNALS = {
@@ -35,6 +37,12 @@ const NO_WALLET_INTERNALS = {
 const NO_WALLET_STANDARD = {
   group: WALLET_STANDARD,
   message: "Wallet packages stay in src/lib/wallet/, behind the WalletBridge seam in live.ts.",
+};
+/** A static value import would ship zod, the token program and the validators with every page. */
+const NO_PAYMENTS_UPFRONT = {
+  group: ["@/lib/payments/*", "**/lib/payments/*"],
+  allowTypeImports: true,
+  message: "Browser code reaches Payments only through payment-check.ts, which loads it with import() when someone approves.",
 };
 const NO_API_CLIENT = {
   group: ["@/client/api", "**/client/api"],
@@ -87,6 +95,11 @@ const NO_BROADCAST = [
   { name: "@solana/rpc", importNames: ["createSolanaRpc", "createSolanaRpcSubscriptions"], message: BROADCAST },
   { name: "@solana/rpc-subscriptions", importNames: ["createSolanaRpcSubscriptions"], message: BROADCAST },
 ];
+/** The import ban can't see a feature named by its string key, so browser code may not spell the key at all. */
+const NO_SIGN_AND_SEND = ["Literal[value=/^solana:signAndSend/]", "TemplateElement[value.raw=/solana:signAndSend/]"].map((selector) => ({
+  selector,
+  message: BROADCAST,
+}));
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],
   message: "Components render views from @/client/checkout-view. Loading, wire types and samples stay in src/client.",
@@ -101,12 +114,21 @@ const CODE = "{ts,tsx,js,jsx,mjs,cjs}";
 /**
  * A file matched by several blocks gets only the last block's patterns, so each block lists its full set.
  * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment.
+ * Tests and test fixtures in browser folders keep the browser bans except NO_PAYMENTS_UPFRONT and NO_SIGN_AND_SEND,
+ * because they build real payments and fake wallets that must refuse to send.
  */
 const restrictServer = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
 });
-const restrict = (...patterns) => ({
+const restrictTest = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": ["error", { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
+  ...restrictSyntax(),
+});
+const restrict = (...patterns) => ({
+  "@typescript-eslint/no-restricted-imports": [
+    "error",
+    { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_PAYMENTS_UPFRONT, ...patterns] },
+  ],
 });
 
 export default defineConfig([
@@ -123,13 +145,13 @@ export default defineConfig([
   },
   {
     files: [`src/client/**/*.${CODE}`],
-    rules: restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD),
+    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD), ...restrictSyntax(...NO_SIGN_AND_SEND) },
   },
   {
     files: [`src/components/**/*.${CODE}`],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SIGN_AND_SEND),
     },
   },
   {
@@ -137,7 +159,7 @@ export default defineConfig([
     ignores: ["src/app/api/**"],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SIGN_AND_SEND),
     },
   },
   {
@@ -152,15 +174,23 @@ export default defineConfig([
   },
   {
     files: [`src/lib/wallet/**/*.${CODE}`],
-    rules: restrict(NO_API_CLIENT),
+    rules: { ...restrict(NO_API_CLIENT), ...restrictSyntax(...NO_SIGN_AND_SEND) },
   },
   {
     files: ["src/lib/wallet/live.ts"],
     rules: restrict(),
   },
   {
+    files: [`src/client/**/*.test.${CODE}`, "src/client/keyed-payment-fixture.ts"],
+    rules: restrictTest(NO_WALLET_INTERNALS, NO_WALLET_STANDARD),
+  },
+  {
+    files: [`src/lib/wallet/**/*.test.${CODE}`],
+    rules: restrictTest(NO_API_CLIENT),
+  },
+  {
     files: ["src/client/checkout-view.ts"],
-    rules: { "no-restricted-syntax": "off" },
+    rules: { "no-restricted-syntax": ["error", ...NO_SIGN_AND_SEND] },
   },
   {
     files: ["src/client/catalog.ts"],
