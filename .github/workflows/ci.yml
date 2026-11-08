@@ -20,6 +20,15 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - name: Install PostgreSQL 17 and PostgREST
+        run: bash tests/ci/install-sql-harness.sh
+      - name: Run the local PostgreSQL harness
+        env:
+          TMPDIR: ${{ runner.temp }}
+        run: |
+          bash tests/b5/run-pg17.sh
+          bash tests/b4/identical-signature-after-close.sh
+          ONETAB_OMIT_MIGRATION=20261108125500_identical_signature_before_close.sql bash tests/b4/identical-signature-after-close.sh
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - name: Select the payment proof runtime

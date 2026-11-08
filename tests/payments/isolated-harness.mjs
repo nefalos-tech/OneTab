@@ -2,7 +2,7 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer, request as httpRequest } from "node:http";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -162,7 +162,8 @@ async function main() {
   if (!share || !existsSync(join(share, "postgres.bki"))) failTools(`No postgres.bki for ${directory}. Set PG_SHAREDIR to the official share directory.`);
   const sha = captured("git", ["-C", root, "rev-parse", "HEAD"]);
   const dirty = captured("git", ["-C", root, "status", "--porcelain"]);
-  console.log(JSON.stringify({ phase: "identity", sha, dirty: dirty.length > 0, execPath: process.execPath, node: process.version, ...versions, pgBinDir: directory, pgShareDir: share, postgrestBin }));
+  const migrations = reviewedMigrations();
+  console.log(JSON.stringify({ phase: "identity", sha, dirty: dirty.length > 0, execPath: process.execPath, node: process.version, ...versions, pgBinDir: directory, pgShareDir: share, postgrestBin, migrations }));
   const password = randomBytes(18).toString("hex");
   const secret = randomBytes(32).toString("hex");
   const key = jwt(secret);
@@ -208,7 +209,7 @@ async function main() {
     const created = spawnSync(tools[3], ["-h", sock, "-p", pgPort, "-U", "onetab", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", `create database ${db}`], { encoding: "utf8" });
     if (created.status !== 0) throw new Error(created.stderr || created.stdout || "create database failed");
     psql(db, `create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls; create role authenticator noinherit login password '${password}'; grant anon, authenticated, service_role to authenticator;`);
-    for (const file of ["20261107000000_b1_schema.sql", "20261107010000_b2_auth.sql", "20261107020000_b3_rooms.sql", "20261108000000_b4_attempt_store.sql", "20261108092756_harden_exposed_function_grants.sql"]) {
+    for (const file of migrations) {
       const applied = spawnSync(tools[3], ["-h", sock, "-p", pgPort, "-U", "onetab", "-d", db, "-v", "ON_ERROR_STOP=1", "-1", "-f", join(root, "supabase/migrations", file)], { encoding: "utf8" });
       if (applied.status !== 0) throw new Error(`${file}\n${applied.stderr}`);
     }
@@ -619,6 +620,17 @@ async function main() {
   }
   cleanup();
   process.exit(0);
+}
+
+function reviewedMigrations() {
+  const names = readdirSync(join(root, "supabase/migrations")).filter(name => name.endsWith(".sql")).sort();
+  const harden = "20261108092756_harden_exposed_function_grants.sql";
+  const closedSignature = "20261108125500_identical_signature_before_close.sql";
+  const hardenAt = names.indexOf(harden);
+  if (hardenAt < 0 || hardenAt !== names.lastIndexOf(harden) || hardenAt > names.indexOf(closedSignature)) {
+    throw new Error("reviewed migrations must apply non-repeatable hardening once, before later files");
+  }
+  return names;
 }
 
 function roomFor(id, organizer, payer, seller, mint) {

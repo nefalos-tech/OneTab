@@ -48,7 +48,7 @@ F1 created the scaffold with create-next-app 16.4.5: Next.js 16.4.5, React 19.3.
 | `npm run bundle:check` | After `next build`, print each route's First Load JS and fail when a chunk a route loads before a click holds Payments' code, or when any built file holds test support |
 | `npm run design:check` | Fail when the design system document and the code disagree |
 | `npm run design:write` | Regenerate the generated tables in the design system document |
-| `npm run check` | Run lint, typecheck, design:check and the unit tests, the same fast checks as CI |
+| `npm run check` | Run lint, typecheck, design:check and the unit tests. CI also runs the local PostgreSQL 17 scripts, the browser suite, and the payment-proof spike |
 
 `npm run test:e2e` uses Chromium through Playwright. On a new machine, install it once with `npx playwright install chromium`. The suite saves a screenshot of every sample state in `test-results/screens/`.
 
