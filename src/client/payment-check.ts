@@ -6,22 +6,42 @@ import type { ApprovalTerms } from "./checkout-view";
 import type { Address, AttemptId, BlockHeight, Checkout, MessageHash, Participant, RoomSnapshot, SigningPayload } from "./contracts";
 import { splitEqually } from "./units";
 
-const CHECKED: unique symbol = Symbol("CheckedPayment");
+declare const checked: unique symbol;
 
+/** A payment paymentCheck validated. Frozen, and only paymentCheck makes one. */
 export type CheckedPayment = {
-  /** Payments' result for exactly these bytes. Only this module can read it, and only paymentCheck makes one. */
-  readonly [CHECKED]: ValidatedSigningPayload;
+  readonly [checked]: true;
   readonly attemptId: AttemptId;
   readonly account: Address;
-  /** Payments' own copy of the transaction it validated. The wallet is asked to approve exactly these bytes. */
-  readonly transaction: Uint8Array;
   readonly messageHash: MessageHash;
+};
+
+/** What the wallet is asked to approve for one checked payment, and the check of its answer. */
+export type WalletRequest = {
+  /** A fresh copy of the transaction Payments validated. */
+  readonly transaction: Uint8Array;
   /**
    * Runs the server's check of a wallet's returned transaction: the same message, no other payer's signature,
    * and a valid signature by this account. Answers that signature, or null. Never throws.
    */
   readonly signatureIn: (returned: Uint8Array) => Promise<SignatureBase64 | null>;
 };
+
+/**
+ * Payments' result for each payment paymentCheck made, keyed by that object. A spread copy or a forged payment
+ * has no entry, so no field anyone can replace decides what the wallet signs.
+ */
+const sealed = new WeakMap<CheckedPayment, ValidatedSigningPayload>();
+
+/** The request for a payment paymentCheck made, built from its sealed result. Null for any other object. */
+export function walletRequest(payment: CheckedPayment): WalletRequest | null {
+  const validated = sealed.get(payment);
+  if (validated === undefined) return null;
+  return {
+    transaction: Uint8Array.from(validated.message.transactionBytes),
+    signatureIn: (returned) => signatureIn(validated, payment.account, returned),
+  };
+}
 
 /**
  * - `mismatch`: the payload isn't the payment on screen, or Payments refused its bytes.
@@ -71,19 +91,9 @@ export function paymentCheck(messageCheck: MessageCheck, returnCheck: ReturnChec
       if (typeof signing === "string") return { ok: false, failure: signing };
       const bytes = await caught(() => messageCheck(payload, signing, terms.payer), MISMATCH);
       if (!bytes.ok) return bytes;
-      const validated = bytes.value;
-      const account = terms.payer;
-      return {
-        ok: true,
-        value: {
-          [CHECKED]: validated,
-          attemptId: payload.attemptId,
-          account,
-          transaction: Uint8Array.from(validated.message.transactionBytes),
-          messageHash: payload.messageHash,
-          signatureIn: (returned) => signatureIn(validated, account, returned),
-        },
-      };
+      const payment = Object.freeze({ attemptId: payload.attemptId, account: terms.payer, messageHash: payload.messageHash }) as CheckedPayment;
+      sealed.set(payment, bytes.value);
+      return { ok: true, value: payment };
     },
     returned: async (payment, approval) => {
       const valid = approval.messageHash === payment.messageHash && (await caught(() => returnCheck(payment, approval.signature), "mismatch")) === "match";
@@ -119,9 +129,11 @@ const PAYMENTS_MESSAGE_CHECK: MessageCheck = async (payload, room, payer) => {
 
 /** The server runs the same call on upload, so a signature this accepts is one the server accepts. */
 const PAYMENTS_RETURN_CHECK: ReturnCheck = async (payment, signature) => {
+  const validated = sealed.get(payment);
+  if (validated === undefined) return "mismatch";
   const payments = await loadPayments();
   if (payments === null) return "unsupported";
-  await payments.verifyPayerSignature(payment[CHECKED], { wallet: address(payment.account), signatureBytes: payments.fromBase64(signature) });
+  await payments.verifyPayerSignature(validated, { wallet: address(payment.account), signatureBytes: payments.fromBase64(signature) });
   return "match";
 };
 

@@ -16,7 +16,7 @@ import {
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
 import { keyedPayment, signBytes, signedTransaction, type KeyedPayment } from "./keyed-payment-fixture";
-import { checkPayment, paymentCheck, type CheckedPayment, type MessageCheck, type ReturnCheck } from "./payment-check";
+import { checkPayment, paymentCheck, walletRequest, type CheckedPayment, type MessageCheck, type ReturnCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
 
 const KEYED = await keyedPayment();
@@ -56,14 +56,26 @@ afterEach(() => {
 });
 
 describe("the payment check before any wallet prompt", () => {
-  it("hands the wallet Payments' own copy of the bytes it validated, for the viewer", async () => {
+  it("makes a frozen payment for the viewer, whose wallet request is a fresh copy of the bytes Payments validated", async () => {
     const result = await check(payload, terms);
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.value).toMatchObject({ attemptId: room.attempt!.id, account: SAMPLE_WALLETS.bea, messageHash: payload.messageHash });
-    expect(result.value.transaction).toEqual(Uint8Array.from(VALIDATED.message.transactionBytes));
-    expect(result.value.transaction).not.toBe(VALIDATED.message.transactionBytes);
-    expect(Object.keys(result.value).sort()).toEqual(["account", "attemptId", "messageHash", "signatureIn", "transaction"]);
+    if (!result.ok) throw new Error(result.failure);
+    const payment = result.value;
+    expect(payment).toEqual({ attemptId: room.attempt!.id, account: SAMPLE_WALLETS.bea, messageHash: payload.messageHash });
+    expect(Object.isFrozen(payment)).toBe(true);
+    const validated = Uint8Array.from(VALIDATED.message.transactionBytes);
+    walletRequest(payment)!.transaction.fill(0);
+    expect(walletRequest(payment)!.transaction).toEqual(validated);
+    expect(VALIDATED.message.transactionBytes).toEqual(validated);
+  });
+
+  it("gives a copy of the payment, or one with other bytes, no wallet request, and the payment itself can't change", async () => {
+    const result = await check(payload, terms);
+    if (!result.ok) throw new Error(result.failure);
+    const payment = result.value;
+    expect(walletRequest({ ...payment })).toBeNull();
+    expect(walletRequest({ ...payment, transaction: new Uint8Array(3), signatureIn: async () => null } as unknown as CheckedPayment)).toBeNull();
+    expect(Reflect.set(payment, "account", SAMPLE_WALLETS.cam)).toBe(false);
+    expect(payment.account).toBe(SAMPLE_WALLETS.bea);
   });
 
   it.each<[string, SigningPayload]>([
@@ -160,7 +172,7 @@ async function checked(k: KeyedPayment = KEYED, slot = 1): Promise<CheckedPaymen
 describe("Payments' check of a real payment", () => {
   it("passes a real payload and room, and the wallet gets exactly the payload's bytes", async () => {
     const payment = await checked();
-    expect(payment.transaction).toEqual(KEYED.payload.transaction);
+    expect(walletRequest(payment)!.transaction).toEqual(KEYED.payload.transaction);
     expect(payment).toMatchObject({ account: KEYED.payers[1]!.address, attemptId: KEYED.payload.attemptId, messageHash: KEYED.payload.messageHash });
   });
 
@@ -213,31 +225,28 @@ describe("Payments' check of a real payment", () => {
 
 describe("the check of the wallet's returned transaction", () => {
   it("answers the payer's signature from a real return, and the server's own check accepts it", async () => {
-    const payment = await checked();
-    const signature = await payment.signatureIn(await signedTransaction(KEYED.payers[1]!, payment.transaction));
+    const request = walletRequest(await checked())!;
+    const signature = await request.signatureIn(await signedTransaction(KEYED.payers[1]!, request.transaction));
     expect(signature).toMatch(/^[A-Za-z0-9+/]{86}==$/);
     const bytes = Uint8Array.from(atob(signature!), (c) => c.charCodeAt(0));
     await expect(verifyPayerSignature(VALIDATED, { wallet: address(KEYED.payers[1]!.address), signatureBytes: bytes })).resolves.toBeTruthy();
   });
 
-  it.each<[string, (payment: CheckedPayment) => Promise<Uint8Array>]>([
-    ["only another payer's signature", (payment) => signedTransaction(KEYED.payers[2]!, payment.transaction)],
+  it.each<[string, (transaction: Uint8Array) => Promise<Uint8Array>]>([
+    ["only another payer's signature", (transaction) => signedTransaction(KEYED.payers[2]!, transaction)],
     [
       "another payer's signature beside the payer's",
-      async (payment) => signedTransaction(KEYED.payers[2]!, await signedTransaction(KEYED.payers[1]!, payment.transaction)),
+      async (transaction) => signedTransaction(KEYED.payers[2]!, await signedTransaction(KEYED.payers[1]!, transaction)),
     ],
     [
       "a changed message",
-      async (payment) => {
-        const changed = Uint8Array.from(payment.transaction, (b, i) => (i === payment.transaction.length - 1 ? b ^ 1 : b));
-        return signedTransaction(KEYED.payers[1]!, changed);
-      },
+      async (transaction) => signedTransaction(KEYED.payers[1]!, Uint8Array.from(transaction, (b, i) => (i === transaction.length - 1 ? b ^ 1 : b))),
     ],
-    ["no signature at all", async (payment) => payment.transaction],
+    ["no signature at all", async (transaction) => transaction],
     ["bytes that aren't a transaction", async () => new Uint8Array([1, 2, 3])],
   ])("answers null for %s", async (_, returned) => {
-    const payment = await checked();
-    expect(await payment.signatureIn(await returned(payment))).toBeNull();
+    const request = walletRequest(await checked())!;
+    expect(await request.signatureIn(await returned(request.transaction))).toBeNull();
   });
 });
 
@@ -257,7 +266,7 @@ describe("the check of the approval before the upload", () => {
     ],
     [
       "a signature over other bytes",
-      async (payment) => ({ messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, payment.transaction)) }),
+      async (payment) => ({ messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, walletRequest(payment)!.transaction)) }),
     ],
     [
       "noncanonical base64",
@@ -273,6 +282,12 @@ describe("the check of the approval before the upload", () => {
   ])("refuses %s", async (_, approval) => {
     const payment = await checked();
     expect(await checkPayment.returned(payment, await approval(payment))).toEqual({ ok: false, failure: "unchecked" });
+  });
+
+  it("refuses the payer's real approval for a copy of the payment", async () => {
+    const payment = await checked();
+    const approval = { messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, Uint8Array.from(VALIDATED.message.messageBytes))) };
+    expect(await checkPayment.returned({ ...payment }, approval)).toEqual({ ok: false, failure: "unchecked" });
   });
 
   it.each<[string, ReturnCheck]>([

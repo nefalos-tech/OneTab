@@ -18,7 +18,7 @@ import {
 } from "@solana/wallet-standard-features";
 import { getAddressDecoder } from "@solana/kit";
 import type { Address } from "@/client/contracts";
-import type { CheckedPayment } from "@/client/payment-check";
+import { walletRequest, type CheckedPayment } from "@/client/payment-check";
 import {
   capabilityFailure,
   signatureBase64,
@@ -175,8 +175,9 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
 
   async function signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>> {
     const started = version;
+    const request = walletRequest(payment);
     const held = heldFor(payment.account);
-    if (held === null) return FAILED;
+    if (request === null || held === null) return FAILED;
     const signer = feature(held.wallet, SolanaSignTransaction);
     if (signer === null || !signer.supportedTransactionVersions.includes("legacy") || !held.account.features.includes(SolanaSignTransaction)) {
       return CANNOT_SIGN;
@@ -186,7 +187,7 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
     try {
       outputs = await signer.signTransaction({
         account: held.account,
-        transaction: Uint8Array.from(payment.transaction),
+        transaction: request.transaction,
         chain: DEVNET,
         options: { preflightCommitment: "confirmed" },
       });
@@ -194,7 +195,7 @@ export function standardBridge(registry: WalletRegistry): WalletBridge {
       return version === started ? failureOf(error) : FAILED;
     }
     if (outputs.length !== 1) return FAILED;
-    const signature = await payment.signatureIn(outputs[0]!.signedTransaction);
+    const signature = await request.signatureIn(outputs[0]!.signedTransaction);
     return signature !== null && version === started ? { ok: true, value: signature } : FAILED;
   }
 

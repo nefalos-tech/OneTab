@@ -65,10 +65,10 @@ export interface WalletBridge {
     readonly message: AuthMessage;
   }): Promise<BridgeResult<SignatureBase64>>;
   /**
-   * Asks the wallet to approve `payment.transaction`, exactly as given, without sending it. Refuses
-   * without prompting when `payment.account` isn't the selected account. Hands the returned transaction
-   * only to `payment.signatureIn`, the payment check's copy of the server's return check, and returns the
-   * signature it answers.
+   * Asks the wallet to approve the transaction the payment check validated for `payment`, without
+   * sending it. Refuses without prompting when `payment` isn't the object the check made, a copy
+   * included, or `payment.account` isn't the selected account. Hands the returned transaction only to
+   * the check's copy of the server's return check, and returns the signature it answers.
    */
   signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>>;
   onAccountChange(listener: (account: Address | null) => void): () => void;

@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { termsOf } from "@/client/checkout-view";
 import type { Address, Session } from "@/client/contracts";
 import { keyedPayment, signedTransaction, type KeyedPayer, type KeyedPayment } from "@/client/keyed-payment-fixture";
-import { checkPayment, type CheckedPayment } from "@/client/payment-check";
+import { checkPayment, walletRequest, type CheckedPayment } from "@/client/payment-check";
 import { verifyPayerSignature } from "@/lib/payments/signature-core";
 import { authMessage, type AuthMessage, type ChallengeId, type SignInService, type WalletBridge } from "./environment";
 import { initialState } from "./machine";
@@ -667,13 +667,10 @@ describe("signPayment", () => {
     const [prompt, ...more] = phantom.prompts("signTransaction");
     expect(more).toEqual([]);
     const input = prompt!.input as SolanaSignTransactionInput;
-    expect(input).toEqual({
-      account: phantom.wallet.accounts[0],
-      transaction: payment.transaction,
-      chain: "solana:devnet",
-      options: { preflightCommitment: "confirmed" },
-    });
-    expect(input.transaction, "a copy, so the wallet can't change the checked bytes").not.toBe(payment.transaction);
+    const validated = Uint8Array.from(k.validated.message.transactionBytes);
+    expect(input).toEqual({ account: phantom.wallet.accounts[0], transaction: validated, chain: "solana:devnet", options: { preflightCommitment: "confirmed" } });
+    input.transaction.fill(0);
+    expect(walletRequest(payment)!.transaction, "a copy, so the wallet can't change the checked bytes").toEqual(validated);
     expect(answer.value).toMatch(/^[A-Za-z0-9+/]{86}==$/);
     const signatureBytes = Uint8Array.from(atob(answer.value), (c) => c.charCodeAt(0));
     await expect(verifyPayerSignature(k.validated, { wallet: address(k.payers[1]!.address), signatureBytes })).resolves.toBeTruthy();
@@ -710,10 +707,14 @@ describe("signPayment", () => {
     expect(await bridge.signPayment(payment)).toEqual({ ok: false, failure });
   });
 
-  it("answers failed when the payment's own check of the return answers null", async () => {
+  it("opens no prompt for a copy of a checked payment, so a copy can't change what the wallet is asked to sign", async () => {
     const { bridge, phantom, payment } = await paying();
-    expect(await bridge.signPayment({ ...payment, signatureIn: async () => null })).toEqual({ ok: false, failure: "failed" });
-    expect(phantom.prompts("signTransaction")).toHaveLength(1);
+    const other = await keyedPayment();
+    const tampered = { ...payment, transaction: other.payload.transaction, signatureIn: async () => `${"A".repeat(86)}==` } as unknown as CheckedPayment;
+    expect(await bridge.signPayment(tampered)).toEqual({ ok: false, failure: "failed" });
+    expect(await bridge.signPayment({ ...payment })).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signTransaction")).toEqual([]);
+    expect((await bridge.signPayment(payment)).ok, "the payment the check made still opens a prompt").toBe(true);
   });
 
   it("refuses a payment for an account that isn't selected, with no prompt", async () => {

@@ -37,7 +37,7 @@ import {
   type TrackerCallbacks,
 } from "./live-actions";
 import { keyedPayment } from "./keyed-payment-fixture";
-import { paymentCheck, type CheckedPayment, type MessageCheck } from "./payment-check";
+import { paymentCheck, walletRequest, type CheckedPayment, type MessageCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
 
 type Call = { readonly method: string; readonly path: string; readonly body: unknown };
@@ -767,7 +767,7 @@ describe("approve", () => {
     expect(await approver(fetch).run(APPROVE, scope(track, signer))).toEqual({ kind: "done" });
     expect(prompts).toHaveLength(1);
     expect(prompts[0]).toMatchObject({ account: PAYER.wallet, attemptId: ATTEMPT, messageHash: WIRE.messageHash });
-    expect(prompts[0]!.transaction).toEqual(Uint8Array.from(KEYED.validated.message.transactionBytes));
+    expect(walletRequest(prompts[0]!)!.transaction).toEqual(Uint8Array.from(KEYED.validated.message.transactionBytes));
     expect(calls.map((c) => [c.method, c.path, c.body])).toEqual([
       ["GET", `/api/attempts/${ATTEMPT}/signing-payload`, null],
       ["GET", `/api/checkouts/${ROOM}`, null],
@@ -878,7 +878,7 @@ describe("approve", () => {
     expect(await live.run(approve, scope(untracked, signer))).toEqual(said("mismatch"));
     expect(prompts).toHaveLength(0);
     expect(await live.run(approve, scope(untracked, signer))).toEqual(said("rejected", { kind: "decline", checkoutId: terms.checkoutId, attemptId: terms.attemptId }));
-    expect(prompts.map((p) => p.transaction)).toEqual([KEYED.payload.transaction]);
+    expect(prompts.map((p) => walletRequest(p)?.transaction)).toEqual([KEYED.payload.transaction]);
   });
 
   it("an approval that P3's check can't confirm uploads nothing, says so with no Decline, and isn't reused", async () => {
