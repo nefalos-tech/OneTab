@@ -573,6 +573,30 @@ async function main() {
     const rejected = await call(organizerCookie, `/api/attempts/${replacement.json.data.id}/signatures`, { messageHash: "ab".repeat(32), signatureBase64: `${"A".repeat(86)}==` });
     if (rejected.status !== 400 || rejected.json.error?.code !== "MESSAGE_MISMATCH") throw new Error(`old signature ${JSON.stringify(rejected)}`);
     if (psql(db, `select count(*) from public.signatures where attempt_id='${replacement.json.data.id}'`) !== "0") throw new Error("rejected signature was stored");
+    rpcPhase = "incomplete-submit";
+    const incompleteCheckout = openReadyCheckout("Incomplete submit");
+    const incomplete = await attemptSignatures(incompleteCheckout);
+    const oneSignature = await call(organizerCookie, `/api/attempts/${incomplete.attemptId}/signatures`, { messageHash: incomplete.messageHash, signatureBase64: incomplete.organizerSignature });
+    if (oneSignature.status !== 200 || oneSignature.json.data?.state !== "signing" || oneSignature.json.data?.signedWallets?.length !== 1) throw new Error(`one signature ${oneSignature.status} ${oneSignature.json.data?.state ?? ""}`);
+    const sendsBeforeIncomplete = sent.length;
+    const blockhashBeforeIncomplete = calls.filter(method => method === "getLatestBlockhash").length;
+    const earlySubmit = await Promise.all([
+      call(organizerCookie, `/api/attempts/${incomplete.attemptId}/submit`, {}),
+      call(payerCookie, `/api/attempts/${incomplete.attemptId}/submit`, {}),
+    ]);
+    if (earlySubmit.some(item => item.status !== 200 || item.json.data?.state !== "signing" || item.json.data?.id !== incomplete.attemptId)) {
+      throw new Error(`incomplete submit ${earlySubmit.map(item => `${item.status}:${item.json.data?.state ?? ""}`).join(" ")}`);
+    }
+    if (psql(db, `select count(*) from public.submissions where attempt_id='${incomplete.attemptId}'`) !== "0") throw new Error("incomplete submit stored a submission");
+    if (psql(db, `select count(*) from public.signatures where attempt_id='${incomplete.attemptId}'`) !== "1") throw new Error("incomplete submit changed the signer row");
+    if (sent.length !== sendsBeforeIncomplete || calls.filter(method => method === "getLatestBlockhash").length !== blockhashBeforeIncomplete) {
+      throw new Error("incomplete submit broadcast or rebuilt the blockhash");
+    }
+    console.log(JSON.stringify({
+      phase: "boundary", name: "incomplete-submit", pid: payments.pid, state: "signing",
+      submissions: 0, signatures: 1, sendCount: sent.length - sendsBeforeIncomplete, newBlockhashReads: 0,
+      attemptId: incomplete.attemptId,
+    }));
     console.log(JSON.stringify({
       phase: "result", kind: "local-integration", chainProof: false, independentQa: false,
       sha, dirty: dirty.length > 0, execPath: process.execPath, node: process.version,
@@ -586,6 +610,7 @@ async function main() {
       persistBeforeSendCount: crashResent.length, persistBeforeSendShaEqual: crashResent.length === 1 && crashResent[0] === crashAfter,
       crashPreviousPid: crashPid, crashResumedPid: payments.pid, leaseWaitMs,
       bytesStable: true, restartPidChanged: resumedPid !== firstPid, prefreezeClosed: true, oldSignatureRejected: true,
+      incompleteSubmitBlocked: sent.length === sendsBeforeIncomplete,
     }));
   } catch (error) {
     show(error instanceof Error ? `${error.message}\n${existsSync(join(dir, "postgres.log")) ? readFileSync(join(dir, "postgres.log"), "utf8") : ""}` : String(error));
