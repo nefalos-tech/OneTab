@@ -448,6 +448,8 @@ function verifiedReceipt(snapshot: RoomSnapshot): VerifiedReceipt | null {
     receipt.totalUnits === checkout.totalUnits &&
     shares.length === checkout.payerCount &&
     shares.every((p, slot) => p.slot === slot) &&
+    new Set(shares.map((p) => p.wallet)).size === shares.length &&
+    shares.every((p) => attempt.signedWallets.includes(p.wallet)) &&
     receipt.contributions.reduce((sum, c) => sum + BigInt(c.amountUnits), 0n) === BigInt(checkout.totalUnits) &&
     receipt.contributions.length === shares.length &&
     receipt.contributions.every(

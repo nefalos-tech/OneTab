@@ -236,6 +236,13 @@ describe("a receipt shows only when the room proves this checkout's payment", ()
     return { ...withReceipt({ contributions }), participants };
   };
 
+  function sameWallet(): RoomSnapshot {
+    const twin = paid.snapshot.participants[0]!.wallet;
+    const participants = paid.snapshot.participants.map((p) => (p.slot === 1 ? { ...p, wallet: twin } : p));
+    const contributions = shares.map((c) => (c.slot === 1 ? { ...c, wallet: twin } : c));
+    return { ...withReceipt({ contributions }), participants };
+  }
+
   it("shows the receipt for the paid sample, so the rows below each break one thing", () => {
     expect(deriveResultView(live(paid.snapshot)).body.kind).toBe("paid");
   });
@@ -252,6 +259,9 @@ describe("a receipt shows only when the room proves this checkout's payment", ()
     ["comes from a room with no one in it", spotsAre([])],
     ["comes from a room that lists spot 1 twice", spotsAre([{ slot: 0, units: "30000000" }, { slot: 0, units: "30000000" }])],
     ["comes from a room whose shares add up to a third of the total", spotsAre([{ slot: 0, units: "10000000" }, { slot: 1, units: "10000000" }])],
+    ["comes from a room listing one payer who holds the whole total", spotsAre([{ slot: 0, units: paid.snapshot.checkout.totalUnits }])],
+    ["comes from a room that gives two spots the same wallet", sameWallet()],
+    ["comes from an attempt a payer never approved", withAttempt({ signedWallets: attempt.signedWallets.filter((w) => w !== paid.snapshot.participants[1]!.wallet) })],
     ["names another seller", withReceipt({ sellerWallet: SAMPLE_WALLETS.outsider })],
     ["names another total", withReceipt({ totalUnits: "1" as TokenUnits })],
     ["sends a share to another wallet", withReceipt({ contributions: shares.map((c) => (c.slot === 1 ? { ...c, wallet: SAMPLE_WALLETS.outsider } : c)) })],
