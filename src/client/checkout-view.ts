@@ -255,7 +255,7 @@ export type Reason = {
 
 export type ResultBody =
   | { readonly kind: "not_started" }
-  | { readonly kind: "approvals"; readonly stage: "preparing" | "signing" }
+  | { readonly kind: "approvals"; readonly line: string }
   | { readonly kind: "in_progress"; readonly transactionReference: string | null }
   | { readonly kind: "unresolved"; readonly transactionReference: string | null }
   | { readonly kind: "failed"; readonly reason: Reason; readonly transactionReference: string | null }
@@ -601,8 +601,9 @@ function bodyOf(c: Classified, tab: TabView, page: PageFacts, explorerUrl: strin
     case "ready":
       return { kind: "not_started" };
     case "preparing":
+      return { kind: "approvals", line: WORDS.approvals_soon };
     case "signing":
-      return { kind: "approvals", stage: c.situation };
+      return { kind: "approvals", line: WORDS.approvals_open };
     case "submitting":
     case "confirming":
       return { kind: "in_progress", transactionReference: c.attempt?.transactionReference ?? null };
@@ -791,7 +792,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
         : c.role.kind === "seller"
           ? WORDS.seller_no_spot
           : c.role.kind === "organizer"
-            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}, so copy the link and send it to them.`
+            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}, ${WORDS.send_the_link}`
             : c.role.kind === "payer"
               ? `${c.me === "ready" ? WORDS.you_are_ready : "You joined."} Waiting for ${count(c.openSpots, "more payer")}.`
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,

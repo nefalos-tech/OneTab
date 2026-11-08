@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { roomFixtures } from "@/fixtures";
-import { REQUEST_PROBLEMS, STOP_REASONS, WALLET_WAITING, WORDS, type ActionKind, type Situation } from "./catalog";
+import {
+  REQUEST_PROBLEMS,
+  SPOT_STATUSES,
+  STOP_REASONS,
+  WALLET_PROBLEMS,
+  WALLET_WAITING,
+  WORDS,
+  type ActionKind,
+  type Situation,
+} from "./catalog";
 import {
   NOTHING_HEARD,
   checkoutLinks,
@@ -832,13 +841,19 @@ describe("why a failed payment stopped", () => {
 
 describe("the result screen before and after sending", () => {
   it.each([
-    ["preparing as spot-1", "preparing"],
-    ["signing as spot-2", "signing"],
-    ["signing as signed-out", "signing"],
-  ] as const)("%s says where approvals stand, with Back first", (id, stage) => {
+    ["preparing as spot-1", WORDS.approvals_soon],
+    ["signing as spot-2", WORDS.approvals_open],
+    ["signing as signed-out", WORDS.approvals_open],
+  ] as const)("%s says where approvals stand, with Back first", (id, line) => {
     const view = deriveResultView(caseById(id).state);
-    expect(view.body).toEqual({ kind: "approvals", stage });
+    expect(view.body).toEqual({ kind: "approvals", line });
     expect(view.actions.primary?.kind).toBe("back_to_checkout");
+  });
+
+  it.each(CASES.filter((c) => c.situation === "preparing"))("$id never says approvals are open while the payment is being prepared", (c) => {
+    const body = deriveResultView(c.state).body;
+    expect(body.kind).toBe("approvals");
+    expect(JSON.stringify(body)).not.toMatch(/approvals are open/i);
   });
 
   it.each(["open-spots as spot-1", "ready as spot-1"])("%s says no payment has started", (id) => {
@@ -1035,5 +1050,8 @@ describe("every explanation is at most two sentences", () => {
     }
     for (const [key, text] of Object.entries(REQUEST_PROBLEMS)) atMostTwo(key, text);
     for (const [key, text] of Object.entries(WORDS)) atMostTwo(key, text);
+    for (const [key, status] of Object.entries(SPOT_STATUSES)) atMostTwo(key, status.meaning);
+    for (const [key, waiting] of Object.entries(WALLET_WAITING)) atMostTwo(key, waiting.line);
+    for (const [key, problem] of Object.entries(WALLET_PROBLEMS)) atMostTwo(key, problem.message);
   });
 });

@@ -302,6 +302,7 @@ export const WORDS = {
   declined: "You declined this payment.",
   seller_wallet: "seller wallet",
   you_are_ready: "You're ready.",
+  send_the_link: "so copy the link and send it to them.",
   end_sign_in: "End sign-in",
   no_payment_yet: "No payment has started yet. Its status appears here once everyone approves.",
   approvals_soon: "Approvals open on the checkout page in a moment, and this page shows the payment once everyone approves.",
@@ -342,7 +343,7 @@ export const WALLET_WAITING = {
   sign_prompt: {
     state: "Signing in",
     control: "Signing in…",
-    line: "Sign the sign-in message in your wallet. Signing in proves the wallet is yours. It can't move money.",
+    line: "Sign the sign-in message in your wallet. It proves the wallet is yours and can't move money.",
   },
   server: { state: "Checking sign-in", control: "Signing in…", line: "Signing in…" },
   payment_prompt: {
