@@ -4,6 +4,7 @@ import type { AttemptState } from "../../contracts/index";
 import { fromBase64 } from "../../lib/payments/signing-payload";
 import { PaymentFailure } from "./errors";
 import { createPaymentService, projectAttempt } from "./service";
+import { createPaymentProgress } from "./settlement";
 import { serviceFixture } from "./test-fixtures";
 
 const foreignWallet = getAddressDecoder().decode(new Uint8Array(32).fill(80));
@@ -285,6 +286,41 @@ describe("verified signature collection", () => {
     f.current().safelyResolved = true;
     expect(projectAttempt({ attempt: f.current(), room: { phase: "paid", attempt: { id: f.current().id } } }).canRetry).toBe(false);
     expect(projectAttempt({ attempt: f.current(), room: { phase: "paying", attempt: { id: "newer-attempt" } } }).canRetry).toBe(false);
+  });
+
+  it("closes a never-frozen decline and rejects the old resolution token on the fresh attempt", async () => {
+    const f = await serviceFixture();
+    const reserved = await f.store.reserveAttempt({ checkoutId: f.room.checkout.id, organizerWallet: f.organizer.wallet, retryOfAttemptId: null });
+    let token: string | null = null;
+    const claim = f.store.claimResolution.bind(f.store);
+    f.store.claimResolution = async input => {
+      const lease = await claim(input);
+      token = lease?.token ?? token;
+      return lease;
+    };
+    const progress = createPaymentProgress({
+      store: f.store, rpc: f.rpc, config: f.config, now: () => new Date(f.store.now),
+      readCheckout: async () => (await f.store.readRoom()).checkout,
+    });
+    const service = createPaymentService({ ...f.dependencies, progress });
+    const closed = await service.decline({ attemptId: reserved.id, wallet: f.organizer.wallet });
+    expect(token).toMatch(/^test-fence-/);
+    expect(closed).toMatchObject({ id: reserved.id, state: "failed", canRetry: true, transactionReference: null, error: null });
+    expect(f.calls).not.toContain("sendTransaction");
+    expect(f.calls).not.toContain("getLatestBlockhash");
+    expect(await service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: null })).toMatchObject({ id: reserved.id, state: "failed" });
+    await expect(f.store.recordOutcome({ attemptId: reserved.id, leaseToken: token ?? "", outcome: { state: "failed", error: null, safelyResolved: true } }))
+      .rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+    const replacement = await service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: reserved.id });
+    expect(replacement.id).not.toBe(reserved.id);
+    expect(f.store.attempts.get(replacement.id)?.signatures).toEqual([]);
+    await expect(service.addSignature({ attemptId: replacement.id, wallet: f.organizer.wallet, messageHash: "ab".repeat(32), signatureBase64: `${"A".repeat(86)}==` }))
+      .rejects.toMatchObject({ code: "MESSAGE_MISMATCH" });
+    expect(f.store.attempts.get(replacement.id)?.signatures).toEqual([]);
+    await expect(f.store.recordOutcome({ attemptId: replacement.id, leaseToken: token ?? "", outcome: { state: "failed", error: null, safelyResolved: true } }))
+      .rejects.toMatchObject({ code: "IDEMPOTENCY_CONFLICT" });
+    await expect(f.store.recordOutcome({ attemptId: reserved.id, leaseToken: token ?? "", outcome: { state: "failed", error: null, safelyResolved: true } }))
+      .rejects.toMatchObject({ code: "ATTEMPT_NOT_SIGNABLE" });
   });
 
   it("propagates typed store conflicts without interpreting arbitrary exception messages", async () => {

@@ -106,6 +106,34 @@ export function createPaymentProgress(deps: PaymentProgressDependencies): (attem
       rpc, lastValidBlockHeight: validated.target.lastValidBlockHeight, feePayerSignature, backendAssurance,
     }) };
   };
+  const unusedAuthorization = (attempt: StoredAttempt) => attempt.state === "declined"
+    && !attempt.signingPayload && attempt.signatures.length === 0 && !attempt.submission;
+  const closeUnusedAuthorization = async (attemptId: string): Promise<StoredAttempt> => {
+    const current = async () => {
+      const attempt = await read(attemptId);
+      return attempt.submission ? reconcileSubmission(attemptId) : attempt;
+    };
+    const attempt = await read(attemptId);
+    if (attempt.submission) return reconcileSubmission(attemptId);
+    if (!unusedAuthorization(attempt)) return attempt;
+    const lease = await store.claimResolution({ attemptId });
+    if (!lease) return current();
+    const ownsUnused = async () => {
+      const owned = await read(attemptId);
+      return unusedAuthorization(owned) && owned.resolutionLease?.token === lease.token
+        && Date.parse(owned.resolutionLease.expiresAt) > now().getTime();
+    };
+    if (!await ownsUnused()) return current();
+    try {
+      return await store.recordOutcome({ attemptId, leaseToken: lease.token,
+        outcome: { state: "failed", error: null, safelyResolved: true } });
+    } catch (error) {
+      const missed = await read(attemptId);
+      if (missed.submission) return reconcileSubmission(attemptId);
+      if (definitive(missed) || missed.resolutionLease?.token !== lease.token || !unusedAuthorization(missed)) return missed;
+      throw error;
+    }
+  };
   const expireWithoutSubmission = async (attemptId: string): Promise<StoredAttempt> => {
     const attempt = await read(attemptId);
     if (attempt.submission) return reconcileSubmission(attemptId);
@@ -155,7 +183,7 @@ export function createPaymentProgress(deps: PaymentProgressDependencies): (attem
     if (definitive(attempt) || attempt.state === "preparing") return attempt;
     if (attempt.submission) return reconcileSubmission(attemptId);
     if (attempt.state !== "signing" && attempt.state !== "declined") return attempt;
-    if (!attempt.signingPayload) return attempt;
+    if (!attempt.signingPayload) return closeUnusedAuthorization(attemptId);
     const validated = await validatedPayload(attempt);
     if (attempt.state === "signing" && attempt.signatures.length >= validated.plan.contributions.length) {
       return reconcileSubmission(attemptId);
