@@ -7,7 +7,6 @@ import { DEVNET_GENESIS_HASH } from "./preflight";
 import { projectAttempt } from "./service";
 import { serviceFixture } from "./test-fixtures";
 import { createPaymentProgress } from "./settlement";
-import { config } from "../../lib/payments/test-fixtures";
 import { settlementFixture, submissionStore } from "./settlement-fixture";
 
 function deferred() {
@@ -431,7 +430,7 @@ describe("durable submission progress", () => {
     };
     const calls: string[] = [];
     const progress = createPaymentProgress({
-      store: memory.store, config, now, readCheckout: async () => f.room.checkout,
+      store: memory.store, config: f.config, now, readCheckout: async () => f.checkout,
       rpc: { async call(method) { calls.push(method); throw new Error(method); } },
     });
     const raced = await progress(f.attempt.id);
