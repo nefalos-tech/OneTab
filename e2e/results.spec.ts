@@ -31,7 +31,6 @@ function countReads(page: Page, id: string): { readonly count: () => number } {
   return { count: () => reads };
 }
 
-/** A scripted room whose steps can only be named from its own script, and whose step change must answer OK. */
 function scripted<Script extends object>(id: string) {
   return {
     id,

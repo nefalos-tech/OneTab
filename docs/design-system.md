@@ -503,7 +503,7 @@ Every button label, flow step and fixed word comes from `src/client/catalog.ts`.
 | Focus | A 2px ring with a 2px offset. Tide on light surfaces, Marigold on Tide. Never removed |
 | Structure | A skip link first, then `header`, `nav` for the flow steps, and `main`. One `h1` per page |
 | Forms | Visible labels. Hints and errors linked with `aria-describedby`. Invalid fields set `aria-invalid` |
-| Status | The status line is an `aria-live="polite"` region. Only blocking errors use `role="alert"` |
+| Status | The status block (status line, connection line and reason) is one `aria-live="polite"` region, focused after a move between screens. Only blocking errors use `role="alert"` |
 | Color | Never the only signal. Status and spot status always pair color with an icon and words |
 | Motion | Honors `prefers-reduced-motion` |
 | Targets | At least 44 by 44 pixels for buttons and links |
@@ -542,7 +542,7 @@ These files own the decisions behind every screen:
 | --- | --- |
 | `src/client/checkout-source.ts` | Which data a page gets, including the server's read of a live checkout. The only reader of `ONETAB_FIXTURES` |
 | `src/client/api.ts` | Every request to a contract route, and which error code means which problem |
-| `src/client/live-actions.ts` | What each live action sends and does next, which room answer a live checkout shows, and what each poll sends |
+| `src/client/live-actions.ts` | What each live action sends and does next, which room answer a live checkout shows, what each poll sends, where a shown room moves the viewer (`moveFor`, `pageMoves`, arrivals), and the causes this page heard |
 | `src/client/payment-check.ts` | Whether a signing payload is the payment the screen shows, before any wallet prompt |
 | `src/client/fixtures.ts` | Sample addresses, viewers, and the registry that the tests enumerate |
 | `src/client/checkout-view.ts` | Every rule about what a viewer sees and can do |

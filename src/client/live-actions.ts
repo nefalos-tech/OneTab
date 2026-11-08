@@ -27,7 +27,6 @@ export type Track = <F extends string>(intent: Intent, request: () => Promise<Re
 
 export const untracked: Track = (_intent, request) => request();
 
-/** What a page's tracker tells it: each room to show, whether the room was reached, and that its own write started. */
 export type TrackerCallbacks = {
   readonly show: (snapshot: RoomSnapshot, intent: Intent) => void;
   readonly reached: (answered: boolean) => void;
@@ -152,7 +151,7 @@ type StartRefusal = FundingCause | "refused" | "unavailable";
 const mayLeaveFailed = (problem: RequestProblem): problem is StartRefusal =>
   isFundingCause(problem) || problem === "refused" || problem === "unavailable";
 
-/** What a start says, from how it was answered and the room it read after, or null when that read failed. */
+/** `room` is null when the start's own read failed. */
 function startOutcome(refused: StartRefusal | null, room: RoomSnapshot | null, retryOf: AttemptId | null): Outcome {
   if (room === null) {
     if (refused === null) return DONE;
@@ -250,9 +249,8 @@ function readRoomAgain(c: RoomContext, id: CheckoutId): Promise<Result<RoomSnaps
 type Shown = { readonly owner: Screen; readonly intent: Intent };
 
 /**
- * The screen a shown room takes the viewer to, or null to stay. This page's own write moves the viewer to
- * whichever screen owns its room. A polled room moves the viewer only when its owner differs from the
- * baseline, so a page opened on the other screen, or restored there by Back, stays put.
+ * This page's own write moves the viewer to whichever screen owns its room. A polled room moves the viewer
+ * only when its owner differs from the page's baseline, and a page with no baseline yet stays put.
  */
 export function moveFor(shown: Shown, here: Screen, before: Screen | null): Screen | null {
   if (shown.owner === here) return null;
@@ -263,7 +261,6 @@ export function moveFor(shown: Shown, here: Screen, before: Screen | null): Scre
 export type Arrival = "loaded" | "moved" | "navigated";
 
 export type PageMoves = {
-  /** This page's own write started. */
   acting(): void;
   /** Where a room this page shows takes the viewer, or null to stay. */
   shown(room: Shown): Screen | null;

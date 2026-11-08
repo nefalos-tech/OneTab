@@ -160,7 +160,7 @@ The targets are a two-wallet proof by hour 4, integrated sessions/rooms by hour 
 
 P1 resolves wallet compatibility, library versions, the Devnet RPC and mint/account setup. B1 implements the documented contracts and coordinates corrections found during integration. F1 pins the application toolchain. B5 resolves the hosting provider and deployed session configuration. Their owners record these choices in the code and update the relevant documents when behavior changes.
 
-Whether the public room names why a payment stopped is still open. Today the room masks every stop code, so only the organizer's own page can name an underfunded wallet, and only until it reloads. Projecting the real code, F5's handoff H1 in [the F5 card](docs/cards/F5.md), would show every viewer the cause and its next step. It would also tell anyone with the link that a payer was underfunded, though not which one. The spec owner decides before Backend ships it.
+Whether the public room names why a payment stopped is still open. Today the room masks every stop code, so only the organizer's own page can name an underfunded wallet, and only until it reloads. Projecting the real code, F5's handoff H1 in [the F5 card](docs/cards/F5.md), would show every viewer the cause and its next step. It would also tell anyone with the link that a payer was underfunded, though not which one. The team agrees on it before Backend ships it.
 
 The demonstration shows one complete group checkout and one accurately described failure. MLH's standard digital-event rules call for a public video of at most two minutes, the event name at its start, public source code and AI-tool disclosure. The signed-in submission form must still be checked for event-specific fields.
 
