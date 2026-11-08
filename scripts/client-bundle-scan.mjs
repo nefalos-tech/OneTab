@@ -31,16 +31,25 @@ function encodedForms(value) {
   return [value, Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url")];
 }
 
+function delivered(rel) {
+  return rel.endsWith(".html") || rel.endsWith(".rsc") || rel.endsWith(".body") || rel.endsWith(".meta");
+}
+
 function browserFile(nextDir, path) {
   const rel = posix(nextDir, path);
-  return rel.startsWith("static/") || (rel.startsWith("server/app/") && (rel.endsWith(".html") || rel.endsWith(".rsc")));
+  if (rel.startsWith("static/")) return true;
+  if (rel.startsWith("server/app/")) return delivered(rel);
+  return rel.startsWith("server/pages/") && rel.endsWith(".html");
 }
 
 export function scanNextOutput(nextDir, { values, names }) {
   const needles = [...new Set([...values.flatMap(encodedForms), ...names])].map((needle) => Buffer.from(needle));
   const staticPaths = walk(join(nextDir, "static"));
-  const appPaths = walk(join(nextDir, "server", "app")).filter((path) => browserFile(nextDir, path));
-  const files = [...staticPaths, ...appPaths];
+  const deliveredPaths = [
+    ...walk(join(nextDir, "server", "app")),
+    ...walk(join(nextDir, "server", "pages")),
+  ].filter((path) => browserFile(nextDir, path));
+  const files = [...staticPaths, ...deliveredPaths];
   const hits = [];
   for (const path of files) {
     const bytes = readFileSync(path);
@@ -57,7 +66,7 @@ export function scanNextOutput(nextDir, { values, names }) {
   }
   return {
     staticFiles: staticPaths.length,
-    prerenderFiles: appPaths.length,
+    prerenderFiles: deliveredPaths.length,
     hits,
     serverNameHits,
     serverFilesWithSentinel,

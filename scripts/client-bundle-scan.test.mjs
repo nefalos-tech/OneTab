@@ -59,6 +59,21 @@ describe("browser-delivered build files", () => {
     expect(result.hits).toEqual(["server/app/qa-leak.rsc"]);
   });
 
+  it("reports a sentinel in a response body, response metadata, and a pages html file", () => {
+    const next = output();
+    mkdirSync(join(next, "server", "pages"), { recursive: true });
+    writeFileSync(join(next, "server", "app", "qa-leak.body"), SERVICE_SENTINEL);
+    writeFileSync(join(next, "server", "app", "qa-leak.meta"), `{"headers":{"x-test":"${SERVICE_SENTINEL}"}}`);
+    writeFileSync(join(next, "server", "pages", "404.html"), SERVICE_SENTINEL);
+    writeFileSync(join(next, "server", "pages", "page.js"), SERVICE_SENTINEL);
+    const result = scanNextOutput(next, { values: [SERVICE_SENTINEL], names: [] });
+    expect(result.hits.toSorted()).toEqual([
+      "server/app/qa-leak.body",
+      "server/app/qa-leak.meta",
+      "server/pages/404.html",
+    ]);
+  });
+
   it("accepts a clean static file and a server chunk that names the key", () => {
     const next = output();
     writeFileSync(join(next, "server", "app", "qa-leak.html"), "OneTab");

@@ -63,7 +63,7 @@ Before the first publish, build with a fake service key and search the browser a
 node scripts/client-bundle-secrets.mjs
 ```
 
-The script sets `SUPABASE_SECRET_KEY` to a fixed fake value and `SOLANA_RPC_URL` to a fake provider key. It runs `next build`, then scans `.next/static` and the prerendered `.html` and `.rsc` files under `.next/server/app`, including `segment.rsc`. It exits 1 if a browser-delivered file contains a fake value, the exact base64 or base64url of that value, the name `SUPABASE_SECRET_KEY`, or the fake database URL. It also exits 1 when the build has no static files, no prerendered files, or no server file that contains the name `SUPABASE_SECRET_KEY`.
+The script sets `SUPABASE_SECRET_KEY` to a fixed fake value and `SOLANA_RPC_URL` to a fake provider key. It runs `next build`, then scans local build artifacts that Next can send to a browser. Those are `.next/static`, and under `.next/server/app` the `.html`, `.rsc`, `.body`, and `.meta` files, including `segment.rsc`. It also scans `.html` files under `.next/server/pages`. It does not scan server JavaScript. It exits 1 if one of those artifacts contains a fake value, the exact base64 or base64url of that value, the name `SUPABASE_SECRET_KEY`, or the fake database URL. It also exits 1 when the build has no static files, no scanned prerender artifacts, or no server file that contains the name `SUPABASE_SECRET_KEY`.
 
 The encoding check is narrow. It looks for each fake value encoded on its own. It misses that value when it sits inside a larger encoded blob, and it misses hex, split pieces, and compression. This is not a data-loss-prevention scan.
 
