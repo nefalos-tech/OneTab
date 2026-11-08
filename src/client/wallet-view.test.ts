@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { initialState, step, type Problem, type SessionState } from "@/lib/wallet/machine";
 import type { Address } from "./contracts";
+import { visibleSignInNote } from "@/lib/wallet/sign-in-diagnostic";
 import { deriveWalletView } from "./wallet-view";
 
 const BEA = "SAMPLEpayerBea11111111111111111111111111Bea2" as Address;
@@ -111,5 +112,16 @@ describe("wallet view", () => {
 
   it("a connected wallet that isn't signed in shows its address and never claims a sign-in", () => {
     expect(deriveWalletView(connectedWith("account_switched")).control).toEqual({ kind: "account", address: BEA, signedIn: false });
+  });
+
+  it("debug mode adds the classification beside the unchanged unavailable line", () => {
+    const view = deriveWalletView(connectedWith("unavailable"));
+    expect(view.status).toMatchObject({ kind: "problem", text: BRIEF.unavailable.message, fix: { label: "Try again" } });
+    const detail = { stage: "sign" as const, reason: "provider_error" as const, code: -32000 };
+    expect(visibleSignInNote(false, detail)).toBeNull();
+    expect(visibleSignInNote(true, null)).toBeNull();
+    expect(visibleSignInNote(true, detail)).toBe("sign:provider_error:-32000");
+    expect(visibleSignInNote(true, { stage: "challenge", reason: "unparsed", code: null })).toBe("challenge:unparsed");
+    expect(visibleSignInNote(true, detail)).not.toContain("CANARY");
   });
 });

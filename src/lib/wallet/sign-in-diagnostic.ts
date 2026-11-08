@@ -48,6 +48,15 @@ export function signInDiagnosticMark(detail: SignInDiagnostic): string {
   return detail.code === null ? `${detail.stage}:${detail.reason}` : `${detail.stage}:${detail.reason}:${detail.code}`;
 }
 
+/** The only text debug mode may show. Absent unless debug is on and a failure was classified. */
+export function visibleSignInNote(debug: boolean, detail: SignInDiagnostic | null): string | null {
+  return debug && detail !== null ? signInDiagnosticMark(detail) : null;
+}
+
+export function currentSignInNote(): string | null {
+  return visibleSignInNote(debugOn(), last);
+}
+
 export function clearSignInDiagnostic(): void {
   last = null;
   if (!debugOn() || typeof document === "undefined") return;

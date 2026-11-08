@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  currentSignInNote,
   debugFrom,
   noteSignInDiagnostic,
   readSignInDiagnostic,
@@ -34,6 +35,13 @@ describe("sign-in diagnostic", () => {
     expect(readSignInDiagnostic()).toEqual(PROVIDER);
     expect(info).not.toHaveBeenCalled();
     expect(Object.keys(readSignInDiagnostic() ?? {})).toEqual(["stage", "reason", "code"]);
+  });
+
+  it("returns the visible note only while debug is on", () => {
+    noteSignInDiagnostic(PROVIDER);
+    expect(currentSignInNote()).toBeNull();
+    vi.stubGlobal("window", { location: { search: "?onetabDebug=1" }, localStorage: { getItem: () => null } });
+    expect(currentSignInNote()).toBe("sign:provider_error:-32000");
   });
 
   it("prints and marks only that classification when debug is on", () => {
