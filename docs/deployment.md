@@ -4,15 +4,9 @@ B5 owns this page. The public app is not published. Nothing below is a claim tha
 
 ## Current targets
 
-These accounts were read on 2026-11-08. None of them is an OneTab deployment.
+Checked on 2026-11-08. The accounts available from this checkout belong to other products. None is an OneTab deployment. GitHub has no deployment for this repository, and the repository homepage is empty. No `.env`, `.env.local`, or `.env.production` file is in this checkout.
 
-| Account | What is there | OneTab use |
-| --- | --- | --- |
-| Vercel | Projects `memory-card`, `nextjs-dashboard`, `cv-application`, and `shopping-cart` on account `team_qf7TiC8umhBHOkt7ZSeT8CRJ`. No project is linked to `https://github.com/nefalos-tech/OneTab`. | Do not deploy onto these projects. |
-| Railway | Project `clever-creativity` with services `@caravan/web` and `@caravan/worker`. | This is Caravan, not OneTab. |
-| Supabase | Organization named Caravan. Its only project is `caravan_1.0`, id `emfpxatpuqdqscsaapcm`, Postgres 17. | Do not apply OneTab migrations here. |
-
-GitHub has no deployment for `nefalos-tech/OneTab`, and the repository homepage is empty. No `.env`, `.env.local`, or `.env.production` file is in this checkout.
+Do not deploy onto another product's project. Do not apply these migrations to another product's database. The database connector does not show a confirmed OneTab project. Leave creation until the owner names the account.
 
 ## Set the server environment
 
@@ -25,7 +19,7 @@ Copy [.env.example](../.env.example) into the host's server environment. Put the
 | `SUPABASE_URL` | The new OneTab project's API URL. |
 | `SUPABASE_SECRET_KEY` | That project's service-role key. Server only. |
 | `SOLANA_CLUSTER` | `devnet` |
-| `SOLANA_RPC_URL` | `https://api.devnet.solana.com`, or another Devnet endpoint. A key inside this URL stays server-only. |
+| `SOLANA_RPC_URL` | A Devnet endpoint. `https://api.devnet.solana.com` has no provider key. If the chosen endpoint puts a key in the URL, that key stays server-only. |
 | `USDC_MINT` | `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU` |
 | `USDC_DECIMALS` | `6` |
 | `ONETAB_FIXTURES` | Leave unset. `1` would show sample rooms on the public app. |
@@ -47,12 +41,12 @@ Apply these files in order to a new OneTab database. Do not run a reset against 
 3. `supabase/migrations/20261107020000_b3_rooms.sql`
 4. `supabase/migrations/20261108000000_b4_attempt_store.sql`
 
-The migrations enable row-level security and grant the privileged writes to `service_role`. Local checks of those grants are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). Those checks used a disposable local database. They are not a result from `caravan_1.0` or from any hosted Supabase project.
+The migrations enable row-level security and grant the privileged writes to `service_role`. Local checks of those grants are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). Those checks used a disposable local database. They are not hosted evidence.
 
 ## Publish after the owner names the targets
 
-1. Create a new host project for `https://github.com/nefalos-tech/OneTab`. Use a host that runs Node.js 24.22.1. Do not reuse the Vercel projects or the Railway services named above.
-2. Create a new Supabase project for OneTab. The only visible organization is named Caravan. Confirm that organization with the owner before creating a project in it. Do not use `caravan_1.0`.
+1. Create a new host project for `https://github.com/nefalos-tech/OneTab`. Use a host that runs Node.js 24.22.1. Do not reuse a project that belongs to another product.
+2. Create a new Supabase project for OneTab after the owner names the account. Do not use another product's database.
 3. Set the variables in the table above. Set `APP_ORIGIN` to the `https` URL the host assigns.
 4. Apply the four migration files in order. Record the project id and the four versions on this page after they succeed.
 5. From another computer, open `/` and `/api/config`. The config response should name Devnet, the mint above, 6 decimals, and `finalized`.
@@ -69,4 +63,8 @@ Before the first publish, build with a fake service key and search the browser a
 node scripts/client-bundle-secrets.mjs
 ```
 
-The script sets `SUPABASE_SECRET_KEY` to a fixed fake value, runs `next build`, and scans `.next/static`. It exits 1 if that value, the name `SUPABASE_SECRET_KEY`, or the fake database URL appears there. It also exits 1 when the server build does not contain the name `SUPABASE_SECRET_KEY`, because that means the scan can no longer tell a real client leak from a build that dropped the lookup. The script prints counts and client paths. It does not print the key. This is a local build check. It does not inspect a deployed host's downloaded assets.
+The script sets `SUPABASE_SECRET_KEY` to a fixed fake value and `SOLANA_RPC_URL` to a fake provider key. It runs `next build`, then scans `.next/static` and the prerendered `.html` and `.rsc` files under `.next/server/app`, including `segment.rsc`. It exits 1 if a browser-delivered file contains a fake value, the exact base64 or base64url of that value, the name `SUPABASE_SECRET_KEY`, or the fake database URL. It also exits 1 when the build has no static files, no prerendered files, or no server file that contains the name `SUPABASE_SECRET_KEY`.
+
+The encoding check is narrow. It looks for each fake value encoded on its own. It misses that value when it sits inside a larger encoded blob, and it misses hex, split pieces, and compression. This is not a data-loss-prevention scan.
+
+The script prints counts and browser paths. It does not print the fake values. A passing run is evidence about local build artifacts. It does not read a running server's HTTP responses, and it does not download a hosted site. Those two checks stay open until someone records them.

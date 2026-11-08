@@ -27,21 +27,39 @@ function posix(nextDir, path) {
   return relative(nextDir, path).split(sep).join("/");
 }
 
+function encodedForms(value) {
+  return [value, Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url")];
+}
+
+function browserFile(nextDir, path) {
+  const rel = posix(nextDir, path);
+  return rel.startsWith("static/") || (rel.startsWith("server/app/") && (rel.endsWith(".html") || rel.endsWith(".rsc")));
+}
+
 export function scanNextOutput(nextDir, { values, names }) {
-  const files = walk(join(nextDir, "static"));
+  const needles = [...new Set([...values.flatMap(encodedForms), ...names])].map((needle) => Buffer.from(needle));
+  const staticPaths = walk(join(nextDir, "static"));
+  const appPaths = walk(join(nextDir, "server", "app")).filter((path) => browserFile(nextDir, path));
+  const files = [...staticPaths, ...appPaths];
   const hits = [];
   for (const path of files) {
     const bytes = readFileSync(path);
-    if (values.some((value) => bytes.includes(Buffer.from(value))) || names.some((name) => bytes.includes(Buffer.from(name)))) {
-      hits.push(posix(nextDir, path));
-    }
+    if (needles.some((needle) => bytes.includes(needle))) hits.push(posix(nextDir, path));
   }
   const serverName = Buffer.from("SUPABASE_SECRET_KEY");
-  const serverNameHits = walk(join(nextDir, "server")).filter((path) => readFileSync(path).includes(serverName)).length;
+  const serviceValue = Buffer.from(SERVICE_SENTINEL);
+  let serverNameHits = 0;
+  let serverFilesWithSentinel = 0;
+  for (const path of walk(join(nextDir, "server"))) {
+    const bytes = readFileSync(path);
+    if (bytes.includes(serverName)) serverNameHits += 1;
+    if (bytes.includes(serviceValue)) serverFilesWithSentinel += 1;
+  }
   return {
-    staticFiles: files.length,
-    prerenderFiles: 0,
+    staticFiles: staticPaths.length,
+    prerenderFiles: appPaths.length,
     hits,
     serverNameHits,
+    serverFilesWithSentinel,
   };
 }

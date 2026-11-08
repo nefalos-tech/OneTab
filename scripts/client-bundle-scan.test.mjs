@@ -62,9 +62,10 @@ describe("browser-delivered build files", () => {
   it("accepts a clean static file and a server chunk that names the key", () => {
     const next = output();
     writeFileSync(join(next, "server", "app", "qa-leak.html"), "OneTab");
+    writeFileSync(join(next, "server", "app", "page.js"), `SUPABASE_SECRET_KEY ${SERVICE_SENTINEL}`);
     const result = scanNextOutput(next, { values: [SERVICE_SENTINEL, RPC_SENTINEL, DATABASE_SENTINEL], names: ["SUPABASE_SECRET_KEY"] });
     expect(result.hits).toEqual([]);
-    expect(result.serverNameHits).toBe(1);
+    expect(result.serverNameHits).toBe(2);
     expect(result.staticFiles).toBe(1);
   });
 });
