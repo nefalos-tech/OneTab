@@ -1,3 +1,4 @@
+import { getWallets } from "@wallet-standard/app";
 import { send, type FetchLike, type Reply } from "@/client/api";
 import {
   isRecord,
@@ -14,21 +15,13 @@ import {
   type ServiceFailure,
   type ServiceResult,
   type SignInService,
-  type WalletBridge,
   type WalletEnvironment,
 } from "./environment";
+import { standardBridge } from "./standard";
 
 export function liveEnvironment(): WalletEnvironment {
-  return { bridge: unavailableBridge, service: liveSignInService((path, init) => globalThis.fetch(path, init)) };
+  return { bridge: standardBridge(getWallets), service: liveSignInService((path, init) => globalThis.fetch(path, init)) };
 }
-
-const unavailableBridge: WalletBridge = {
-  connect: async () => ({ ok: false, failure: "failed" }),
-  disconnect: async () => {},
-  signAuthentication: async () => ({ ok: false, failure: "failed" }),
-  signPayment: async () => ({ ok: false, failure: "failed" }),
-  onAccountChange: () => () => {},
-};
 
 export type { FetchLike };
 

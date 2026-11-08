@@ -142,7 +142,7 @@ test("live create uses the server's configuration and asks to connect a wallet b
   await capture(page, "create-review-signed-out");
 
   await page.locator("[data-action='primary']").click();
-  await expect(page.locator("[data-wallet-line]")).toHaveText("Sign-in isn't available right now. Try again in a moment.");
+  await expect(page.locator("[data-wallet-line]")).toHaveText("No Solana wallet found. Install Phantom, then reload this page.");
   await expect(page.getByRole("button", { name: "Create checkout" })).toHaveCount(0);
 });
 

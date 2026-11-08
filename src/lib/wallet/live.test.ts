@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { getWallets } from "@wallet-standard/app";
+import { describe, expect, it, vi } from "vitest";
 import type { Address } from "@/client/contracts";
-import type { CheckedPayment } from "@/client/payment-check";
 import type { ChallengeId, SignatureBase64 } from "./environment";
 import { liveEnvironment, liveSignInService, type FetchLike } from "./live";
+
+vi.mock(import("@wallet-standard/app"), async (actual) => ({ getWallets: vi.fn((await actual()).getWallets) }));
 
 const WALLET = "SAMPLEpayerBea1111111111111111111111111Bea2" as Address;
 const EXPIRES = "2099-01-01T00:00:00.000Z";
@@ -128,13 +130,15 @@ describe("live sign-in service", () => {
   });
 });
 
-describe("live wallet seam until P1", () => {
-  it("connecting answers that sign-in isn't available, and nothing signs", async () => {
+describe("the live wallet environment", () => {
+  it("builds during server rendering without looking for wallets, and looks only when someone connects", async () => {
+    expect(typeof window).toBe("undefined");
     const { bridge } = liveEnvironment();
-    expect(await bridge.connect()).toEqual({ ok: false, failure: "failed" });
-    expect(await bridge.signPayment({ account: WALLET } as CheckedPayment)).toEqual({
-      ok: false,
-      failure: "failed",
-    });
+    const stop = bridge.onAccountChange(() => {});
+    stop();
+    expect(getWallets).not.toHaveBeenCalled();
+
+    expect(await bridge.connect()).toEqual({ ok: false, failure: "no_wallet" });
+    expect(getWallets).toHaveBeenCalled();
   });
 });
