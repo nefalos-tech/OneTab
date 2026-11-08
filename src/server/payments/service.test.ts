@@ -215,6 +215,28 @@ describe("verified signature collection", () => {
     expect(f.progressCalls).toEqual([]);
   });
 
+  it("recovers an identical signature when the closed store rejects the put", async () => {
+    const f = await serviceFixture();
+    await f.prepare();
+    const input = await f.upload(0);
+    const other = await f.upload(1);
+    const put = f.store.putVerifiedSignature.bind(f.store);
+    f.store.putVerifiedSignature = async value => {
+      await put(value);
+      f.current().state = "submitting";
+      throw new PaymentFailure("ATTEMPT_NOT_SIGNABLE");
+    };
+    await expect(f.service.addSignature(input)).resolves.toMatchObject({
+      id: input.attemptId, state: "submitting", signedWallets: [input.wallet],
+    });
+    f.store.putVerifiedSignature = async () => { throw new PaymentFailure("ATTEMPT_NOT_SIGNABLE"); };
+    await expect(f.service.addSignature(other)).rejects.toMatchObject({ code: "ATTEMPT_NOT_SIGNABLE" });
+    await expect(f.service.addSignature({ ...input, signatureBase64: other.signatureBase64 }))
+      .rejects.toMatchObject({ code: "INVALID_SIGNATURE" });
+    expect(f.current().signatures).toHaveLength(1);
+    expect(f.progressCalls).toEqual([]);
+  });
+
   it("keeps decline and submission races in the atomic adapter", async () => {
     const f = await serviceFixture();
     await f.prepare();
