@@ -53,6 +53,7 @@ function withScreenShowingTheSame(change: (c: Contribution, slot: number) => Par
 afterEach(() => {
   vi.restoreAllMocks();
   vi.doUnmock("@/lib/payments/wallet-signature");
+  vi.doUnmock("@/lib/payments/signing-payload");
 });
 
 describe("the payment check before any wallet prompt", () => {
@@ -207,8 +208,18 @@ describe("Payments' check of a real payment", () => {
   });
 
   it("refuses with unsupported, before loading Payments, when this browser can't import an Ed25519 key", async () => {
-    vi.spyOn(crypto.subtle, "importKey").mockRejectedValue(new DOMException("Unrecognized name.", "NotSupportedError"));
-    expect(await checkPayment.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).toEqual({ ok: false, failure: "unsupported" });
+    vi.resetModules();
+    const loads: string[] = [];
+    vi.doMock("@/lib/payments/signing-payload", async (original) => {
+      loads.push("signing-payload");
+      return original();
+    });
+    const fresh = (await import("./payment-check")).checkPayment;
+    vi.spyOn(crypto.subtle, "importKey").mockRejectedValueOnce(new DOMException("Unrecognized name.", "NotSupportedError"));
+    expect(await fresh.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).toEqual({ ok: false, failure: "unsupported" });
+    expect(loads, "Payments' code didn't load").toEqual([]);
+    expect((await fresh.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).ok).toBe(true);
+    expect(loads, "a browser with Ed25519 loads it").toEqual(["signing-payload"]);
   });
 
   it("says it couldn't check when Payments' code doesn't load, and loads it again on the next press", async () => {

@@ -11,9 +11,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { termsOf } from "@/client/checkout-view";
 import type { Address, Session } from "@/client/contracts";
 import { keyedPayment, signedTransaction, type KeyedPayer, type KeyedPayment } from "@/client/keyed-payment-fixture";
+import { live, untracked, type LiveAction } from "@/client/live-actions";
 import { checkPayment, walletRequest, type CheckedPayment } from "@/client/payment-check";
 import { verifyPayerSignature } from "@/lib/payments/signature-core";
-import { authMessage, type AuthMessage, type ChallengeId, type SignInService, type WalletBridge } from "./environment";
+import { authMessage, type AuthMessage, type ChallengeId, type PaymentSigner, type SignInService, type WalletBridge } from "./environment";
 import { initialState } from "./machine";
 import { standardBridge, type WalletRegistry } from "./standard";
 import { createSessionStore } from "./store";
@@ -239,6 +240,7 @@ async function connected(options: WalletOptions = {}) {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   expect(sent, "a wallet was asked to send").toEqual([]);
   sent.length = 0;
 });
@@ -528,6 +530,13 @@ describe("signAuthentication", () => {
     expect(phantom.prompts("signMessage")).toEqual([]);
   });
 
+  it("refuses, with no prompt, the selected address once its public key isn't that address", async () => {
+    const { bridge, phantom, accounts } = await connected();
+    Object.assign(accounts[0], { publicKey: (await keyedAccount()).publicKey });
+    expect(await bridge.signAuthentication({ account: asAccount(accounts[0]), message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signMessage")).toEqual([]);
+  });
+
   it("refuses another account the wallet also granted, with no prompt", async () => {
     const { bridge, phantom, accounts } = await connected({ grantsAll: true });
     expect(await bridge.signAuthentication({ account: asAccount(accounts[1]), message: CHALLENGE })).toEqual({ ok: false, failure: "failed" });
@@ -717,6 +726,13 @@ describe("signPayment", () => {
     expect((await bridge.signPayment(payment)).ok, "the payment the check made still opens a prompt").toBe(true);
   });
 
+  it("refuses, with no prompt, a payment once the selected account's public key isn't its address", async () => {
+    const { bridge, phantom, payment } = await paying();
+    Object.assign(phantom.wallet.accounts[0]!, { publicKey: (await keyedAccount()).publicKey });
+    expect(await bridge.signPayment(payment)).toEqual({ ok: false, failure: "failed" });
+    expect(phantom.prompts("signTransaction")).toEqual([]);
+  });
+
   it("refuses a payment for an account that isn't selected, with no prompt", async () => {
     const { bridge, phantom, k } = await paying();
     expect(await bridge.signPayment(await checkedFor(k, 2))).toEqual({ ok: false, failure: "failed" });
@@ -756,7 +772,7 @@ describe("signPayment", () => {
 });
 
 describe("the real check, the session store and this bridge together", () => {
-  it("sign in, approve and the return check end in exactly the upload body the server accepts", async () => {
+  it("sign in, then Approve through live actions, sends exactly the upload body the server accepts", async () => {
     const k = await keyedPayment();
     const payer = k.payers[1]!;
     const phantom = fakeWallet("Phantom", [await accountOf(payer.keys)]);
@@ -780,16 +796,30 @@ describe("the real check, the session store and this bridge together", () => {
     await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ kind: "signed_in", account: payer.address }));
     expect(verified).toHaveLength(1);
 
-    const checked = await checkPayment.payload(k.payload, termsOf(k.room, session)!, k.room);
-    if (!checked.ok) throw new Error(checked.failure);
-    const approval = await store.keptOrNewApproval(store.getSnapshot().gen, checked.value);
-    if (!approval.ok) throw new Error(approval.failure);
-    const returned = await checkPayment.returned(checked.value, approval.value);
-    if (!returned.ok) throw new Error(returned.failure);
+    const attempt = k.wireRoom.attempt!;
+    const approved = { ...k.wireRoom, attempt: { ...attempt, signedWallets: [payer.address] } };
+    const uploads: unknown[] = [];
+    const answer = (data: unknown) => new Response(JSON.stringify({ data }), { status: 200, headers: { "content-type": "application/json" } });
+    vi.stubGlobal("fetch", async (path: string, init: RequestInit) => {
+      const route = `${init.method} ${path}`;
+      if (route === `GET /api/attempts/${attempt.id}/signing-payload`) return answer(k.wirePayload);
+      if (route === `GET /api/checkouts/${k.wireRoom.checkout.id}`) return answer(uploads.length === 0 ? k.wireRoom : approved);
+      if (route !== `POST /api/attempts/${attempt.id}/signatures`) throw new Error(`Unexpected request ${route}`);
+      uploads.push(JSON.parse(String(init.body)));
+      return answer(approved.attempt);
+    });
+    const { gen } = store.getSnapshot();
+    const signer: PaymentSigner = {
+      keptOrNewApproval: (payment) => store.keptOrNewApproval(gen, payment),
+      forget: (approval) => store.forgetApproval(gen, approval),
+      isCurrent: (payment) => store.isCurrent(gen, payment.account),
+    };
+    const approve: LiveAction = { kind: "approve", terms: termsOf(k.room, session)! };
+    expect(await live.run(approve, { track: untracked, signer })).toEqual({ kind: "done" });
 
-    const body = { messageHash: returned.value.messageHash, signatureBase64: returned.value.signature };
-    expect(body).toEqual({ messageHash: k.wirePayload.messageHash, signatureBase64: expect.stringMatching(/^[A-Za-z0-9+/]{86}==$/) });
-    const signatureBytes = Uint8Array.from(atob(body.signatureBase64), (c) => c.charCodeAt(0));
+    expect(uploads).toEqual([{ messageHash: k.wirePayload.messageHash, signatureBase64: expect.stringMatching(/^[A-Za-z0-9+/]{86}==$/) }]);
+    const { signatureBase64 } = uploads[0] as { readonly signatureBase64: string };
+    const signatureBytes = Uint8Array.from(atob(signatureBase64), (c) => c.charCodeAt(0));
     await expect(verifyPayerSignature(k.validated, { wallet: address(payer.address), signatureBytes })).resolves.toBeTruthy();
     expect(phantom.prompts().map((p) => p.kind)).toEqual(["connect", "signMessage", "signTransaction"]);
   });
