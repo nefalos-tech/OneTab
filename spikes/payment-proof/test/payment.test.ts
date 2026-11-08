@@ -1,13 +1,14 @@
 import { test } from 'node:test';
+import { createPrivateKey, createPublicKey } from 'node:crypto';
 import assert from 'node:assert/strict';
 import {
-  address, createTransactionMessage, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
+  address, createTransactionMessage, getAddressDecoder, getCompiledTransactionMessageDecoder, getCompiledTransactionMessageEncoder,
   getTransactionDecoder, getTransactionEncoder, setTransactionMessageComputeUnitLimit,
   setTransactionMessageComputeUnitPrice, signatureBytes, type TransactionMessage,
 } from '@solana/kit';
 import { getTransferCheckedInstructionDataDecoder, TOKEN_PROGRAM_ADDRESS } from '@solana-program/token';
 import {
-  assembleSubmission, freezePayment, fromBase64, inspectPayment, planSchema, toBase64, unitsSchema,
+  approvalSchema, assembleSubmission, assembleVerifiedApprovals, freezePayment, fromBase64, inspectPayment, planSchema, toBase64, unitsSchema,
   sha256, verifyApproval, verifyWalletReturn, type FrozenPayment,
 } from '../src/payment.js';
 import { randomAddress, syntheticFixture } from './fixtures.js';
@@ -198,4 +199,151 @@ test('missing, wrong, invalid, stale, changed-message and extra signatures canno
   const submission = await assembleSubmission(f.payment, [first, second]);
   assert.ok(submission.reference.length > 70);
   assert.equal(toBase64(getTransactionDecoder().decode(fromBase64(submission.signedBase64)).messageBytes), f.payment.messageBase64);
+});
+
+const P1_KNOWN_ANSWER = {
+  "id": "11111111-1111-4111-8111-111111111111",
+  "plan": {
+    "network": "devnet",
+    "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+    "decimals": 6,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "sellerWallet": "LbUiWL3xVV8hTFYBVdbTNrpDo41NKS6o3LHHuDzjfcY",
+    "sellerTokenAccount": "QWmroo4YnnMqYW3cnxWkFdaTxGD3P7vMSzwMHGbUzwF",
+    "feePayer": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+    "total": "4000001",
+    "contributions": [
+      {
+        "slot": 0,
+        "wallet": "4vJ9JU1bJJE96FWSJKvHsmmFADCg4gpZQff4P3bkLKi",
+        "sourceTokenAccount": "CktRuQ2mttgRGkXJtyksdKHjUdc2C4TgDzyB98oEzy8",
+        "units": "2000001"
+      },
+      {
+        "slot": 1,
+        "wallet": "8qbHbw2BbbTHBW1sbeqakYXVKRQM8Ne7pLK7m6CVfeR",
+        "sourceTokenAccount": "GgBaCs3NCBuZN12kCJgAW63ydqohFkHEdfdEXBPzLHq",
+        "units": "2000000"
+      }
+    ]
+  },
+  "planHash": "3ccf9aeda8b7671bce1f24e26c2f52e0a98fdf57f274069b06164644a2bd2ca1",
+  "messageHash": "ed2300a9401acbdb1dd3bfe4704dc9146a503c3a1e94f7da1cb036081e1cbff7",
+  "blockhash": "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+  "lastValidBlockHeight": "100",
+  "messageBase64": "AgEDCAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+  "transactionBase64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgEDCAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgYGBgY7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+  "version": "legacy"
+};
+
+test('P1 d1fb9d6 synthetic known-answer plan, message and unsigned transaction bytes stay unchanged', async () => {
+  const expected = { ...P1_KNOWN_ANSWER, plan: planSchema.parse(P1_KNOWN_ANSWER.plan) };
+  const payment = await freezePayment(expected);
+  assert.deepEqual(payment, expected);
+  assert.deepEqual(await inspectPayment(payment, expected), expected);
+});
+
+test('P1 wire adapter keeps two stable ordered slots and rejects supplied-share disagreement', async () => {
+  const { plan } = await syntheticFixture();
+  for (const contributions of [
+    [plan.contributions[1], plan.contributions[0]],
+    [plan.contributions[0]],
+    [...plan.contributions, { ...plan.contributions[1], slot: 2 }],
+    [{ ...plan.contributions[0], units: '2000000' }, plan.contributions[1]],
+  ]) assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
+  assert.equal(planSchema.safeParse({ ...plan, total: '1' }).success, false);
+});
+
+test('P1 adapters snapshot caller-owned envelopes and independent expectations before asynchronous hashing', async () => {
+  const expected = { ...P1_KNOWN_ANSWER, plan: planSchema.parse(P1_KNOWN_ANSWER.plan) };
+  const input = { id: expected.id, plan: planSchema.parse(expected.plan), blockhash: expected.blockhash,
+    lastValidBlockHeight: expected.lastValidBlockHeight };
+  const freezing = freezePayment(input);
+  input.id = '22222222-2222-4222-8222-222222222222';
+  input.blockhash = randomAddress();
+  input.lastValidBlockHeight = '999';
+  input.plan.sellerWallet = randomAddress();
+  assert.deepEqual(await freezing, expected);
+  const trusted = { plan: planSchema.parse(expected.plan), planHash: expected.planHash, messageHash: expected.messageHash };
+  const inspecting = inspectPayment(expected, trusted);
+  trusted.planHash = '0'.repeat(64);
+  trusted.messageHash = '1'.repeat(64);
+  trusted.plan.sellerWallet = randomAddress();
+  assert.deepEqual(await inspecting, expected);
+});
+
+test('P1 safeParse rejects malformed and overflowing canonical units without throwing', () => {
+  const plan = planSchema.parse(P1_KNOWN_ANSWER.plan);
+  for (const value of ['18446744073709551616', '1.0', '1e6', '-1', '01', 'invalid', '', '0', 1, null]) {
+    assert.equal(planSchema.safeParse({ ...plan, total: value }).success, false);
+    for (const slot of [0, 1]) {
+      const contributions = plan.contributions.map((payer, index) => index === slot ? { ...payer, units: value } : payer);
+      assert.equal(planSchema.safeParse({ ...plan, contributions }).success, false);
+    }
+  }
+});
+
+const P1_SIGNATURE_KNOWN_ANSWER = {
+  "signed": {
+    "reference": "33Xojbf2raPCjgBV9un3Kj6kh2KhS3Py3Fw6fyrka7vxs61m9r1fbwf3YdVqaMPayNRfuJ9PjuDbQHb7HNXmKoqV",
+    "signedBase64": "AmY3fPcGr2Cv0LiNOcNea8e+m3xhbahKZwJt8JlxdFU4c+hlsnoO6FA0Q6nvDRQm1D1FOKTp8qXNu8w/O1VMQwRR/LykN7sSBm0Z7spcsD4mN111oXtUZplmOivXCL5PQgvyo3xbIR1+lJeWo1SG/ed0Xj3s6mpUcpzde/IfKf8EAgEDCIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cgTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY=",
+    "signedHash": "d812e54e532ea8836d2182d149227637780478b34e61e1edc1b248c49f5e94e4"
+  },
+  "diagnostic": {
+    "reference": "",
+    "signedBase64": "AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABR/LykN7sSBm0Z7spcsD4mN111oXtUZplmOivXCL5PQgvyo3xbIR1+lJeWo1SG/ed0Xj3s6mpUcpzde/IfKf8EAgEDCIqI4910CfGV/VLbLTy6XXLKZwm/HZQSG/N0iAG0D29cgTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCwsLCws7RCyzkSFX8TqTPQE0KC0DK1/+zQGi2/G3eQYI3wAupwMGRm/lIRcy/+ytunLDm+e8jOW7xfcSayxDmzpAAAAABt324ddloZPZy+FGzut5rBy0he1fWzeROoz1hX7/AKkeHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHgQGAAUCgBoGAAYACQMAAAAAAAAAAAcEAgUEAAoMgYQeAAAAAAAGBwQDBQQBCgyAhB4AAAAAAAY="
+  }
+};
+
+async function deterministicSignatureFixture() {
+  const syntheticAddress = (value: number) => getAddressDecoder().decode(new Uint8Array(32).fill(value));
+  const keys = [1, 2].map(value => createPrivateKey({
+    key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.alloc(32, value)]),
+    format: 'der', type: 'pkcs8',
+  }));
+  const wallets = keys.map(key => getAddressDecoder().decode(
+    createPublicKey(key).export({ format: 'der', type: 'spki' }).subarray(-32),
+  ));
+  const plan = planSchema.parse({
+    network: 'devnet', mint: P1_KNOWN_ANSWER.plan.mint, decimals: 6, tokenProgram: TOKEN_PROGRAM_ADDRESS,
+    sellerWallet: syntheticAddress(10), sellerTokenAccount: syntheticAddress(11), feePayer: wallets[0], total: '4000001',
+    contributions: wallets.map((wallet, slot) => ({
+      slot, wallet, sourceTokenAccount: syntheticAddress(20 + slot), units: slot ? '2000000' : '2000001',
+    })),
+  });
+  const payment = await freezePayment({ id: P1_KNOWN_ANSWER.id, plan, blockhash: syntheticAddress(30), lastValidBlockHeight: '100' });
+  const approvals = await Promise.all(keys.map(async (key, slot) => {
+    const imported = await crypto.subtle.importKey('pkcs8', key.export({ format: 'der', type: 'pkcs8' }), 'Ed25519', false, ['sign']);
+    return { slot, messageHash: payment.messageHash, signatureBase64: toBase64(new Uint8Array(
+      await crypto.subtle.sign('Ed25519', imported, Uint8Array.from(fromBase64(payment.messageBase64)).buffer),
+    )) };
+  }));
+  return { payment, approvals: approvals.map(value => approvalSchema.parse(value)) };
+}
+
+test('P1 signed transaction, reference, hash and incomplete diagnostic match the pre-extraction Ed25519 baseline', async () => {
+  const { payment, approvals } = await deterministicSignatureFixture();
+  assert.deepEqual(await assembleSubmission(payment, approvals), P1_SIGNATURE_KNOWN_ANSWER.signed);
+  assert.deepEqual(await assembleSubmission(payment, [...approvals].reverse()), P1_SIGNATURE_KNOWN_ANSWER.signed);
+  assert.deepEqual(assembleVerifiedApprovals(payment, approvals.slice(1), true), P1_SIGNATURE_KNOWN_ANSWER.diagnostic);
+});
+
+test('P1 signature adapters snapshot the payment message before awaiting verification', async () => {
+  const first = await deterministicSignatureFixture();
+  const approval = first.approvals[0];
+  assert.ok(approval);
+  const verification = verifyApproval(first.payment, approval);
+  first.payment.messageBase64 = toBase64(new Uint8Array([1, 2, 3]));
+  assert.deepEqual(await verification, approval);
+});
+
+test('P1 signature adapters snapshot the frozen transaction and complete approval collection before awaiting assembly', async () => {
+  const second = await deterministicSignatureFixture();
+  const assembly = assembleSubmission(second.payment, second.approvals);
+  second.payment.messageBase64 = toBase64(new Uint8Array([1, 2, 3]));
+  second.payment.transactionBase64 = '';
+  second.payment.plan.feePayer = randomAddress();
+  second.approvals[0] = { slot: 1, messageHash: '0'.repeat(64), signatureBase64: '' };
+  second.approvals.length = 1;
+  assert.deepEqual(await assembly, P1_SIGNATURE_KNOWN_ANSWER.signed);
 });

@@ -1,8 +1,11 @@
 import type {
   Address,
+  AttemptId,
   AttemptSummary,
+  BlockHeight,
   CheckoutId,
   ClientRequestId,
+  Network,
   PayerCount,
   PublicConfig,
   Receipt,
@@ -11,7 +14,7 @@ import type {
   TokenUnits,
 } from "./contracts";
 
-export type { ClientRequestId, Session } from "./contracts";
+export type { AttemptId, ClientRequestId, Session } from "./contracts";
 import {
   FLOW_STEPS,
   NETWORK_LABELS,
@@ -114,6 +117,14 @@ export type TabView = {
 };
 export type YouView = { readonly share: Money; readonly status: SpotStatus; readonly isOrganizer: boolean };
 
+export type ApprovalView = {
+  readonly share: Money;
+  readonly seller: Address;
+  readonly total: Money;
+  readonly network: string;
+  readonly fee: string;
+};
+
 export type CreateRequest = {
   readonly title: string;
   readonly sellerWallet: Address;
@@ -130,11 +141,12 @@ type ActionPayload = {
   readonly copy_link: Href;
   readonly connect_wallet: NoPayload;
   readonly join: { readonly checkoutId: CheckoutId };
-  readonly mark_ready: NoPayload;
-  readonly mark_not_ready: NoPayload;
-  readonly start_payment: NoPayload;
-  readonly approve: NoPayload;
-  readonly retry: { readonly retryOfAttemptId: string };
+  readonly mark_ready: { readonly checkoutId: CheckoutId };
+  readonly mark_not_ready: { readonly checkoutId: CheckoutId };
+  readonly start_payment: { readonly checkoutId: CheckoutId };
+  readonly approve: { readonly terms: ApprovalTerms };
+  readonly decline: { readonly checkoutId: CheckoutId; readonly attemptId: AttemptId };
+  readonly retry: { readonly retryOfAttemptId: AttemptId };
   readonly view_status: Href;
   readonly view_receipt: Href;
   readonly back_to_checkout: Href;
@@ -146,6 +158,21 @@ type ActionPayload = {
 export type ActionOf<K extends ActionKind> = { [P in K]: { readonly kind: P } & ActionPayload[P] }[K];
 export type Action = ActionOf<ActionKind>;
 
+export type ApprovalTerms = {
+  readonly checkoutId: CheckoutId;
+  readonly attemptId: AttemptId;
+  readonly network: Network;
+  readonly mint: Address;
+  readonly tokenDecimals: number;
+  readonly totalUnits: TokenUnits;
+  readonly payerCount: PayerCount;
+  readonly seller: Address;
+  readonly feePayer: Address;
+  readonly contributions: readonly { readonly slot: number; readonly wallet: Address; readonly amountUnits: TokenUnits }[];
+  readonly payer: Address;
+  readonly lastValidBlockHeight: BlockHeight | null;
+};
+
 export type ActionsView = {
   readonly primary: Action | null;
   readonly secondary: readonly Action[];
@@ -156,17 +183,31 @@ export type Notice = {
   readonly text: string;
   readonly followUp: Action | null;
   readonly wallet: Address | null;
-  readonly raisedBy: ActionKind;
+  readonly raisedBy: Action;
 };
 
 export function noticeApplies(notice: Notice, now: { readonly wallet: Address | null; readonly actions: ActionsView }): boolean {
-  const offered = [now.actions.primary, ...now.actions.secondary];
-  return notice.wallet === now.wallet && offered.some((action) => action?.kind === notice.raisedBy);
+  const { kind } = notice.raisedBy;
+  const attempt = attemptOf(notice.raisedBy);
+  return notice.wallet === now.wallet && offered(now.actions).some((a) => a.kind === kind && attemptOf(a) === attempt);
 }
+
+export function busyShown(running: ActionKind | null, prompting: AttemptId | null, actions: ActionsView): ActionKind | null {
+  if (running !== null) return running;
+  return offered(actions).some((a) => a.kind === "approve" && a.terms.attemptId === prompting) ? "approve" : null;
+}
+
+function attemptOf(action: Action): AttemptId | null {
+  if (action.kind === "approve") return action.terms.attemptId;
+  return action.kind === "decline" ? action.attemptId : null;
+}
+
+const offered = (actions: ActionsView): readonly Action[] =>
+  [actions.primary, ...actions.secondary].filter((a): a is Action => a !== null);
 
 export type Recovery =
   | { readonly kind: "on_hold" }
-  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: string }
+  | { readonly kind: "organizer_can_retry"; readonly retryOfAttemptId: AttemptId }
   | { readonly kind: "waiting_for_organizer" };
 
 export type ResultBody =
@@ -200,6 +241,7 @@ export type RoomView = {
   readonly status: StatusView;
   readonly tab: TabView;
   readonly you: YouView | null;
+  readonly approval: ApprovalView | null;
   readonly actions: ActionsView;
 };
 
@@ -230,8 +272,15 @@ export function deriveRoomView(state: CheckoutState): RoomView {
   const role = roleOf(state.snapshot, state.session, c.situation);
   const tab = tabOf(state.snapshot, role);
   const me = tab.spots.find((s) => s.isViewer) ?? null;
+  const terms = termsOf(state.snapshot, state.session);
   const plan = isOwnedBy(c.situation, "room")
-    ? ROOM_ACTIONS[c.situation]({ checkoutId: state.snapshot.checkout.id, role, me: me?.status ?? null, links: state.source.links })
+    ? ROOM_ACTIONS[c.situation]({
+        checkoutId: state.snapshot.checkout.id,
+        role,
+        me: me?.status ?? null,
+        links: state.source.links,
+        terms,
+      })
     : {
         primary:
           c.situation === "paid"
@@ -244,7 +293,20 @@ export function deriveRoomView(state: CheckoutState): RoomView {
     status: statusOf(c, role, tab),
     tab,
     you: me && { share: me.share, status: me.status, isOrganizer: me.isOrganizer },
+    approval: terms && approvalOf(terms),
     actions: { ...plan, sample: sampleActions(state) },
+  };
+}
+
+function approvalOf(terms: ApprovalTerms): ApprovalView | null {
+  const mine = terms.contributions.find((c) => c.wallet === terms.payer);
+  if (mine === undefined) return null;
+  return {
+    share: { units: mine.amountUnits, decimals: terms.tokenDecimals },
+    seller: terms.seller,
+    total: { units: terms.totalUnits, decimals: terms.tokenDecimals },
+    network: NETWORK_LABELS[terms.network],
+    fee: terms.payer === terms.feePayer ? WORDS.fee_you_pay : WORDS.fee_organizer_pays,
   };
 }
 
@@ -297,6 +359,29 @@ export function deriveReviewActions(
   };
 }
 
+export function termsOf(snapshot: RoomSnapshot, session: Session | null): ApprovalTerms | null {
+  const { checkout, participants, attempt } = snapshot;
+  if (attempt === null || (attempt.state !== "preparing" && attempt.state !== "signing")) return null;
+  if (session === null || session.wallet === checkout.sellerWallet || participants.length !== checkout.payerCount) return null;
+  if (!participants.some((p) => p.wallet === session.wallet) || attempt.signedWallets.includes(session.wallet)) return null;
+  return {
+    checkoutId: checkout.id,
+    attemptId: attempt.id,
+    network: checkout.network,
+    mint: checkout.mint,
+    tokenDecimals: checkout.tokenDecimals,
+    totalUnits: checkout.totalUnits,
+    payerCount: checkout.payerCount,
+    seller: checkout.sellerWallet,
+    feePayer: checkout.organizerWallet,
+    contributions: [...participants]
+      .sort((a, b) => a.slot - b.slot)
+      .map((p) => ({ slot: p.slot, wallet: p.wallet, amountUnits: p.shareUnits })),
+    payer: session.wallet,
+    lastValidBlockHeight: attempt.lastValidBlockHeight,
+  };
+}
+
 type PaidAttempt = AttemptSummary & { readonly state: "confirmed"; readonly receipt: Receipt };
 
 type Classified =
@@ -332,6 +417,10 @@ function classify(snapshot: RoomSnapshot): Classified {
       throw new Error(`Unknown attempt state ${String(unknown)}`);
     }
   }
+}
+
+export function ownerOf(snapshot: RoomSnapshot): Screen {
+  return SITUATIONS[classify(snapshot).situation].owner;
 }
 
 function isOwnedBy<S extends Screen>(situation: Situation, screen: S): situation is OwnedBy<S> {
@@ -528,21 +617,22 @@ type ActorContext = {
   readonly role: ViewerRole;
   readonly me: SpotStatus | null;
   readonly links: ScreenLinks;
+  readonly terms: ApprovalTerms | null;
 };
 type ActionPlan = { readonly primary: Action | null; readonly secondary: readonly Action[] };
 
 const NONE: ActionPlan = { primary: null, secondary: [] };
 const CONNECT: ActionPlan = { primary: { kind: "connect_wallet" }, secondary: [] };
 const isMember = (role: ViewerRole): boolean => role.kind === "organizer" || role.kind === "payer";
-const readinessToggle = (me: SpotStatus | null): Action =>
-  me === "ready" ? { kind: "mark_not_ready" } : { kind: "mark_ready" };
+const readinessToggle = (c: ActorContext): Action =>
+  c.me === "ready" ? { kind: "mark_not_ready", checkoutId: c.checkoutId } : { kind: "mark_ready", checkoutId: c.checkoutId };
 
 const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => ActionPlan } = {
   open_spots: (c) =>
     c.role.kind === "signed_out"
       ? CONNECT
       : isMember(c.role)
-        ? { primary: { kind: "copy_link", href: c.links.room }, secondary: [readinessToggle(c.me)] }
+        ? { primary: { kind: "copy_link", href: c.links.room }, secondary: [readinessToggle(c)] }
         : c.role.kind === "guest"
           ? { primary: { kind: "join", checkoutId: c.checkoutId }, secondary: [] }
           : NONE,
@@ -552,23 +642,23 @@ const ROOM_ACTIONS: { readonly [S in OwnedBy<"room">]: (c: ActorContext) => Acti
       : !isMember(c.role)
         ? NONE
         : c.me === "ready"
-          ? { primary: null, secondary: [{ kind: "mark_not_ready" }] }
-          : { primary: { kind: "mark_ready" }, secondary: [] },
+          ? { primary: null, secondary: [readinessToggle(c)] }
+          : { primary: readinessToggle(c), secondary: [] },
   ready: (c) =>
     c.role.kind === "signed_out"
       ? CONNECT
       : !isMember(c.role)
         ? NONE
         : {
-            primary: c.role.kind === "organizer" ? { kind: "start_payment" } : null,
-            secondary: [{ kind: "mark_not_ready" }],
+            primary: c.role.kind === "organizer" ? { kind: "start_payment", checkoutId: c.checkoutId } : null,
+            secondary: [{ kind: "mark_not_ready", checkoutId: c.checkoutId }],
           },
   preparing: (c) => (c.role.kind === "signed_out" ? CONNECT : NONE),
   signing: (c) =>
     c.role.kind === "signed_out"
       ? CONNECT
-      : isMember(c.role) && c.me !== "approved"
-        ? { primary: { kind: "approve" }, secondary: [] }
+      : isMember(c.role) && c.terms
+        ? { primary: { kind: "approve", terms: c.terms }, secondary: [] }
         : NONE,
 };
 
@@ -592,21 +682,21 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
         : c.role.kind === "seller"
           ? WORDS.seller_no_spot
           : c.role.kind === "organizer"
-            ? `Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
+            ? `${c.me === "ready" ? `${WORDS.you_are_ready} ` : ""}Waiting for ${count(c.openSpots, "more payer")}. Copy the link and send it to them.`
             : c.role.kind === "payer"
-              ? `You joined. Waiting for ${count(c.openSpots, "more payer")}.`
+              ? `${c.me === "ready" ? WORDS.you_are_ready : "You joined."} Waiting for ${count(c.openSpots, "more payer")}.`
               : `Waiting for ${count(c.openSpots, "more payer")} to join.`,
   full_not_ready: (c) =>
     isMember(c.role) && c.me !== "ready"
-      ? "Everyone has joined. Check your share, then tell the group you're ready."
+      ? "Everyone has joined. Check your share, then tell the group you're ready, which moves no money."
       : isMember(c.role)
-        ? `You're ready. Waiting for ${count(c.notReady, "more payer")} to get ready.`
+        ? `${WORDS.you_are_ready} Waiting for ${count(c.notReady, "more payer")} to get ready.`
         : c.role.kind === "signed_out"
           ? `Waiting for ${count(c.notReady, "payer")} to get ready. ${SIGNED_OUT}`
           : `${FULL} Waiting for ${count(c.notReady, "payer")} to get ready.`,
   ready: (c) =>
     c.role.kind === "organizer"
-      ? "Everyone is ready. Start the payment to ask each payer to approve their share."
+      ? "Everyone is ready. Start the payment to ask each payer to approve it."
       : isMember(c.role)
         ? "Everyone is ready. Waiting for the organizer to start the payment."
         : c.role.kind === "signed_out"
@@ -616,7 +706,7 @@ const STATUS_COPY: { readonly [S in Situation]: (c: CopyContext) => string } = {
     `Preparing the payment, and approvals open in a moment.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,
   signing: (c) =>
     isMember(c.role) && c.me !== "approved"
-      ? "Approve your share in your wallet. Nothing is sent until everyone approves."
+      ? "Check the payment, then approve it in your wallet. Nothing is sent until everyone approves."
       : isMember(c.role)
         ? `You approved. Waiting for ${count(c.approvals.total - c.approvals.done, "more approval")}.`
         : `${c.approvals.done} of ${c.approvals.total} payers approved.${c.role.kind === "signed_out" ? ` ${SIGNED_OUT}` : ""}`,

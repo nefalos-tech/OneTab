@@ -6,6 +6,8 @@ import { resolve, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { syntheticFixture } from './fixtures.ts';
+import { runPaymentCoreBrowserChecks } from './payment-core-browser.mjs';
+import { runSignatureCoreBrowserChecks } from './signature-core-browser.mjs';
 
 const { values } = parseArgs({ options: { 'playwright-module': { type: 'string' }, 'browser-executable': { type: 'string' } } });
 assert.ok(values['playwright-module'], 'Pass --playwright-module with an existing Playwright index.mjs path');
@@ -165,4 +167,6 @@ try {
   await new Promise((resolveClose, rejectClose) => server.close(error => error ? rejectClose(error) : resolveClose()));
 }
 console.log(`Invitation navigation regression ${failed ? 'FAILED' : 'PASSED'} in ${browser.version()}`);
+failed += await runPaymentCoreBrowserChecks({ chromium, browserExecutable: values['browser-executable'] });
+failed += await runSignatureCoreBrowserChecks({ chromium, browserExecutable: values['browser-executable'] });
 process.exitCode = failed ? 1 : 0;

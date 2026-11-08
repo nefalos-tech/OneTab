@@ -1,24 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test as base, type Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { SITUATIONS } from "../src/client/catalog";
 import { shortAddress } from "../src/client/checkout-view";
 import { parseRoomSnapshot } from "../src/client/contracts";
-import { FAKE_API, LIVE, ROOMS, WALLETS, freshCountedRoom } from "./fake-api.mjs";
+import { expect, test } from "./browser-api";
+import { FAKE_API, LIVE, ROOMS, SCRIPT, WALLETS, freshCountedRoom, nextStep, scriptedRoom } from "./fake-api.mjs";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
-
-const test = base.extend<{ failOnAnyApiCall: string[] }>({
-  failOnAnyApiCall: [
-    async ({ page }, use) => {
-      const calls: string[] = [];
-      page.on("request", (request) => {
-        if (new URL(request.url()).pathname.startsWith("/api/")) calls.push(`${request.method()} ${request.url()}`);
-      });
-      await use(calls);
-      expect(calls, "a live page called an API route from the browser").toEqual([]);
-    },
-    { auto: true },
-  ],
-});
 
 async function capture(page: Page, name: string) {
   const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
@@ -41,6 +29,8 @@ async function readDetails(page: Page) {
 
 test("every fake room is a snapshot the contract allows", () => {
   for (const [id, snapshot] of Object.entries(ROOMS)) expect(parseRoomSnapshot(snapshot), id).not.toBeNull();
+  const id = scriptedRoom();
+  for (const [step, room] of SCRIPT.entries()) expect(parseRoomSnapshot(room(id)), `script step ${step}`).not.toBeNull();
 });
 
 test("a live room shows its seller, total, payers and every share to someone signed out", async ({ page }) => {
@@ -155,3 +145,116 @@ test("live create uses the server's configuration and asks to connect a wallet b
   await expect(page.locator("[data-wallet-line]")).toHaveText("Sign-in isn't available right now. Try again in a moment.");
   await expect(page.getByRole("button", { name: "Create checkout" })).toHaveCount(0);
 });
+
+const label = (page: Page) => page.locator("[data-status-label]");
+const spotStatus = (page: Page, spot: number) => payer(page, spot).locator("[data-status]");
+const roomReads = (page: Page, id: string) => page.waitForRequest((r) => new URL(r.url()).pathname === `/api/checkouts/${id}`);
+
+test("three payers' screens agree on readiness and approvals at every step, and each moves to the result", async ({ page, browserApi, request }) => {
+  test.setTimeout(60_000);
+  const id = scriptedRoom();
+  const pages = [page, await browserApi.newPage(), await browserApi.newPage()];
+  for (const p of pages) await p.goto(room(id));
+  const steps = [
+    { label: SITUATIONS.full_not_ready.label, progress: "3 of 3 joined, 1 ready", spots: ["ready", "joined", "joined"] },
+    { label: SITUATIONS.ready.label, progress: "3 of 3 joined, 3 ready", spots: ["ready", "ready", "ready"] },
+    { label: SITUATIONS.preparing.label, progress: "0 of 3 approved", spots: ["ready", "ready", "ready"] },
+    { label: SITUATIONS.signing.label, progress: "1 of 3 approved", spots: ["ready", "ready", "approved"] },
+    { label: SITUATIONS.signing.label, progress: "2 of 3 approved", spots: ["approved", "ready", "approved"] },
+  ];
+  for (const [index, step] of steps.entries()) {
+    if (index > 0) await request.post(nextStep(id));
+    for (const p of pages) {
+      await expect(label(p)).toHaveText(step.label);
+      await expect(p.locator("[data-surface='brand']")).toContainText(step.progress);
+      for (const [slot, status] of step.spots.entries()) await expect(spotStatus(p, slot + 1)).toHaveAttribute("data-status", status);
+      await expect(p.getByRole("button", { name: "Start payment" })).toHaveCount(0);
+      await expect(p.getByRole("button", { name: "Approve in wallet" })).toHaveCount(0);
+    }
+  }
+  const approved = await spotStatus(page, 1).evaluate((el) => getComputedStyle(el).backgroundColor);
+  const ready = await spotStatus(page, 2).evaluate((el) => getComputedStyle(el).backgroundColor);
+  expect(approved, "Ready and Approved look different").not.toBe(ready);
+  await capture(page, "room-two-approved");
+
+  await request.post(nextStep(id));
+  for (const p of pages) {
+    await expect(p).toHaveURL(`${room(id)}/result`);
+    await expect(label(p)).toHaveText(SITUATIONS.submitting.label);
+  }
+});
+
+test("a page opened after the room moved on stays put, and Back after a move shows the current room without bouncing", async ({
+  page,
+  browserApi,
+  request,
+}) => {
+  test.setTimeout(60_000);
+  const id = scriptedRoom();
+  for (let step = 0; step < 4; step++) await request.post(nextStep(id));
+  const firstRead = roomReads(page, id);
+  await page.goto(room(id));
+  await (await firstRead).response();
+  await expect(label(page)).toHaveText(SITUATIONS.signing.label);
+  await request.post(nextStep(id));
+  await expect(page).toHaveURL(`${room(id)}/result`);
+
+  const later = await browserApi.newPage();
+  await later.goto(room(id));
+  await expect(later.locator("[data-situation]")).toHaveAttribute("data-situation", "submitting");
+  await roomReads(later, id);
+  await roomReads(later, id);
+  await expect(later).toHaveURL(room(id));
+  await expect(later.locator("[data-action='primary']")).toHaveText("View payment status");
+
+  await page.goBack();
+  await expect(page).toHaveURL(room(id));
+  await expect(page.locator("[data-situation]")).toHaveAttribute("data-situation", "submitting");
+  await roomReads(page, id);
+  await expect(page).toHaveURL(room(id));
+  await capture(page, "room-after-back");
+});
+
+function roomReadTimes(page: Page, id: string): number[] {
+  const at: number[] = [];
+  page.on("request", (r) => {
+    if (new URL(r.url()).pathname === `/api/checkouts/${id}`) at.push(Date.now());
+  });
+  return at;
+}
+
+const showPage = (page: Page, state: "hidden" | "visible") =>
+  page.evaluate((visibility) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, state);
+
+test("a live page reads its room about every two seconds, never faster", async ({ page }) => {
+  const id = scriptedRoom();
+  const reads = roomReadTimes(page, id);
+  await page.goto(room(id));
+  await expect.poll(() => reads.length).toBe(1);
+  const from = reads[0]!;
+  await page.waitForTimeout(6_500);
+  const inWindow = reads.filter((t) => t <= from + 6_500);
+  expect(inWindow.length, "a read at once, then one every two seconds").toBeGreaterThanOrEqual(3);
+  expect(inWindow.length, "no faster than every two seconds").toBeLessThanOrEqual(4);
+  for (const [i, t] of inWindow.slice(1).entries()) expect(t - inWindow[i]!, `gap before read ${i + 2}`).toBeGreaterThan(1_500);
+});
+
+test("a hidden live page stops reading its room, and reads at once when shown again", async ({ page }) => {
+  const id = scriptedRoom();
+  const reads = roomReadTimes(page, id);
+  await page.goto(room(id));
+  await expect.poll(() => reads.length).toBe(1);
+  await showPage(page, "hidden");
+  const whileHidden = reads.length;
+  await page.waitForTimeout(5_000);
+  expect(reads.length, "no reads while hidden").toBe(whileHidden);
+  const shownAt = Date.now();
+  await showPage(page, "visible");
+  await expect.poll(() => reads.length).toBe(whileHidden + 1);
+  expect(reads.at(-1)! - shownAt, "the read is at once, not at the next tick").toBeLessThan(1_000);
+  await expect.poll(() => reads.length, { timeout: 4_000 }).toBe(whileHidden + 2);
+});
+

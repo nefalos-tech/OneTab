@@ -1,11 +1,15 @@
 import {
   looksLikeAddress,
+  isAttemptId,
+  isBlockHeight,
   isCheckoutId,
   isTokenUnits,
   type Address,
+  type AttemptId,
   type AttemptError,
   type AttemptState,
   type AttemptSummary,
+  type BlockHeight,
   type CheckoutId,
   type PayerCount,
   type Phase,
@@ -32,9 +36,22 @@ function units(s: string): TokenUnits {
   return s;
 }
 
-function sampleId(n: number, variant: "8" | "9"): CheckoutId {
-  const s = `00000000-0000-4000-${variant}000-${n.toString(16).padStart(12, "0")}`;
+function height(s: string): BlockHeight {
+  if (!isBlockHeight(s)) throw new Error(`Sample height is not a block height: ${s}`);
+  return s;
+}
+
+const sampleUuid = (n: number, variant: "8" | "9"): string => `00000000-0000-4000-${variant}000-${n.toString(16).padStart(12, "0")}`;
+
+function sampleId(n: number): CheckoutId {
+  const s = sampleUuid(n, "8");
   if (!isCheckoutId(s)) throw new Error(`Sample id is not a UUID: ${s}`);
+  return s;
+}
+
+function sampleAttemptId(n: number): AttemptId {
+  const s = sampleUuid(n, "9");
+  if (!isAttemptId(s)) throw new Error(`Sample attempt id is not a UUID: ${s}`);
   return s;
 }
 
@@ -57,7 +74,7 @@ export const SAMPLE_SESSION_EXPIRY = "2099-01-01T00:00:00.000Z";
 
 const SPOT_WALLETS = [SAMPLE_WALLETS.organizer, SAMPLE_WALLETS.bea, SAMPLE_WALLETS.cam] as const;
 const TRANSACTION_REFERENCE = sampleBase58("transaction", "Txn5", 88);
-const LAST_VALID_BLOCK_HEIGHT = "312345678";
+const LAST_VALID_BLOCK_HEIGHT = height("312345678");
 const CREATED_AT = "2026-11-07T09:00:00.000Z";
 const OBSERVED_AT = "2026-11-07T14:05:00.000Z";
 
@@ -146,7 +163,7 @@ function build(index: number, spec: Spec): RoomSnapshot {
     ready: attempt !== undefined || includes(spec.ready, slot),
   }));
   const checkout = {
-    id: sampleId(index + 1, "8"),
+    id: sampleId(index + 1),
     title: purchase.title,
     organizerWallet: SAMPLE_WALLETS.organizer,
     sellerWallet: SAMPLE_WALLETS.seller,
@@ -159,7 +176,7 @@ function build(index: number, spec: Spec): RoomSnapshot {
   };
   const summary: AttemptSummary | null = attempt
     ? {
-        id: sampleId(index + 1, "9"),
+        id: sampleAttemptId(index + 1),
         state: attempt.state,
         signedWallets: participants.filter((p) => includes(attempt.approved, p.slot)).map((p) => p.wallet),
         transactionReference: attempt.sent ? TRANSACTION_REFERENCE : null,

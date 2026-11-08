@@ -3,6 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { ACTIONS, SITUATIONS } from "../src/client/catalog";
 import { deriveResultView, deriveRoomView } from "../src/client/checkout-view";
 import { FIXTURES, fixtureCases, personaParam } from "../src/client/fixtures";
+import { formatMoney, splitEqually, toTokenUnits } from "../src/client/units";
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
@@ -101,6 +102,44 @@ test("a stubbed action announces that nothing was sent and stays put", async ({ 
   await page.getByRole("button", { name: ACTIONS.approve.label }).click();
   await expect(page.getByRole("status").filter({ hasText: "Approve in wallet isn't connected in sample data. Nothing was sent." })).toBeVisible();
   await expect(page).toHaveURL(/\/checkouts\/sample-signing\?as=spot-2$/);
+});
+
+test("at 320px the approval summary keeps a long share's digits on one line and stays on screen", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("/checkouts/sample-signing?as=spot-2");
+  const total = toTokenUnits(10_000_000_001n);
+  const share = formatMoney({ units: splitEqually(total, 3)[1]!, decimals: 6 });
+  expect(share).toBe("3,333.333334");
+  const panel = page.locator("[data-situation]");
+  const hero = panel.locator("[data-amount]").first();
+  // Sample data has no amount this long, so the test puts one into the rendered summary.
+  const setDigits = (amount: Locator, text: string) =>
+    amount.evaluate((el, digits) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) if (/\d/.test(node.textContent ?? "")) node.textContent = digits;
+    }, text);
+  await setDigits(hero, share);
+  await setDigits(panel.locator("dd [data-amount]"), formatMoney({ units: total, decimals: 6 }));
+  await expect(hero).toHaveText(`${share} test USDC`);
+
+  const digitLines = await hero.evaluate((el) => {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!/\d/.test(node.textContent ?? "")) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+    }
+    return 0;
+  });
+  expect(digitLines, "the share's digits sit on one line").toBe(1);
+  const edges = await panel.evaluate((el) => ({
+    panel: el.getBoundingClientRect().right,
+    content: Math.max(...[...el.querySelectorAll("*")].map((e) => e.getBoundingClientRect().right)),
+  }));
+  expect(edges.panel, "the status panel fits the screen").toBeLessThanOrEqual(320);
+  expect(edges.content, "nothing runs past the status panel's edge").toBeLessThanOrEqual(edges.panel);
+  await panel.screenshot({ path: "test-results/screens/approval-summary-320.png" });
 });
 
 test("Copy link copies the room address and confirms it", async ({ page, context, baseURL }) => {

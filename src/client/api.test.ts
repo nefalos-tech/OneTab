@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { PaymentApproval, SignatureBase64 } from "@/lib/wallet/environment";
 import { apiOrigin, checkoutApi, originFetch, send, type FetchLike } from "./api";
-import type { ClientRequestId } from "./contracts";
+import { parseSigningPayload, type ClientRequestId, type MessageHash } from "./contracts";
 import { SAMPLE_CONFIG } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
+import { wirePayloadFor } from "./payment-fixture";
 
 type Call = { readonly path: string; readonly init: RequestInit };
 
@@ -209,13 +211,93 @@ describe("checkoutApi create and join", () => {
     ["ORIGIN_MISMATCH", () => json(403, errorBody("ORIGIN_MISMATCH")), "refused"],
     ["IDEMPOTENCY_CONFLICT", () => json(409, errorBody("IDEMPOTENCY_CONFLICT")), "refused"],
     ["CHECKOUT_NOT_FOUND", () => json(404, errorBody("CHECKOUT_NOT_FOUND")), "refused"],
-    ["CHECKOUT_PAID", () => json(409, errorBody("CHECKOUT_PAID")), "refused"],
+    ["CHECKOUT_PAID", () => json(409, errorBody("CHECKOUT_PAID")), "room_changed"],
     ["CONFIGURATION_UNAVAILABLE", () => json(503, errorBody("CONFIGURATION_UNAVAILABLE")), "unavailable"],
-    ["an unexpected code", () => json(422, errorBody("INSUFFICIENT_SOL")), "unavailable"],
+    ["an unexpected code", () => json(503, errorBody("RPC_UNAVAILABLE")), "unavailable"],
     ["a bare 404", html404, "unavailable"],
     ["no answer", () => Promise.reject(new TypeError("fetch failed")), "unavailable"],
   ])("reads %s on create and join as %s", async (_, respond, failure) => {
     expect(await api(respond).create(REQUEST, REQUEST_ID)).toEqual({ ok: false, failure });
     expect(await api(respond).join(ID)).toEqual({ ok: false, failure });
+  });
+});
+
+describe("checkoutApi readiness and attempts", () => {
+  const room = FIXTURES.signing.snapshot;
+  const attempt = room.attempt!;
+  const checkoutId = room.checkout.id;
+  const attemptId = attempt.id;
+  const wire = wirePayloadFor(room);
+  const approval: PaymentApproval = { messageHash: "5a".repeat(32) as MessageHash, signature: "c2lnbmF0dXJl" as SignatureBase64 };
+  const answerFor = (call: Call) =>
+    json(200, { data: call.path.endsWith("/readiness") ? room : call.path.endsWith("/signing-payload") ? wire : attempt });
+  const everyOperation = (api: ReturnType<typeof checkoutApi>) => [
+    api.setReady(checkoutId, true),
+    api.startAttempt(checkoutId),
+    api.signingPayload(attemptId),
+    api.uploadApproval(attemptId, approval),
+    api.refreshAttempt(attemptId),
+    api.decline(attemptId),
+  ];
+
+  it("sends each operation to its contract path with exactly the contract's body", async () => {
+    const { fetch, calls } = stubFetch(answerFor);
+    const api = checkoutApi(fetch);
+    await api.setReady(checkoutId, false);
+    await Promise.all(everyOperation(api));
+    expect(calls.map((c) => [c.init.method, c.path, c.init.body === undefined ? null : JSON.parse(String(c.init.body))])).toEqual([
+      ["PUT", `/api/checkouts/${checkoutId}/readiness`, { ready: false }],
+      ["PUT", `/api/checkouts/${checkoutId}/readiness`, { ready: true }],
+      ["POST", `/api/checkouts/${checkoutId}/attempts`, { retryOfAttemptId: null }],
+      ["GET", `/api/attempts/${attemptId}/signing-payload`, null],
+      ["POST", `/api/attempts/${attemptId}/signatures`, { messageHash: approval.messageHash, signatureBase64: approval.signature }],
+      ["POST", `/api/attempts/${attemptId}/refresh`, null],
+      ["POST", `/api/attempts/${attemptId}/decline`, null],
+    ]);
+  });
+
+  it("reads readiness as the room, the payload parsed, and every attempt route as the attempt", async () => {
+    const [ready, started, payload, uploaded, refreshed, declined] = await Promise.all(everyOperation(api(answerFor)));
+    expect(ready).toEqual({ ok: true, value: room });
+    expect(payload).toEqual({ ok: true, value: parseSigningPayload(wire) });
+    for (const answer of [started, uploaded, refreshed, declined]) expect(answer).toEqual({ ok: true, value: attempt });
+  });
+
+  it("refuses an answer about another room or attempt, or one that doesn't parse", async () => {
+    const other = FIXTURES["declined-on-hold"].snapshot;
+    const otherAttempt = { ...attempt, id: other.attempt!.id };
+    expect(await api(() => json(200, { data: other })).setReady(checkoutId, true)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await api(() => json(200, { data: otherAttempt })).uploadApproval(attemptId, approval)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await api(() => json(200, { data: room })).refreshAttempt(attemptId)).toEqual({ ok: false, failure: "unavailable" });
+    expect(await api(() => json(201, { data: otherAttempt })).startAttempt(checkoutId)).toEqual({ ok: true, value: otherAttempt });
+  });
+
+  it.each<[string, unknown]>([
+    ["another attempt", wirePayloadFor(FIXTURES["declined-on-hold"].snapshot)],
+    ["a hash that isn't one", { ...wire, messageHash: "nope" }],
+    ["another network", { ...wire, payment: { ...(wire.payment as object), network: "mainnet-beta" } }],
+  ])("reads a signing payload for %s as a payment that doesn't match, never as an outage", async (_, data) => {
+    expect(await api(() => json(200, { data })).signingPayload(attemptId)).toEqual({ ok: false, failure: "mismatch" });
+  });
+
+  it.each<[string, () => Response | Promise<Response>, string]>([
+    ["a 401", () => json(401, errorBody("UNAUTHENTICATED")), "signed_out"],
+    ["ROOM_NOT_READY", () => json(409, errorBody("ROOM_NOT_READY")), "room_changed"],
+    ["ATTEMPT_NOT_FOUND", () => json(404, errorBody("ATTEMPT_NOT_FOUND")), "room_changed"],
+    ["ATTEMPT_NOT_SIGNABLE", () => json(409, errorBody("ATTEMPT_NOT_SIGNABLE")), "room_changed"],
+    ["SIGNATURES_INCOMPLETE", () => json(409, errorBody("SIGNATURES_INCOMPLETE")), "room_changed"],
+    ["RETRY_BLOCKED", () => json(409, errorBody("RETRY_BLOCKED")), "room_changed"],
+    ["CHECKOUT_PAID", () => json(409, errorBody("CHECKOUT_PAID")), "room_changed"],
+    ["INSUFFICIENT_USDC", () => json(422, errorBody("INSUFFICIENT_USDC")), "not_funded"],
+    ["INSUFFICIENT_SOL", () => json(422, errorBody("INSUFFICIENT_SOL")), "not_funded"],
+    ["TOKEN_ACCOUNT_MISSING", () => json(422, errorBody("TOKEN_ACCOUNT_MISSING")), "not_funded"],
+    ["MESSAGE_MISMATCH", () => json(400, errorBody("MESSAGE_MISMATCH")), "refused"],
+    ["INVALID_SIGNATURE", () => json(400, errorBody("INVALID_SIGNATURE")), "refused"],
+    ["INVALID_PAYMENT", () => json(400, errorBody("INVALID_PAYMENT")), "refused"],
+    ["RATE_LIMITED", () => json(429, errorBody("RATE_LIMITED")), "rate_limited"],
+    ["RPC_UNAVAILABLE", () => json(503, errorBody("RPC_UNAVAILABLE")), "unavailable"],
+    ["no answer", () => Promise.reject(new TypeError("fetch failed")), "unavailable"],
+  ])("reads %s on every operation as %s", async (_, respond, failure) => {
+    for (const answer of await Promise.all(everyOperation(api(respond)))) expect(answer).toEqual({ ok: false, failure });
   });
 });

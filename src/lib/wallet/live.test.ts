@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Address } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
 import type { ChallengeId, SignatureBase64 } from "./environment";
 import { liveEnvironment, liveSignInService, type FetchLike } from "./live";
 
@@ -131,7 +132,7 @@ describe("live wallet seam until P1", () => {
   it("connecting answers that sign-in isn't available, and nothing signs", async () => {
     const { bridge } = liveEnvironment();
     expect(await bridge.connect()).toEqual({ ok: false, failure: "failed" });
-    expect(await bridge.signPayment({ account: WALLET, payload: { __pending: "B1 SigningPayload" } })).toEqual({
+    expect(await bridge.signPayment({ account: WALLET } as CheckedPayment)).toEqual({
       ok: false,
       failure: "failed",
     });

@@ -13,8 +13,8 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { ACTIONS, WORDS } from "@/client/catalog";
-import { noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
+import { ACTIONS, WORDS, type ActionKind } from "@/client/catalog";
+import { busyShown, noticeApplies, type Action, type ActionsView, type Notice } from "@/client/checkout-view";
 import { isLiveAction, live, untracked, type LiveAction, type LiveKind, type Track } from "@/client/live-actions";
 import { BUTTON } from "./button";
 import { Icon } from "./icon";
@@ -33,7 +33,7 @@ export function ActionGroup({
   readonly fallbackFocus?: RefObject<HTMLElement | null>;
   readonly children?: ReactNode;
 }): ReactNode {
-  const { session, expired } = useWalletSession();
+  const { session, signer, waitingOnPrompt, expired } = useWalletSession();
   const track = use(RoomTrack);
   const router = useRouter();
   const [busy, setBusy] = useState<LiveKind | null>(null);
@@ -45,12 +45,19 @@ export function ActionGroup({
   // Cleared rather than hidden, so switching back to the wallet, or the action coming back, can't revive it.
   if (notice !== null && !noticeApplies(notice, { wallet, actions })) setNotice(null);
 
+  const shownBusy = busyShown(busy, waitingOnPrompt, actions);
+
   const runLive = async (action: LiveAction) => {
     const sentAs = session;
+    // A follow-up keeps the notice that offered it, so its busy label shows there, and what it says next
+    // belongs to the action that raised that notice.
+    const offeredBy = notice?.followUp?.kind === action.kind ? notice : null;
+    const raise = (text: string, followUp: Action | null) =>
+      setNotice({ text, followUp, wallet: sentAs?.wallet ?? null, raisedBy: offeredBy?.raisedBy ?? action });
     inFlight.current = true;
-    setNotice(null);
+    if (offeredBy === null) setNotice(null);
     setBusy(action.kind);
-    const outcome = await live.run(action, track);
+    const outcome = await live.run(action, { track, signer });
     inFlight.current = false;
     switch (outcome.kind) {
       case "open":
@@ -62,12 +69,16 @@ export function ActionGroup({
         });
         return;
       case "done":
+        setNotice(null);
+        break;
+      case "noted":
+        raise(outcome.text, null);
         break;
       case "signed_out":
         if (sentAs) expired(sentAs);
         break;
       case "notice":
-        setNotice({ text: outcome.text, followUp: null, wallet: sentAs?.wallet ?? null, raisedBy: action.kind });
+        raise(outcome.text, outcome.followUp);
         break;
     }
     setBusy(null);
@@ -75,7 +86,7 @@ export function ActionGroup({
 
   const run = async (action: Action) => {
     if (inFlight.current) return;
-    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action.kind });
+    const say = (text: string, followUp: Action | null = null) => setNotice({ text, followUp, wallet, raisedBy: action });
     if (actions.sample && ACTIONS[action.kind].needs !== "nothing") {
       const outcome = action.kind === "create_checkout" ? WORDS.nothing_created : WORDS.nothing_sent;
       say(`${ACTIONS[action.kind].label} ${WORDS.not_connected_in_sample} ${outcome}`, actions.sample.followUp);
@@ -111,7 +122,7 @@ export function ActionGroup({
     <div {...focusFallback} className="flex flex-col gap-4">
       {actions.primary && (
         <div>
-          <ActionControl action={actions.primary} variant="primary" busy={busy} onRun={run} />
+          <ActionControl action={actions.primary} variant="primary" busy={shownBusy} onRun={run} />
         </div>
       )}
       {children}
@@ -119,10 +130,10 @@ export function ActionGroup({
         <div className="flex flex-wrap items-center gap-3">
           {actions.secondary.map((a) => (
             <ActionControl
-              key={a.kind}
+              key={controlKey(a)}
               action={a}
               variant={a.kind === "back_to_checkout" ? "link" : "quiet"}
-              busy={busy}
+              busy={shownBusy}
               onRun={run}
             />
           ))}
@@ -135,7 +146,7 @@ export function ActionGroup({
               <Icon name="info" />
               {notice.text}
             </p>
-            {notice.followUp && <ActionControl action={notice.followUp} variant="link" busy={busy} onRun={run} />}
+            {notice.followUp && <ActionControl action={notice.followUp} variant="link" busy={shownBusy} onRun={run} />}
           </>
         ) : (
           stubbed && <p className="text-muted">{WORDS.sample_caption}</p>
@@ -144,6 +155,9 @@ export function ActionGroup({
     </div>
   );
 }
+
+/** I'm ready and Not ready yet are one toggle, so it keeps its button, and keyboard focus, when it flips. */
+const controlKey = (action: Action): string => (action.kind === "mark_not_ready" ? "mark_ready" : action.kind);
 
 function useFocusFallback(fallback: RefObject<HTMLElement | null> | undefined) {
   const root = useRef<HTMLDivElement>(null);
@@ -171,7 +185,7 @@ function ActionControl({
 }: {
   readonly action: Action;
   readonly variant: keyof typeof BUTTON;
-  readonly busy: LiveKind | null;
+  readonly busy: ActionKind | null;
   readonly onRun: (action: Action) => void;
 }): ReactNode {
   const meta = ACTIONS[action.kind];

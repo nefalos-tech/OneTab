@@ -96,6 +96,19 @@ describe("wallet view", () => {
     });
   });
 
+  it("names the payment prompt, with a busy header, while the signed-in wallet approves", () => {
+    const signedIn = initialState({ account: BEA, session: { wallet: BEA, expiresAt: "2099-01-01T00:00:00.000Z" } });
+    expect(deriveWalletView(signedIn, true)).toEqual({
+      control: { kind: "busy", label: "Approving…" },
+      status: { kind: "waiting", text: "Approve the payment in your wallet. It covers every share in one payment." },
+      connectAction: { kind: "busy", label: "Approving…" },
+    });
+  });
+
+  it("a payment prompt changes nothing once the wallet isn't signed in", () => {
+    expect(deriveWalletView(connectedWith("account_switched"), true)).toEqual(deriveWalletView(connectedWith("account_switched")));
+  });
+
   it("a connected wallet that isn't signed in shows its address and never claims a sign-in", () => {
     expect(deriveWalletView(connectedWith("account_switched")).control).toEqual({ kind: "account", address: BEA, signedIn: false });
   });

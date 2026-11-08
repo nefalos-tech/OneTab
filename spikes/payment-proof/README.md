@@ -8,7 +8,9 @@ F2 and B1 can use the [WalletBridge and signing-byte handoff](../../docs/evidenc
 
 ## Inspect a wallet before preparing a payment
 
-Use Node `25.9.0` and npm. Run these commands from this directory.
+Install the root application's locked dependencies first with Node `24.22.1` by running `npm ci --ignore-scripts` from the repository root. The spike now imports the shared payment code under `src/lib/payments/` and `src/server/payments/`.
+
+Then use Node `25.9.0` and npm for the spike. Run these commands from this directory.
 
 ```sh
 npm ci --ignore-scripts

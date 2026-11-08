@@ -1,4 +1,5 @@
-import type { Address, Session } from "@/client/contracts";
+import type { Address, MessageHash, Session } from "@/client/contracts";
+import type { CheckedPayment } from "@/client/payment-check";
 
 /** Every port call resolves. Failures are values the machine branches on, never exceptions. */
 export type Result<T, F extends string> =
@@ -30,7 +31,18 @@ export type WalletCapabilities = {
   readonly signTransaction: boolean;
 };
 
-export type SigningPayload = { readonly __pending: "B1 SigningPayload" };
+export type PaymentApproval = { readonly messageHash: MessageHash; readonly signature: SignatureBase64 };
+
+export type SignFailure = "rejected" | "stale" | "busy" | "failed";
+
+export interface PaymentSigner {
+  /** The approval kept for this message in this sign-in, or else one new wallet prompt's answer. */
+  keptOrNewApproval(payment: CheckedPayment): Promise<Result<PaymentApproval, SignFailure>>;
+  /** Drops a kept approval that was refused, so the next request for that message opens the wallet again. */
+  forget(approval: PaymentApproval): void;
+  /** Whether the sign-in that asked for this payment is still the page's. Checked right before the upload. */
+  isCurrent(payment: CheckedPayment): boolean;
+}
 
 /**
  * contracts.md's WalletBridge. One instance per environment.
@@ -51,7 +63,13 @@ export interface WalletBridge {
     readonly account: Address;
     readonly message: AuthMessage;
   }): Promise<BridgeResult<SignatureBase64>>;
-  signPayment(input: { readonly account: Address; readonly payload: SigningPayload }): Promise<BridgeResult<never>>;
+  /**
+   * Asks the wallet to approve `payment.transaction`, exactly as given, without sending it. Refuses
+   * without prompting when `payment.account` isn't the selected account. Returns only that account's
+   * signature, after checking the returned transaction has the same message and no other signature.
+   * The returned transaction never leaves the bridge.
+   */
+  signPayment(payment: CheckedPayment): Promise<BridgeResult<SignatureBase64>>;
   onAccountChange(listener: (account: Address | null) => void): () => void;
 }
 
