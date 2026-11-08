@@ -17,7 +17,7 @@ const participants = z.union([z.tuple([participant, participant]), z.tuple([part
 const checkout = z.object({
   id: z.uuid(), title: z.string(), organizerWallet: wallet, sellerWallet: wallet,
   network: z.literal("devnet"), mint: z.literal(DEVNET_USDC), tokenDecimals: z.literal(6),
-  totalUnits: positiveUnits, payerCount: z.union([z.literal(2), z.literal(3)]), createdAt: z.iso.datetime(),
+  totalUnits: positiveUnits, payerCount: z.union([z.literal(2), z.literal(3)]), createdAt: z.iso.datetime({ offset: true }),
 }) satisfies z.ZodType<Checkout>;
 const config = z.object({
   network: z.literal("devnet"), mint: z.literal(DEVNET_USDC), tokenDecimals: z.literal(6),

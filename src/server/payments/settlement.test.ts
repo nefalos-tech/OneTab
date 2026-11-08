@@ -7,6 +7,7 @@ import { DEVNET_GENESIS_HASH } from "./preflight";
 import { projectAttempt } from "./service";
 import { serviceFixture } from "./test-fixtures";
 import { createPaymentProgress } from "./settlement";
+import { config } from "../../lib/payments/test-fixtures";
 import { settlementFixture, submissionStore } from "./settlement-fixture";
 
 function deferred() {
@@ -388,5 +389,57 @@ describe("durable submission progress", () => {
     const duplicate = await f.service.prepare({ checkoutId: f.room.checkout.id, wallet: f.organizer.wallet, retryOfAttemptId: null });
     expect(duplicate.id).toBe(replacement.id);
     expect(f.store.attempts.size).toBe(2);
+  });
+
+  it("closes a declined attempt with no frozen message and no signatures, and leaves a usable authorization blocking", async () => {
+    const f = await setup();
+    f.mutate(attempt => { attempt.state = "declined"; attempt.signingPayload = null; attempt.signatures = []; attempt.submission = null; });
+    const closed = await f.progress(f.attempt.id);
+    expect(closed).toMatchObject({ state: "failed", safelyResolved: true, signingPayload: null, signatures: [], submission: null, resolutionLease: null });
+    expect(f.events).toContain("outcome:failed");
+    expect(f.events).not.toContain("sendTransaction");
+    expect(f.events).not.toContain("getEpochInfo");
+    expect((await f.progress(f.attempt.id)).state).toBe("failed");
+    expect(f.events.filter(event => event === "resolve")).toHaveLength(1);
+    const frozen = await setup();
+    frozen.mutate(attempt => { attempt.state = "declined"; attempt.signatures = []; });
+    const held = await frozen.progress(frozen.attempt.id);
+    expect(held).toMatchObject({ state: "declined", safelyResolved: false, submission: null });
+    expect(frozen.events).not.toContain("outcome:failed");
+    const signed = await setup();
+    signed.mutate(attempt => { attempt.state = "declined"; attempt.signingPayload = null; });
+    expect(await signed.progress(signed.attempt.id)).toMatchObject({ state: "declined", safelyResolved: false });
+    expect(signed.events).not.toContain("resolve");
+  });
+
+  it("does not record a close when a payload or signature appears under the resolution lease", async () => {
+    const f = await settlementFixture();
+    const payload = structuredClone(f.attempt.signingPayload);
+    const signature = structuredClone(f.attempt.signatures[0]);
+    f.attempt.state = "declined";
+    f.attempt.signingPayload = null;
+    f.attempt.signatures = [];
+    f.attempt.submission = null;
+    const events: string[] = [];
+    const now = () => new Date("2026-11-07T12:00:00.000Z");
+    const memory = submissionStore(f.attempt, events, now);
+    const claim = memory.store.claimResolution.bind(memory.store);
+    memory.store.claimResolution = async input => {
+      const lease = await claim(input);
+      memory.mutate(attempt => { attempt.signingPayload = payload; attempt.signatures = signature ? [signature] : []; });
+      return lease;
+    };
+    const calls: string[] = [];
+    const progress = createPaymentProgress({
+      store: memory.store, config, now, readCheckout: async () => f.room.checkout,
+      rpc: { async call(method) { calls.push(method); throw new Error(method); } },
+    });
+    const raced = await progress(f.attempt.id);
+    expect(raced).toMatchObject({ state: "declined", safelyResolved: false });
+    expect(raced.signingPayload?.messageHash).toBe(payload?.messageHash);
+    expect(raced.signatures).toHaveLength(1);
+    expect(events).toContain("resolve");
+    expect(events).not.toContain("outcome:failed");
+    expect(calls).toEqual([]);
   });
 });

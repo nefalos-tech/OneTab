@@ -63,6 +63,12 @@ describe("B1 signing payload validation", () => {
     expect(plan.contributions.map(payer => payer.sourceTokenAccount)).toEqual(vectors.slice(0, 2).map(vector => vector[1]));
   });
 
+  it("accepts the offset timestamp Postgres stores on a checkout", async () => {
+    const f = await paymentFixture(2);
+    f.room.checkout.createdAt = "2026-11-08T07:04:24.594424+00:00";
+    await expect(createCheckoutPaymentPlan({ ...f.room, config })).resolves.toMatchObject({ feePayer: f.room.checkout.organizerWallet });
+  });
+
   const summaryChanges: [string, (payload: SigningPayload) => void][] = [
     ["seller wallet", payload => { payload.payment.sellerWallet = key(40); }],
     ["seller token account", payload => { payload.payment.sellerTokenAccount = key(40); }],

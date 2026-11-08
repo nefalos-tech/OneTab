@@ -149,7 +149,11 @@ export function createPaymentService(dependencies: PaymentDependencies) {
 
     async decline(input: Actor): Promise<AttemptSummary> {
       await context(input);
-      return summary(await lifecycle.declineAttempt({ attemptId: input.attemptId, signerWallet: input.wallet }));
+      const declined = await lifecycle.declineAttempt({ attemptId: input.attemptId, signerWallet: input.wallet });
+      if (declined.state !== "declined" || declined.signingPayload || declined.signatures.length > 0 || declined.submission) {
+        return summary(declined);
+      }
+      return summary(await progress(declined.id));
     },
 
     async submit(input: Actor): Promise<AttemptSummary> {
