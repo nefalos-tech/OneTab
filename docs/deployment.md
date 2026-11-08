@@ -4,9 +4,9 @@ B5 owns this page. The public app is not published. Nothing below is a claim tha
 
 ## Current targets
 
-Checked on 2026-11-08. The accounts available from this checkout belong to other products. None is an OneTab deployment. GitHub has no deployment for this repository, and the repository homepage is empty. No `.env`, `.env.local`, or `.env.production` file is in this checkout.
+Checked on 2026-11-08. The OneTab database is project `dwjlpgntyefxlhcvppsa` at `https://dwjlpgntyefxlhcvppsa.supabase.co`, PostgreSQL 17.11, in `ap-southeast-1`. The migrations below are not applied there. Do not apply them to any other database.
 
-Do not deploy onto another product's project. Do not apply these migrations to another product's database. The database connector does not show a confirmed OneTab project. Leave creation until the owner names the account.
+The app host is a new Vercel project for `https://github.com/nefalos-tech/OneTab` on the selected Vercel account. It is not created. Creation is waiting on a grant. Do not deploy this branch, and do not reuse a project that belongs to another product. No `.env`, `.env.local`, or `.env.production` file is in this checkout.
 
 ## Set the server environment
 
@@ -16,7 +16,7 @@ Copy [.env.example](../.env.example) into the host's server environment. Put the
 | --- | --- |
 | `APP_ORIGIN` | The exact `https` origin of the public app, with no path and no trailing slash. |
 | `ONETAB_API_ORIGIN` | Leave empty. The server then reads checkouts from `APP_ORIGIN`. Set it only when the server cannot reach that public origin. |
-| `SUPABASE_URL` | The new OneTab project's API URL. |
+| `SUPABASE_URL` | `https://dwjlpgntyefxlhcvppsa.supabase.co` |
 | `SUPABASE_SECRET_KEY` | That project's service-role key. Server only. |
 | `SOLANA_CLUSTER` | `devnet` |
 | `SOLANA_RPC_URL` | A Devnet endpoint. `https://api.devnet.solana.com` has no provider key. If the chosen endpoint puts a key in the URL, that key stays server-only. |
@@ -40,15 +40,24 @@ Apply these files in order to a new OneTab database. Do not run a reset against 
 2. `supabase/migrations/20261107010000_b2_auth.sql`
 3. `supabase/migrations/20261107020000_b3_rooms.sql`
 4. `supabase/migrations/20261108000000_b4_attempt_store.sql`
+5. `supabase/migrations/20261108092756_harden_exposed_function_grants.sql`
 
-The migrations enable row-level security and grant the privileged writes to `service_role`. Local checks of those grants are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). Those checks used a disposable local database. They are not hosted evidence.
+Apply each file as one transaction. Stop on the first error. Do not rerun an earlier file after a later file fails, and do not reset the database.
 
-## Publish after the owner names the targets
+The first four files create the tables and the server RPCs. The fifth makes those RPCs and `private.attempt_snapshot` security invoker. `service_role` can execute that snapshot and use the `private` schema. It cannot create objects there. `anon` and `authenticated` stay denied. Trigger functions stay invoker, and those two roles lose execute on them. `service_role` keeps execute so its writes still fire the triggers.
+
+For `postgres`, `supabase_admin`, and the role applying the file, new functions do not grant execute to `public`, `anon`, or `authenticated`. The same revoke is repeated inside `public` and `private`, because a schema grant would otherwise add those roles back. Leave the Data API exposed schemas at `public`. Do not add `private`.
+
+`service_role` still bypasses row level security and still has direct table writes. Keep the service key on the server.
+
+Local grant checks are recorded in [tests/b1/README.md](../tests/b1/README.md) and [tests/b2/README.md](../tests/b2/README.md). `bash tests/b5/run-pg17.sh` applies every migration on disposable PostgreSQL 17.11, then runs `tests/b5/exposure.sql` and the existing B1 through B4 SQL files as `service_role`. Those results are local. They are not hosted evidence.
+
+## Publish the app
 
 1. Create a new host project for `https://github.com/nefalos-tech/OneTab`. Use a host that runs Node.js 24.22.1. Do not reuse a project that belongs to another product.
-2. Create a new Supabase project for OneTab after the owner names the account. Do not use another product's database.
-3. Set the variables in the table above. Set `APP_ORIGIN` to the `https` URL the host assigns.
-4. Apply the four migration files in order. Record the project id and the four versions on this page after they succeed.
+2. Use the OneTab database named above. Do not create another database, and do not use another product's database.
+3. Set the variables in the table above. Set `APP_ORIGIN` to the `https` URL the host assigns. Set `SUPABASE_URL` to `https://dwjlpgntyefxlhcvppsa.supabase.co`.
+4. Apply the five migration files in order. Record the five versions on this page after they succeed.
 5. From another computer, open `/` and `/api/config`. The config response should name Devnet, the mint above, 6 decimals, and `finalized`.
 6. Repeat a create, join, and Ready flow, then one integrated payment, on that URL. Anonymous calls to the Data API must fail.
 7. Redeploy once while an attempt is unresolved. The same attempt and submission bytes should still be there. The room should keep polling.
