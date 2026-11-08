@@ -6,26 +6,28 @@ This records what proves the live wallet path for [F2](../cards/F2.md) ([#8](htt
 
 | Claim | Evidence | Kind |
 | --- | --- | --- |
-| The bridge prefers Phantom, accepts only the feature versions P1 proved plus `solana:signMessage` 1.1.0, and answers `no_wallet`, `wrong_network`, `cannot_sign`, `rejected` or `failed` with no prompt where the contract says so | `src/lib/wallet/standard.test.ts`, fake registry and fake wallets with real Ed25519 keys | Unit fixture |
-| Sign-in signs a copy of the server's exact challenge, refuses a prefixed or changed message, a short signature, a non-Ed25519 type and a signature that fails the local check, and answers 88 characters of canonical base64 | `standard.test.ts`, and `e2e/live-wallet.spec.ts` comparing the signed bytes with the challenge the test backend issued | Unit fixture and local Chromium |
-| Account changes reach the machine on a later task, once per address, a switch away and back as two, unregister as `null`, and nothing after disconnect. A switch during any prompt voids its answer, a 4001 included | `standard.test.ts` | Unit fixture |
+| The bridge prefers Phantom, accepts only the feature versions P1 proved plus `solana:signMessage` 1.1.0, and answers `no_wallet`, `wrong_network`, `cannot_sign`, `rejected` or `failed` with no prompt where the contract says so. It reads each registered wallet on its own, so a wallet whose fields throw or don't parse can't stop Phantom from connecting | `src/lib/wallet/standard.test.ts`, fake registry and fake wallets with real Ed25519 keys | Unit fixture |
+| Sign-in signs a copy of the server's exact challenge, refuses a prefixed or changed message, a short signature, a non-Ed25519 type and a signature that fails the local check, and answers 88 characters of canonical base64. It verifies and encodes one copy of the signature, so an output that answers other bytes on a later read can't pass. A selected address whose public key changed after connect gets no prompt | `standard.test.ts`, and `e2e/live-wallet.spec.ts` comparing the signed bytes with the challenge the test backend issued | Unit fixture and local Chromium |
+| Account changes reach the machine on a later task, once per address, a switch away and back as two, unregister as `null`, and nothing after disconnect. A wallet that unregisters during its connect prompt makes `connect` answer `failed`. A switch during any prompt voids its answer, a 4001 included | `standard.test.ts` | Unit fixture |
 | `liveEnvironment()` builds during server rendering without creating the wallet registry | `src/lib/wallet/live.test.ts` | Unit fixture |
-| Approve validates real bytes with Payments' `validateFrozenSigningPayload` against a fresh room, refuses every tampered byte, refuses a room that moved on or already holds this payer's approval, says `unsupported` without Ed25519 and `check_unavailable` when Payments' code doesn't load, and loads it again on the next press. A `createdAt` with `+00:00` passes | `src/client/payment-check.test.ts`, Payments' fixture with generated keys | Unit fixture |
-| Approve reads the payload, then the room, then uploads with a room read in its write. A failed room read and a moved room open no prompt | `src/client/live-actions.test.ts` | Unit fixture |
-| The bridge asks `solana:signTransaction` once, with a copy of the checked bytes, `chain: solana:devnet` and `preflightCommitment: confirmed`, and never calls a sign-and-send feature | `standard.test.ts` and `live-wallet.spec.ts` | Unit fixture and local Chromium |
-| The real check, the session store and the bridge together end in exactly `{messageHash, signatureBase64}`, which Payments' `verifyPayerSignature` accepts | The chained test in `standard.test.ts` | Unit fixture |
+| Approve validates real bytes with Payments' `validateFrozenSigningPayload` against a fresh room, refuses every tampered byte, refuses a room that moved on or already holds this payer's approval, says `unsupported` without Ed25519 before Payments' code loads and `check_unavailable` when that code doesn't load, and loads it again on the next press. A `createdAt` with `+00:00` passes | `src/client/payment-check.test.ts`, Payments' fixture with generated keys | Unit fixture |
+| Approve reads the payload, then the room, then uploads with a room read in its write. A failed room read and a moved room open no prompt. A room with a new attempt shows the moved-on notice while that attempt's Approve is on screen, and any other moved room leaves its status line to say what happened | `src/client/live-actions.test.ts` and `live-wallet.spec.ts` | Unit fixture and local Chromium |
+| The bridge asks `solana:signTransaction` once, with a copy of the checked bytes, `chain: solana:devnet` and `preflightCommitment: confirmed`, and never calls a sign-and-send feature. Only the payment object the check made opens a prompt, so a copy with other bytes opens none | `standard.test.ts`, `payment-check.test.ts` and `live-wallet.spec.ts` | Unit fixture and local Chromium |
+| Approve through live actions, with the real check, the session store and the bridge, sends an upload request whose body is exactly `{messageHash, signatureBase64}`, which Payments' `verifyPayerSignature` accepts | The chained test in `standard.test.ts`, which captures the request through a stubbed `fetch` | Unit fixture |
 | In a browser, one approval uploads exactly `{messageHash, signatureBase64}`, a tampered byte opens no prompt, and a 4001 offers **Decline payment** without sending it, after which Approve uploads | `live-wallet.spec.ts`, fake Wallet Standard wallet on `app-ready`, test backend checking uploads with `verifyPayerSignature` | Local Chromium |
-| ESLint keeps Wallet Standard and the bridge in src/lib/wallet, bans sign-and-send by import and by string key, and bans a value import of Payments' code in browser code | `src/client/wallet-fence.test.ts` through ESLint's Node API | Unit fixture |
-| No route loads Payments' code before a click | `npm run bundle:check` after `next build` | Local build |
+| ESLint keeps Wallet Standard and the bridge in src/lib/wallet. In browser code it bans sign-and-send by import from all three wallet-standard packages and by string key, kit's RPC, transport, send, airdrop and sign-and-send factories, every import from `@solana/rpc`, `@solana/rpc-*` and `@solana/signers`, and `import()` of all of them. It bans a value import of Payments' code and any import of src/client/test-support | `src/client/wallet-fence.test.ts` through ESLint's Node API | Unit fixture |
+| No route loads Payments' code before a click, and no built file for the browser or the server holds test support | `npm run bundle:check` after `next build` | Local build |
 
 ## Commands and outcomes
 
 | Command | Outcome |
 | --- | --- |
-| `npm run check` | Lint, typecheck and design check pass. Vitest: 33 files, 1738 tests passed |
-| `npm run test:e2e` | `next build` passed, `bundle:check` passed, Playwright: 153 passed |
+| `npm run check` | Lint, typecheck and design check pass. Vitest: 33 files, 1784 tests passed |
+| `npm run test:e2e` | `next build` passed, `bundle:check` passed, Playwright: 155 passed |
 
 Each new behavior was also shown red. A script applied one change at a time to the code, ran the named tests, and restored the file. 51 changes each failed at least one test, and the tests passed again after every restore. They cover the bridge's staleness rules, the sign-in echo and local verify, payment signing, the check's narrowing, its tamper rows under the old placeholder check, and the lazy load and its retry. Before the new fences existed, 7 of the fence test's 12 cases failed, and removing the broadcast ban fails 2 more. A static import of Payments' `signing-payload` in payment-check.ts made `bundle:check` fail on every route.
+
+In the fix round after review, these new tests failed against the code before their fix: six broken wallets beside Phantom and a page with only broken ones, a signature getter that answers other bytes, an unregister inside the connect answer, a tampered copy of a checked payment, four moved rooms, 23 fence cases and the test support fence. The e2e test for a room that moved to a new attempt failed against a build from before the fix. Dropping the prompt-time key check, moving the Ed25519 probe after Payments' load, or changing the upload body each fails the new tests. A build with an `import()` of test support in a component failed `bundle:check` on one browser chunk and one server chunk.
 
 ## First Load JS
 
@@ -33,11 +35,11 @@ Each new behavior was also shown red. A script applied one change at a time to t
 
 | Route | Before (`be767b7`) | After | gzip before | gzip after |
 | --- | --- | --- | --- | --- |
-| `/`, `/checkouts/[id]`, `/checkouts/[id]/result` | 585.3 KiB | 610.6 KiB | 176.9 KiB | 186.0 KiB |
-| `/samples`, not found | 539.6 KiB | 564.8 KiB | 163.3 KiB | 172.3 KiB |
+| `/`, `/checkouts/[id]`, `/checkouts/[id]/result` | 585.3 KiB | 611.1 KiB | 176.9 KiB | 185.9 KiB |
+| `/samples`, not found | 539.6 KiB | 565.4 KiB | 163.3 KiB | 172.3 KiB |
 | Global error | 446.5 KiB | 446.5 KiB | 131.9 KiB | 131.9 KiB |
 
-Payments' code sits in three chunks that load on the first Approve. A static import would make a live room 760.6 KiB, 229.8 KiB gzip. Two builds without part of the change attribute the 25.3 KiB increase. Without the Wallet Standard bridge, a live room is 604.8 KiB. Without any Payments import it is 597.4 KiB, so the lazy import adds 13.2 KiB to the first load. The new shared chunk holds `@solana/kit` codec and address code that Payments uses, such as the offset and resize decoders and SHA-256 address derivation. That attribution comes from the chunk's contents and is inferred, not traced.
+Payments' code sits in three chunks that load on the first Approve. A static import would make a live room 760.6 KiB, 229.8 KiB gzip. Two builds without part of the change attribute the 25.3 KiB increase. Without the Wallet Standard bridge, a live room is 604.8 KiB. Without any Payments import it is 597.4 KiB, so the lazy import adds 13.2 KiB to the first load. The new shared chunk holds `@solana/kit` codec and address code that Payments uses, such as the offset and resize decoders and SHA-256 address derivation. That attribution comes from the chunk's contents and is inferred, not traced. The fix round after review moved a live room from 610.6 KiB to 611.1 KiB, and its gzip from 186.0 KiB to 185.9 KiB. That covers its code changes and the bridge's new runtime import of payment-check.ts, and the split between them wasn't measured.
 
 ## NOT RUN
 
@@ -63,7 +65,7 @@ Record each run as local or hosted, with the Phantom and Chrome versions.
    window.dispatchEvent(new CustomEvent("wallet-standard:app-ready", { detail: { register: (...wallets) => { for (const w of wallets) console.log(w.name, w.chains, Object.fromEntries(Object.entries(w.features).map(([k, f]) => [k, f.version])), w.accounts.map((a) => a.features)); return () => {}; } } }));
    ```
 
-   If it says "Sign-in isn't available right now", check the server log first. If the server verified nothing, Phantom changed the message or the signature failed OneTab's own check.
+   If it says "Sign-in isn't available right now" and Phantom never showed the message, the account lacks `solana:signMessage` or this browser can't verify Ed25519. Run the snippet above and record what it prints, then try again in a current desktop Chrome. If Phantom did show the message, check the server log first. If the server verified nothing, Phantom changed the message or the signature failed OneTab's own check.
 6. Disconnect, press **Connect wallet** again, and reject the message in Phantom. The line should read "You didn't sign in. Nothing was signed or sent."
 7. Create a checkout in the organizer's profile, join in the other profiles, and mark everyone ready. The organizer presses **Start payment**.
 8. In one payer's profile, press **Approve in wallet** and reject in Phantom. The notice should say nothing was sent and offer **Decline payment**. Don't decline. Press **Approve in wallet** again, check that Phantom shows a Devnet transaction, and approve it. The spot should show approved.
