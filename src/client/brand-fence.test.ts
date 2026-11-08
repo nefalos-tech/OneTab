@@ -29,4 +29,14 @@ describe("only checkout-view.ts makes a Replaceable or VerifiedReceipt", () => {
     expect(await fenced(`${id}export const x = id as Replaceable;\n`, "src/client/checkout-view.ts")).toBe(false);
     expect(await fenced(`${id}export const x = id as string;\n`, "src/client/fence-probe.ts")).toBe(false);
   });
+
+  const exported = 'import type { Action, ActionOf, Recovery } from "./checkout-view";\ndeclare const x: unknown;\n';
+  it.each([
+    ["as Action", `${exported}export const a = x as Action;\n`],
+    ['as ActionOf<"retry">', `${exported}export const a = x as ActionOf<"retry">;\n`],
+    ["as Recovery", `${exported}export const a = x as Recovery;\n`],
+    ["a generic as-T helper", `${exported}const cast = <T,>(v: unknown) => v as T;\nexport const a = cast<Action>(x);\n`],
+  ])("misses a cast to an exported type that holds a brand, %s, which review has to catch", async (_, code) => {
+    expect(await fenced(code, "src/client/fence-probe.ts")).toBe(false);
+  });
 });

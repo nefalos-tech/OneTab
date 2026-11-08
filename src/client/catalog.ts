@@ -106,7 +106,7 @@ export const SITUATIONS = {
     step: "complete",
     tone: "success",
     label: "Paid",
-    when: "phase paid, attempt confirmed, and a receipt that matches the checkout, every spot and the attempt's signature",
+    when: "phase paid, every spot from 1 to the payer count held once by its own wallet, the attempt confirmed with every payer's approval, and a receipt naming the attempt's own 64-byte signature, this checkout's seller and total, and every share in spot order, adding up to the total",
   },
 } as const satisfies Record<string, SituationMeta>;
 export type Situation = keyof typeof SITUATIONS;
