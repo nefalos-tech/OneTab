@@ -102,7 +102,9 @@ const RUN: { readonly [K in LiveKind]: Run<K> } = {
 async function approve(terms: ApprovalTerms, c: ApproveContext): Promise<Outcome> {
   const payload = await c.api.signingPayload(terms.attemptId);
   if (!payload.ok) return payload.failure === "mismatch" ? notice("mismatch") : settle(c, terms.checkoutId, payload.failure);
-  const checked = await c.check.payload(payload.value, terms);
+  const room = await readRoomAgain(c, terms.checkoutId);
+  if (!room.ok) return notice("check_unavailable");
+  const checked = await c.check.payload(payload.value, terms, room.value);
   if (!checked.ok) return notice(checked.failure);
   const approval = await c.signer.keptOrNewApproval(checked.value);
   if (!approval.ok) {

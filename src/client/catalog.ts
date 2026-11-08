@@ -236,7 +236,8 @@ export const REQUEST_PROBLEMS = {
   unavailable: "OneTab couldn't confirm this went through. Trying again is safe.",
   start_unread: "OneTab couldn't confirm what happened to this payment. This page shows it as soon as it can read the checkout.",
   mismatch: "The payment OneTab received doesn't match this checkout, so your wallet wasn't opened. Nothing was approved.",
-  unsupported: "Approving isn't available here yet, so your wallet wasn't opened. Nothing was approved.",
+  unsupported: "This browser can't check payments, so your wallet wasn't opened. Use a current desktop Chrome.",
+  check_unavailable: "OneTab couldn't check this payment right now, so nothing was approved. Try again in a moment.",
   rejected:
     "You didn't approve in your wallet, so nothing was sent, and you can approve again. Declining stops this payment for everyone and keeps the checkout on hold until it's safely closed.",
   busy: "Your wallet already has an approval request open. Finish it there first.",

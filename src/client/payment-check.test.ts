@@ -1,19 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { address } from "@solana/kit";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { verifyPayerSignature } from "@/lib/payments/signature-core";
 import { termsOf, type ApprovalTerms } from "./checkout-view";
-import type { SignatureBase64 } from "@/lib/wallet/environment";
-import { parseSigningPayload, type Address, type BlockHeight, type MessageHash, type Network, type SigningPayload, type TokenUnits } from "./contracts";
+import type { PaymentApproval, SignatureBase64 } from "@/lib/wallet/environment";
+import {
+  parseSigningPayload,
+  type Address,
+  type BlockHeight,
+  type MessageHash,
+  type Network,
+  type RoomSnapshot,
+  type SigningPayload,
+  type TokenUnits,
+} from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
-import { checkPayment, paymentCheck, type MessageCheck, type ReturnCheck } from "./payment-check";
+import { keyedPayment, signBytes, signedTransaction, type KeyedPayment } from "./keyed-payment-fixture";
+import { checkPayment, paymentCheck, type CheckedPayment, type MessageCheck, type ReturnCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
+
+const KEYED = await keyedPayment();
+const VALIDATED = KEYED.validated;
 
 const room = FIXTURES.signing.snapshot;
 const bea = { wallet: SAMPLE_WALLETS.bea, expiresAt: "2099-01-01T00:00:00.000Z" };
 const terms = termsOf(room, bea)!;
 const payload = parseSigningPayload(wirePayloadFor(room))!;
-const bytesMatch: MessageCheck = async () => "match";
+const bytesMatch: MessageCheck = async () => ({ ok: true, value: VALIDATED });
 const signatureMatches: ReturnCheck = async () => "match";
-const check = paymentCheck(bytesMatch, signatureMatches).payload;
+const check = (p: SigningPayload, t: ApprovalTerms, r: RoomSnapshot = room) => paymentCheck(bytesMatch, signatureMatches).payload(p, t, r);
 
 type Contribution = SigningPayload["payment"]["contributions"][number];
 const units = (n: bigint) => n.toString() as TokenUnits;
@@ -35,18 +50,20 @@ function withScreenShowingTheSame(change: (c: Contribution, slot: number) => Par
   ] as const;
 }
 
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.doUnmock("@/lib/payments/wallet-signature");
+});
+
 describe("the payment check before any wallet prompt", () => {
-  it("passes the payload's own bytes for the viewer when every field and byte matches the screen", async () => {
+  it("hands the wallet Payments' own copy of the bytes it validated, for the viewer", async () => {
     const result = await check(payload, terms);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value).toMatchObject({
-      attemptId: room.attempt!.id,
-      account: SAMPLE_WALLETS.bea,
-      messageHash: payload.messageHash,
-    });
-    expect(result.value.transaction).toBe(payload.transaction);
-    expect(result.value.message).toBe(payload.message);
+    expect(result.value).toMatchObject({ attemptId: room.attempt!.id, account: SAMPLE_WALLETS.bea, messageHash: payload.messageHash });
+    expect(result.value.transaction).toEqual(Uint8Array.from(VALIDATED.message.transactionBytes));
+    expect(result.value.transaction).not.toBe(VALIDATED.message.transactionBytes);
+    expect(Object.keys(result.value).sort()).toEqual(["account", "attemptId", "messageHash", "signatureIn", "transaction"]);
   });
 
   it.each<[string, SigningPayload]>([
@@ -89,47 +106,173 @@ describe("the payment check before any wallet prompt", () => {
     expect(await check(leftOut, shown)).toEqual({ ok: false, failure: "mismatch" });
   });
 
-  it("accepts any expiry height while the room has none yet", async () => {
+  it("accepts any expiry height while the screen has none yet, because the fresh room has one", async () => {
     const result = await check({ ...payload, lastValidBlockHeight: "1" as BlockHeight }, { ...terms, lastValidBlockHeight: null });
     expect(result.ok).toBe(true);
   });
 
-  it("refuses when Payments' byte check finds other bytes, or throws", async () => {
-    expect(await paymentCheck(async () => "mismatch", signatureMatches).payload(payload, terms)).toEqual({ ok: false, failure: "mismatch" });
-    expect(
-      await paymentCheck(async () => {
-        throw new Error("decoder bug");
-      }, signatureMatches).payload(payload, terms),
-    ).toEqual({ ok: false, failure: "mismatch" });
-    expect(
-      await paymentCheck(() => {
-        throw new Error("decoder bug");
-      }, signatureMatches).payload(payload, terms),
-    ).toEqual({ ok: false, failure: "mismatch" });
-  });
-
-  it("fails closed when the bytes can't be checked, and until Payments' check is wired", async () => {
-    expect(await paymentCheck(async () => "unsupported", signatureMatches).payload(payload, terms)).toEqual({ ok: false, failure: "unsupported" });
-    expect(await checkPayment.payload(payload, terms)).toEqual({ ok: false, failure: "unsupported" });
+  it("passes on what Payments' byte check answers, and refuses when it throws", async () => {
+    for (const failure of ["mismatch", "unsupported", "check_unavailable"] as const) {
+      expect(await paymentCheck(async () => ({ ok: false, failure }), signatureMatches).payload(payload, terms, room)).toEqual({ ok: false, failure });
+    }
+    const throws = async () => {
+      throw new Error("decoder bug");
+    };
+    expect(await paymentCheck(throws, signatureMatches).payload(payload, terms, room)).toEqual({ ok: false, failure: "mismatch" });
   });
 });
 
-describe("the check of what the wallet returned, before the upload", () => {
-  const approval = { messageHash: payload.messageHash, signature: "c2lnbmVkIGJ5IGJlYQ==" as SignatureBase64 };
-  const checked = async (returnCheck: ReturnCheck) => {
-    const payment = await paymentCheck(bytesMatch, returnCheck).payload(payload, terms);
-    if (!payment.ok) throw new Error("The sample payment didn't pass the check");
-    return paymentCheck(bytesMatch, returnCheck).returned(payment.value, approval);
-  };
+describe("the room the check reads after the payload", () => {
+  const attempt = room.attempt!;
+  it.each<[string, RoomSnapshot, string]>([
+    ["is no longer paying", { ...room, phase: "needs_attention" }, "room_changed"],
+    ["has no attempt", { ...room, attempt: null }, "room_changed"],
+    ["has another attempt", { ...room, attempt: { ...attempt, id: FIXTURES.declined.snapshot.attempt!.id } }, "room_changed"],
+    ["is still preparing", { ...room, attempt: { ...attempt, state: "preparing" } }, "room_changed"],
+    ["has every approval", { ...room, attempt: { ...attempt, state: "submitting" } }, "room_changed"],
+    ["has this payer's approval already", { ...room, attempt: { ...attempt, signedWallets: [...attempt.signedWallets, SAMPLE_WALLETS.bea] } }, "room_changed"],
+    ["is signing with no expiry height", { ...room, attempt: { ...attempt, lastValidBlockHeight: null } }, "check_unavailable"],
+  ])("refuses a room that %s, before Payments runs", async (_, fresh, failure) => {
+    const seen: unknown[] = [];
+    const recording: MessageCheck = async (...args) => (seen.push(args), { ok: true, value: VALIDATED });
+    expect(await paymentCheck(recording, signatureMatches).payload(payload, terms, fresh)).toEqual({ ok: false, failure });
+    expect(seen).toEqual([]);
+  });
 
-  it("passes the wallet's approval when P3's check finds the payer's signature over these bytes", async () => {
-    const seen: [string, string][] = [];
-    const result = await checked(async (payment, signature) => {
-      seen.push([payment.messageHash, signature]);
-      return "match";
+  it("hands Payments the fresh room's checkout, payers, attempt and height, and the viewer", async () => {
+    const seen: Parameters<MessageCheck>[] = [];
+    const recording: MessageCheck = async (...args) => (seen.push(args), { ok: true, value: VALIDATED });
+    await paymentCheck(recording, signatureMatches).payload(payload, terms, room);
+    expect(seen).toEqual([
+      [payload, { checkout: room.checkout, participants: room.participants, attemptId: attempt.id, lastValidBlockHeight: attempt.lastValidBlockHeight }, SAMPLE_WALLETS.bea],
+    ]);
+  });
+});
+
+const keyedTerms = (k: KeyedPayment, slot = 1) => termsOf(k.room, { wallet: k.payers[slot]!.address, expiresAt: "2099-01-01T00:00:00.000Z" })!;
+
+async function checked(k: KeyedPayment = KEYED, slot = 1): Promise<CheckedPayment> {
+  const result = await checkPayment.payload(k.payload, keyedTerms(k, slot), k.room);
+  if (!result.ok) throw new Error(`The keyed payment didn't pass the check: ${result.failure}`);
+  return result.value;
+}
+
+describe("Payments' check of a real payment", () => {
+  it("passes a real payload and room, and the wallet gets exactly the payload's bytes", async () => {
+    const payment = await checked();
+    expect(payment.transaction).toEqual(KEYED.payload.transaction);
+    expect(payment).toMatchObject({ account: KEYED.payers[1]!.address, attemptId: KEYED.payload.attemptId, messageHash: KEYED.payload.messageHash });
+  });
+
+  it("passes a room whose createdAt carries an offset, as Postgres renders it", async () => {
+    const offset = await keyedPayment(3, { createdAt: "2026-11-08T07:04:24.594424+00:00" });
+    expect((await checked(offset)).messageHash).toBe(offset.payload.messageHash);
+  });
+
+  const flip = (bytes: Uint8Array, at: number) => Uint8Array.from(bytes, (b, i) => (i === at ? b ^ 1 : b));
+  const p = KEYED.payload;
+  const contributions = p.payment.contributions;
+  it.each<[string, SigningPayload]>([
+    ["a transaction one byte off", { ...p, transaction: flip(p.transaction, p.transaction.length - 1) }],
+    ["a message one byte off", { ...p, message: flip(p.message, p.message.length - 1) }],
+    ["both one byte off, the same byte", { ...p, transaction: flip(p.transaction, p.transaction.length - 1), message: flip(p.message, p.message.length - 1) }],
+    ["a signature slot already filled", { ...p, transaction: flip(p.transaction, 1) }],
+    ["another message hash", { ...p, messageHash: "6b".repeat(32) as MessageHash }],
+    ["another blockhash", { ...p, blockhash: SAMPLE_WALLETS.outsider }],
+    ["another seller token account", { ...p, payment: { ...p.payment, sellerTokenAccount: SAMPLE_WALLETS.outsider } }],
+    [
+      "a payer's token account swapped for another",
+      { ...p, payment: { ...p.payment, contributions: contributions.map((c, slot) => (slot === 1 ? { ...c, sourceTokenAccount: SAMPLE_WALLETS.outsider } : c)) } },
+    ],
+  ])("refuses %s, which the screen can't show", async (_, tampered) => {
+    expect(await checkPayment.payload(tampered, keyedTerms(KEYED), KEYED.room)).toEqual({ ok: false, failure: "mismatch" });
+  });
+
+  it("refuses a room whose frozen checkout differs from the payload's", async () => {
+    const other = await keyedPayment();
+    const mixed = { ...other.room, checkout: { ...other.room.checkout, id: KEYED.room.checkout.id }, attempt: { ...other.room.attempt!, id: KEYED.room.attempt!.id } };
+    expect(await checkPayment.payload(KEYED.payload, keyedTerms(KEYED), mixed)).toEqual({ ok: false, failure: "mismatch" });
+  });
+
+  it("refuses with unsupported, before loading Payments, when this browser can't import an Ed25519 key", async () => {
+    vi.spyOn(crypto.subtle, "importKey").mockRejectedValue(new DOMException("Unrecognized name.", "NotSupportedError"));
+    expect(await checkPayment.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).toEqual({ ok: false, failure: "unsupported" });
+  });
+
+  it("says it couldn't check when Payments' code doesn't load, and loads it again on the next press", async () => {
+    vi.resetModules();
+    vi.doMock("@/lib/payments/wallet-signature", () => {
+      throw new Error("Loading chunk 712 failed.");
     });
-    expect(result).toEqual({ ok: true, value: approval });
-    expect(seen).toEqual([[payload.messageHash, approval.signature]]);
+    const fresh = (await import("./payment-check")).checkPayment;
+    expect(await fresh.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).toEqual({ ok: false, failure: "check_unavailable" });
+    vi.doUnmock("@/lib/payments/wallet-signature");
+    expect((await fresh.payload(KEYED.payload, keyedTerms(KEYED), KEYED.room)).ok).toBe(true);
+  });
+});
+
+describe("the check of the wallet's returned transaction", () => {
+  it("answers the payer's signature from a real return, and the server's own check accepts it", async () => {
+    const payment = await checked();
+    const signature = await payment.signatureIn(await signedTransaction(KEYED.payers[1]!, payment.transaction));
+    expect(signature).toMatch(/^[A-Za-z0-9+/]{86}==$/);
+    const bytes = Uint8Array.from(atob(signature!), (c) => c.charCodeAt(0));
+    await expect(verifyPayerSignature(VALIDATED, { wallet: address(KEYED.payers[1]!.address), signatureBytes: bytes })).resolves.toBeTruthy();
+  });
+
+  it.each<[string, (payment: CheckedPayment) => Promise<Uint8Array>]>([
+    ["only another payer's signature", (payment) => signedTransaction(KEYED.payers[2]!, payment.transaction)],
+    [
+      "another payer's signature beside the payer's",
+      async (payment) => signedTransaction(KEYED.payers[2]!, await signedTransaction(KEYED.payers[1]!, payment.transaction)),
+    ],
+    [
+      "a changed message",
+      async (payment) => {
+        const changed = Uint8Array.from(payment.transaction, (b, i) => (i === payment.transaction.length - 1 ? b ^ 1 : b));
+        return signedTransaction(KEYED.payers[1]!, changed);
+      },
+    ],
+    ["no signature at all", async (payment) => payment.transaction],
+    ["bytes that aren't a transaction", async () => new Uint8Array([1, 2, 3])],
+  ])("answers null for %s", async (_, returned) => {
+    const payment = await checked();
+    expect(await payment.signatureIn(await returned(payment))).toBeNull();
+  });
+});
+
+describe("the check of the approval before the upload", () => {
+  const asBase64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)) as SignatureBase64;
+
+  it("passes the payer's signature over the validated message", async () => {
+    const payment = await checked();
+    const approval = { messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, Uint8Array.from(VALIDATED.message.messageBytes))) };
+    expect(await checkPayment.returned(payment, approval)).toEqual({ ok: true, value: approval });
+  });
+
+  it.each<[string, (payment: CheckedPayment) => Promise<PaymentApproval>]>([
+    [
+      "another payer's signature",
+      async (payment) => ({ messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[2]!, Uint8Array.from(VALIDATED.message.messageBytes))) }),
+    ],
+    [
+      "a signature over other bytes",
+      async (payment) => ({ messageHash: payment.messageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, payment.transaction)) }),
+    ],
+    [
+      "noncanonical base64",
+      async (payment) => {
+        const signature = asBase64(await signBytes(KEYED.payers[1]!, Uint8Array.from(VALIDATED.message.messageBytes)));
+        return { messageHash: payment.messageHash, signature: signature.replace(/==$/, "=") as SignatureBase64 };
+      },
+    ],
+    [
+      "an approval of another message",
+      async () => ({ messageHash: "6b".repeat(32) as MessageHash, signature: asBase64(await signBytes(KEYED.payers[1]!, Uint8Array.from(VALIDATED.message.messageBytes))) }),
+    ],
+  ])("refuses %s", async (_, approval) => {
+    const payment = await checked();
+    expect(await checkPayment.returned(payment, await approval(payment))).toEqual({ ok: false, failure: "unchecked" });
   });
 
   it.each<[string, ReturnCheck]>([
@@ -141,16 +284,10 @@ describe("the check of what the wallet returned, before the upload", () => {
         throw new Error("verifier bug");
       },
     ],
-  ])("fails closed when P3's check %s", async (_, returnCheck) => {
-    expect(await checked(returnCheck)).toEqual({ ok: false, failure: "unchecked" });
-  });
-
-  it("fails closed for an approval of another message, and until P3's check is wired", async () => {
-    const payment = await paymentCheck(bytesMatch, signatureMatches).payload(payload, terms);
+  ])("fails closed when the return check %s", async (_, returnCheck) => {
+    const payment = await paymentCheck(bytesMatch, returnCheck).payload(payload, terms, room);
     if (!payment.ok) throw new Error("The sample payment didn't pass the check");
-    const other = { ...approval, messageHash: "6b".repeat(32) as MessageHash };
-    expect(await paymentCheck(bytesMatch, signatureMatches).returned(payment.value, other)).toEqual({ ok: false, failure: "unchecked" });
-    expect(await checkPayment.returned(payment.value, approval)).toEqual({ ok: false, failure: "unchecked" });
+    const approval = { messageHash: payload.messageHash, signature: "c2lnbmVkIGJ5IGJlYQ==" as SignatureBase64 };
+    expect(await paymentCheck(bytesMatch, returnCheck).returned(payment.value, approval)).toEqual({ ok: false, failure: "unchecked" });
   });
 });
-
