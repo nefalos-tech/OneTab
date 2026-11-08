@@ -61,20 +61,12 @@ const NO_BRAND_IMPORTS = {
 };
 /** ESLint keeps only the last matching block's options for a rule, so each block that sets this lists every entry. */
 const restrictSyntax = (...entries) => ({ "no-restricted-syntax": ["error", ...NO_BRAND_CASTS, ...entries] });
-const NO_CHECK_FACTORY = {
-  "no-restricted-imports": [
-    "error",
-    {
-      patterns: [
-        {
-          regex: PAYMENT_CHECK_PATH,
-          importNames: ["paymentCheck"],
-          message: "Only src/client/live-actions.ts and tests build a payment check. Everything else uses checkPayment, whose seams fail closed.",
-        },
-      ],
-    },
-  ],
+const NO_CHECK_FACTORY_IMPORT = {
+  regex: PAYMENT_CHECK_PATH,
+  importNames: ["paymentCheck"],
+  message: "Only src/client/live-actions.ts and tests build a payment check. Everything else uses checkPayment, whose seams fail closed.",
 };
+const NO_CHECK_FACTORY = { "no-restricted-imports": ["error", { patterns: [NO_CHECK_FACTORY_IMPORT] }] };
 const BROADCAST = "OneTab's browser only asks a wallet to approve. The server sends the one payment.";
 const NO_BROADCAST = [
   {
@@ -173,6 +165,9 @@ export default defineConfig([
   {
     files: ["src/client/catalog.ts"],
     rules: {
+      // typescript-eslint lets a type import through once its source matches an allowTypeImports pattern, and the
+      // pattern below matches every source, so the brand ban runs on the core rule here.
+      "no-restricted-imports": ["error", { patterns: [NO_CHECK_FACTORY_IMPORT, NO_BRAND_IMPORTS] }],
       "@typescript-eslint/no-restricted-imports": [
         "error",
         {

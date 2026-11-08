@@ -689,7 +689,7 @@ describe("what Start and Try again say, from how the start was answered and the 
   });
 });
 
-describe("a funding refusal explains only its own checkout, and only until the next press", () => {
+describe("a funding refusal explains only its own checkout, and only until the next Start or Try again press", () => {
   const OTHER = "5d0c3f1e-8a2b-4c6d-9e7f-1a2b3c4d5e6f" as CheckoutId;
   const otherFailed: RoomSnapshot = {
     ...FAILED,

@@ -20,7 +20,7 @@ describe("only checkout-view.ts makes a Replaceable or VerifiedReceipt", () => {
     ["an import from checkout-view", 'import type { Replaceable } from "./checkout-view";\nexport type X = Replaceable;\n'],
     ["an import through the alias", 'import type { VerifiedReceipt } from "@/client/checkout-view";\nexport type X = VerifiedReceipt;\n'],
   ])("refuses %s anywhere else", async (_, code) => {
-    for (const file of ["src/client/fence-probe.ts", "src/components/fence-probe.ts", "src/app/fence-probe.ts"]) {
+    for (const file of ["src/client/fence-probe.ts", "src/components/fence-probe.ts", "src/app/fence-probe.ts", "src/client/catalog.ts"]) {
       expect(await fenced(code, file), file).toBe(true);
     }
   });
@@ -36,7 +36,8 @@ describe("only checkout-view.ts makes a Replaceable or VerifiedReceipt", () => {
     ['as ActionOf<"retry">', `${exported}export const a = x as ActionOf<"retry">;\n`],
     ["as Recovery", `${exported}export const a = x as Recovery;\n`],
     ["a generic as-T helper", `${exported}const cast = <T,>(v: unknown) => v as T;\nexport const a = cast<Action>(x);\n`],
-  ])("misses a cast to an exported type that holds a brand, %s, which review has to catch", async (_, code) => {
+    ["a type guard", `${exported}const isRetry = (v: unknown): v is ActionOf<"retry"> => true;\nexport const a = isRetry(x) ? x : null;\n`],
+  ])("misses a claim of an exported type that holds a brand, %s, which review has to catch", async (_, code) => {
     expect(await fenced(code, "src/client/fence-probe.ts")).toBe(false);
   });
 });

@@ -436,7 +436,7 @@ type Refused = { readonly checkoutId: CheckoutId; readonly cause: FundingCause; 
 /**
  * A funding refusal names no attempt, so the cause waits for the next room of its checkout shown with an
  * attempt other than the one being replaced, and is noted on it only if that attempt stopped before it was
- * sent. Another checkout's room, or the next press, ends the wait.
+ * sent. Another checkout's room, or the next Start or Try again press, ends the wait.
  */
 function notedMemory(): NotedCauses & { expect(refused: Refused | null): void; observe(snapshot: RoomSnapshot): void } {
   let noted: readonly NotedCause[] = NOTHING_HEARD.noted;
