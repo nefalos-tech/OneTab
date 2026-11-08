@@ -48,9 +48,10 @@ export interface PaymentSigner {
  * contracts.md's WalletBridge. One instance per environment.
  *
  * Contract every implementation keeps (the machine relies on it):
- * - `onAccountChange` reports each change of the selected address after `connect` resolves,
- *   including a change between the user's approval and the subscription, and reports `null` when the
- *   wallet disconnects or unregisters. Same-address events are not reported.
+ * - No switch during the connect prompt is lost: `connect` answers the address the wallet holds once
+ *   the bridge listens, or the bridge reports the switch after `connect` resolves. `onAccountChange`
+ *   reports each later change of the selected address, and `null` when the wallet disconnects or
+ *   unregisters. Same-address events are not reported.
  * - `signAuthentication` refuses without prompting when `account` is not the selected account.
  */
 export interface WalletBridge {
@@ -88,6 +89,14 @@ export interface SignInService {
 }
 
 export type WalletEnvironment = { readonly bridge: WalletBridge; readonly service: SignInService };
+
+/**
+ * Canonical padded base64 of a 64-byte Ed25519 signature, 88 characters, the only form the server accepts.
+ * Null for any other length.
+ */
+export function signatureBase64(bytes: Uint8Array): SignatureBase64 | null {
+  return bytes.length === 64 ? (btoa(String.fromCharCode(...bytes)) as SignatureBase64) : null;
+}
 
 export function capabilityFailure(c: WalletCapabilities): "wrong_network" | "cannot_sign" | null {
   if (!c.signMessage || !c.signTransaction) return "cannot_sign";

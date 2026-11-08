@@ -36,7 +36,7 @@ const NO_WALLET_INTERNALS = {
 };
 const NO_WALLET_STANDARD = {
   group: WALLET_STANDARD,
-  message: "Wallet packages stay in src/lib/wallet/, behind the WalletBridge seam in live.ts.",
+  message: "Wallet packages stay in src/lib/wallet/, behind the WalletBridge in standard.ts.",
 };
 /** A static value import would ship zod, the token program and the validators with every page. */
 const NO_PAYMENTS_UPFRONT = {
