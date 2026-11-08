@@ -10,7 +10,7 @@ import { address, getAddressDecoder } from "@solana/kit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { termsOf } from "@/client/checkout-view";
 import type { Address, Session } from "@/client/contracts";
-import { keyedPayment, signedTransaction, type KeyedPayer, type KeyedPayment } from "@/client/keyed-payment-fixture";
+import { keyedPayment, signedTransaction, type KeyedPayer, type KeyedPayment } from "@/client/test-support/keyed-payment";
 import { live, untracked, type LiveAction } from "@/client/live-actions";
 import { checkPayment, walletRequest, type CheckedPayment } from "@/client/payment-check";
 import { verifyPayerSignature } from "@/lib/payments/signature-core";

@@ -2,10 +2,10 @@ import { address, getAddressDecoder, getTransactionDecoder, getTransactionEncode
 import type { RoomSnapshot as WireRoom, SigningPayload as WirePayload } from "@/contracts";
 import { createCheckoutPaymentPlan, validateFrozenSigningPayload, type ValidatedSigningPayload } from "@/lib/payments/signing-payload";
 import { config, paymentFixture, payloadForPlan } from "@/lib/payments/test-fixtures";
-import { parseRoomSnapshot, parseSigningPayload, type Address, type RoomSnapshot, type SigningPayload } from "./contracts";
+import { parseRoomSnapshot, parseSigningPayload, type Address, type RoomSnapshot, type SigningPayload } from "../contracts";
 
 /**
- * Test support, never bundled. Payments' payment fixture with a generated Ed25519 key for every payer, the
+ * Test support, never shipped. Payments' payment fixture with a generated Ed25519 key for every payer, the
  * swap in src/server/payments/settlement-fixture.ts, which client tests can't import. Every signature a test
  * makes with these keys is one the server's own check accepts.
  */
@@ -66,7 +66,7 @@ export async function keyedPayment(count: 2 | 3 = 3, options: KeyedOptions = {})
   });
   const room = parseRoomSnapshot(wireRoom);
   const payload = parseSigningPayload(wirePayload);
-  if (room === null || payload === null) throw new Error("The keyed payment doesn't parse as the client's room and payload");
+  if (room === null || payload === null) throw new Error("The keyed payment does not parse as the client room and payload");
   return { payers, wireRoom, wirePayload, room, payload, validated };
 }
 

@@ -1,5 +1,5 @@
 import type { BrowserContext, Page } from "@playwright/test";
-import { signBytes, signedTransaction, type KeyedPayer } from "../src/client/keyed-payment-fixture";
+import { signBytes, signedTransaction, type KeyedPayer } from "../src/client/test-support/keyed-payment";
 
 export type Prompt = "connect" | "signMessage" | "signTransaction";
 type Seen = { readonly wallet: string; readonly prompt: Prompt | "signAndSend"; readonly account: string | null; readonly bytes: Uint8Array | null };

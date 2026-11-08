@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
 import { address, getAddressEncoder } from "@solana/kit";
 import type { RoomSnapshot as WireRoom, SigningPayload as WirePayload } from "../src/contracts/index";
-import { keyedPayment, type KeyedPayment } from "../src/client/keyed-payment-fixture";
+import { keyedPayment, type KeyedPayment } from "../src/client/test-support/keyed-payment";
 import { verifyPayerSignature } from "../src/lib/payments/signature-core";
 import type { Answer, Backend } from "./browser-api";
 import { installRoom, installedRoom } from "./fake-api.mjs";

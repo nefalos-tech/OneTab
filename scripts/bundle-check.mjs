@@ -11,6 +11,10 @@ const NEXT = new URL(".next/", ROOT);
  */
 const PAYMENTS_MARKERS = ["Noncanonical base64", "Payload differs from the frozen attempt", "Wallet changed transaction"];
 
+/** Test support never ships, so no chunk for the browser or the server may hold this file's own error text. */
+const TEST_SUPPORT = "src/client/test-support/keyed-payment.ts";
+const TEST_SUPPORT_MARKER = "The keyed payment does not parse as the client room and payload";
+
 const require = createRequire(import.meta.url);
 const buildManifest = JSON.parse(await readFile(new URL("build-manifest.json", NEXT), "utf8"));
 const manifests = await clientReferenceManifests(new URL("server/app/", NEXT));
@@ -39,9 +43,14 @@ for (const { route, manifest } of manifests) {
 const lazy = await lazyMarkers();
 if (lazy.length === 0) problems.push(`No chunk holds ${PAYMENTS_MARKERS.map((m) => `"${m}"`).join(" or ")}, so this check proves nothing. Update its markers.`);
 
+if (!(await readFile(new URL(TEST_SUPPORT, ROOT), "utf8")).includes(TEST_SUPPORT_MARKER)) {
+  problems.push(`${TEST_SUPPORT} no longer holds "${TEST_SUPPORT_MARKER}", so the test support check proves nothing. Update its marker.`);
+}
+for (const file of await builtFilesHolding(TEST_SUPPORT_MARKER)) problems.push(`${file} holds ${TEST_SUPPORT}, which must never ship.`);
+
 console.log(["Route | First-load chunks | First Load JS | gzip", ...rows.map((r) => r.join(" | "))].join("\n"));
 if (problems.length > 0) fail(problems);
-console.log(`bundle ok: Payments' code is only in ${lazy.join(", ")}, which no route loads before a click.`);
+console.log(`bundle ok: Payments' code is only in ${lazy.join(", ")}, which no route loads before a click, and no built file holds test support.`);
 
 async function clientReferenceManifests(dir) {
   const found = [];
@@ -70,6 +79,18 @@ async function lazyMarkers() {
     if (!name.endsWith(".js")) continue;
     const text = await readFile(new URL(name, dir), "utf8");
     if (PAYMENTS_MARKERS.some((m) => text.includes(m))) found.push(`static/chunks/${name}`);
+  }
+  return found;
+}
+
+async function builtFilesHolding(marker) {
+  const found = [];
+  for (const dir of ["static", "server"]) {
+    for (const entry of await readdir(new URL(dir, NEXT), { recursive: true, withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
+      const path = `${entry.parentPath}/${entry.name}`;
+      if ((await readFile(path, "utf8")).includes(marker)) found.push(path.slice(NEXT.pathname.length));
+    }
   }
   return found;
 }

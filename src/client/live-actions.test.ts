@@ -36,7 +36,7 @@ import {
   type Track,
   type TrackerCallbacks,
 } from "./live-actions";
-import { keyedPayment } from "./keyed-payment-fixture";
+import { keyedPayment } from "./test-support/keyed-payment";
 import { paymentCheck, walletRequest, type CheckedPayment, type MessageCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
 

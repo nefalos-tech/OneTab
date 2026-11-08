@@ -3,7 +3,7 @@ import { termsOf } from "@/client/checkout-view";
 import { parseSigningPayload, type Address, type Session } from "@/client/contracts";
 import { SAMPLE_WALLETS } from "@/client/fixture-data";
 import { FIXTURES } from "@/client/fixtures";
-import { keyedPayment } from "@/client/keyed-payment-fixture";
+import { keyedPayment } from "@/client/test-support/keyed-payment";
 import { paymentCheck, type CheckedPayment } from "@/client/payment-check";
 import { wirePayloadFor } from "@/client/payment-fixture";
 import {

@@ -8,6 +8,7 @@ const FENCES = {
   walletPackages: "Wallet packages stay in src/lib/wallet/",
   walletInternals: "Reach wallets through useWalletSession()",
   paymentsUpfront: "Browser code reaches Payments only through payment-check.ts",
+  testSupport: "Test support never ships",
 } as const;
 
 async function fenced(code: string, file: string, fence: keyof typeof FENCES): Promise<boolean> {
@@ -116,8 +117,25 @@ describe("Payments' code loads only when someone approves", () => {
     const lazy = 'export const load = () => import("@/lib/payments/signing-payload");\n';
     expect(await fenced(typeOnly, "src/client/payment-check.ts", "paymentsUpfront")).toBe(false);
     expect(await fenced(lazy, "src/client/payment-check.ts", "paymentsUpfront")).toBe(false);
-    for (const file of ["src/client/fence-probe.test.ts", "src/lib/wallet/fence-probe.test.ts", "src/client/keyed-payment-fixture.ts", "src/server/fence-probe.ts"]) {
+    for (const file of ["src/client/fence-probe.test.ts", "src/lib/wallet/fence-probe.test.ts", "src/client/test-support/keyed-payment.ts", "src/server/fence-probe.ts"]) {
       expect(await fenced(value, file, "paymentsUpfront"), file).toBe(false);
     }
+  });
+});
+
+describe("test support stays in tests", () => {
+  const value = 'import { keyedPayment } from "@/client/test-support/keyed-payment";\nexport const k = keyedPayment;\n';
+  const lazy = 'export const load = () => import("@/client/test-support/keyed-payment");\n';
+
+  it("refuses test support in pages, components, client and wallet code, by import or import()", async () => {
+    for (const file of [...BROWSER, "src/client/checkout-view.ts", "src/components/wallet/wallet-scope.tsx", "src/lib/wallet/live.ts"]) {
+      for (const code of [value, lazy]) expect(await fenced(code, file, "testSupport"), `${file}: ${code}`).toBe(true);
+    }
+    const relative = 'import { keyedPayment } from "./test-support/keyed-payment";\nexport const k = keyedPayment;\n';
+    expect(await fenced(relative, "src/client/fence-probe.ts", "testSupport")).toBe(true);
+  });
+
+  it("lets tests import it", async () => {
+    for (const file of ["src/client/fence-probe.test.ts", "src/lib/wallet/fence-probe.test.ts"]) expect(await fenced(value, file, "testSupport"), file).toBe(false);
   });
 });

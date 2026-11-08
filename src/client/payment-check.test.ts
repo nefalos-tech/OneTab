@@ -15,7 +15,7 @@ import {
 } from "./contracts";
 import { SAMPLE_WALLETS } from "./fixture-data";
 import { FIXTURES } from "./fixtures";
-import { keyedPayment, signBytes, signedTransaction, type KeyedPayment } from "./keyed-payment-fixture";
+import { keyedPayment, signBytes, signedTransaction, type KeyedPayment } from "./test-support/keyed-payment";
 import { checkPayment, paymentCheck, walletRequest, type CheckedPayment, type MessageCheck, type ReturnCheck } from "./payment-check";
 import { wirePayloadFor } from "./payment-fixture";
 

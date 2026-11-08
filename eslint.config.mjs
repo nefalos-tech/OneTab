@@ -117,7 +117,15 @@ const NO_DYNAMIC_BROADCAST = [
   `ImportExpression[source.value=/${SENDING_PACKAGE}/]`,
   `ImportExpression > TemplateLiteral > TemplateElement[value.raw=/${SENDING_PACKAGE}/]`,
 ].map((selector) => ({ selector, message: BROADCAST }));
-const NO_SENDING = [...NO_SIGN_AND_SEND, ...NO_DYNAMIC_BROADCAST];
+const TEST_SUPPORT_PATH = "(^|/)test-support/";
+const TEST_SUPPORT_MESSAGE = "Test support never ships. Only tests import src/client/test-support.";
+const NO_TEST_SUPPORT = { regex: TEST_SUPPORT_PATH, message: TEST_SUPPORT_MESSAGE };
+const NO_DYNAMIC_TEST_SUPPORT = {
+  selector: `ImportExpression[source.value=/${TEST_SUPPORT_PATH.replaceAll("/", "\\/")}/]`,
+  message: TEST_SUPPORT_MESSAGE,
+};
+/** The syntax bans every non-test browser file gets. */
+const BROWSER_SYNTAX = [...NO_SIGN_AND_SEND, ...NO_DYNAMIC_BROADCAST, NO_DYNAMIC_TEST_SUPPORT];
 const COMPONENT_INPUTS = {
   group: [...WIRE_AND_SAMPLES, "@/client/checkout-source", "**/client/checkout-source"],
   message: "Components render views from @/client/checkout-view. Loading, wire types and samples stay in src/client.",
@@ -133,8 +141,8 @@ const CODE = "{ts,tsx,js,jsx,mjs,cjs}";
  * A file matched by several blocks gets only the last block's patterns, so each block lists its full set.
  * Browser code also gets the broadcast ban. Server code, src/server and src/app/api, sends the payment, and
  * src/lib/payments is Payments' own.
- * Tests and test fixtures in browser folders keep the browser bans except NO_PAYMENTS_UPFRONT and NO_SIGN_AND_SEND,
- * because they build real payments and fake wallets that must refuse to send.
+ * Tests and src/client/test-support keep the browser bans except NO_PAYMENTS_UPFRONT, NO_SIGN_AND_SEND and
+ * NO_TEST_SUPPORT, because they build real payments and fake wallets that must refuse to send.
  */
 const restrictServer = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": ["error", { patterns: [NO_SERVER, NO_BRAND_IMPORTS, ...patterns] }],
@@ -146,7 +154,7 @@ const restrictTest = (...patterns) => ({
 const restrict = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": [
     "error",
-    { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_PAYMENTS_UPFRONT, NO_RPC_PACKAGES, ...patterns] },
+    { paths: NO_BROADCAST, patterns: [NO_SERVER, NO_BRAND_IMPORTS, NO_PAYMENTS_UPFRONT, NO_RPC_PACKAGES, NO_TEST_SUPPORT, ...patterns] },
   ],
 });
 
@@ -164,13 +172,13 @@ export default defineConfig([
   },
   {
     files: [`src/client/**/*.${CODE}`],
-    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD), ...restrictSyntax(...NO_SENDING) },
+    rules: { ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD), ...restrictSyntax(...BROWSER_SYNTAX) },
   },
   {
     files: [`src/components/**/*.${CODE}`],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, COMPONENT_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SENDING),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...BROWSER_SYNTAX),
     },
   },
   {
@@ -178,7 +186,7 @@ export default defineConfig([
     ignores: ["src/app/api/**"],
     rules: {
       ...restrict(NO_WALLET_INTERNALS, NO_WALLET_STANDARD, PAGE_INPUTS, NO_API_CLIENT, NO_PAYMENT_CHECK),
-      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...NO_SENDING),
+      ...restrictSyntax(NO_DYNAMIC_PAYMENT_CHECK, ...BROWSER_SYNTAX),
     },
   },
   {
@@ -193,14 +201,14 @@ export default defineConfig([
   },
   {
     files: [`src/lib/wallet/**/*.${CODE}`],
-    rules: { ...restrict(NO_API_CLIENT), ...restrictSyntax(...NO_SENDING) },
+    rules: { ...restrict(NO_API_CLIENT), ...restrictSyntax(...BROWSER_SYNTAX) },
   },
   {
     files: ["src/lib/wallet/live.ts"],
     rules: restrict(),
   },
   {
-    files: [`src/client/**/*.test.${CODE}`, "src/client/keyed-payment-fixture.ts"],
+    files: [`src/client/**/*.test.${CODE}`, `src/client/test-support/**/*.${CODE}`],
     rules: restrictTest(NO_WALLET_INTERNALS, NO_WALLET_STANDARD),
   },
   {
@@ -209,7 +217,7 @@ export default defineConfig([
   },
   {
     files: ["src/client/checkout-view.ts"],
-    rules: { "no-restricted-syntax": ["error", ...NO_SENDING] },
+    rules: { "no-restricted-syntax": ["error", ...BROWSER_SYNTAX] },
   },
   {
     files: ["src/client/catalog.ts"],

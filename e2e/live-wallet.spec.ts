@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { ACTIONS, REQUEST_PROBLEMS, WALLET_PROBLEMS } from "../src/client/catalog";
 import { shortAddress } from "../src/client/checkout-view";
-import type { KeyedPayer } from "../src/client/keyed-payment-fixture";
+import type { KeyedPayer } from "../src/client/test-support/keyed-payment";
 import { expect, test, type BrowserApi } from "./browser-api";
 import { installFakeWallet, type FakeWallet } from "./fake-wallet";
 import { liveBackend, type LiveBackend } from "./live-backend";
