@@ -1,5 +1,7 @@
 # Skill activation
 
+Correction. The verification sentence below is the original note. `CORRECTION.md` supersedes its database wording. The database run used the existing system cluster `16/main` and a recreated `b4test` database. It is not independent acceptance. The `.log` files are non-runnable historical evidence.
+
 Playbook: Figure It Out, from the host pstack install.
 
 pstack skill path: `/home/ubuntu/.cursor/plugins/cache/cursor-public/9717366/ae5650febf4320793844c12c4adaa937f417f8da/skills/poteto-mode/SKILL.md`

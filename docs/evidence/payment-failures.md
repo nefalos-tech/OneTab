@@ -80,7 +80,7 @@ The combined HTTP composition tests use ten integer units, split as `[5, 5]` or 
 
 ## Run the integrated scenarios
 
-Every integrated scenario remains **NOT RUN**. The proof below supplements the common records. Endpoint names come from the [HTTP contract](../contracts.md#http-operations). The inspected P3 and P4 implementation has these handlers, but production composition remains unavailable until B4 supplies the durable adapters.
+Every integrated scenario remains **NOT RUN**. The writer log in `artifacts/onetab-lead/` does not complete any scenario below. `artifacts/onetab-lead/CORRECTION.md` records the limits of that log, including the absence of an application-process restart and of independent database execution. The proof below supplements the common records. Endpoint names come from the [HTTP contract](../contracts.md#http-operations). The inspected P3 and P4 implementation has these handlers, but production composition remains unavailable until B4 supplies the durable adapters.
 
 ### 1. Missing signature
 
